@@ -471,6 +471,12 @@ func (s *ClientService) Update(inboundSvc *InboundService, id int, updated model
 	if updated.Secret == "" {
 		updated.Secret = existing.Secret
 	}
+	// Same reasoning as the credential block above, for the same reason
+	// PersistentKeepalive is a pointer: a partial update that never mentions
+	// keepAlive must not reset it to 0 via ToRecord()'s int conversion below.
+	if updated.KeepAlive == nil {
+		updated.KeepAlive = model.KeepAlivePtr(existing.KeepAlive)
+	}
 
 	if updated.Email != existing.Email {
 		var collisionCount int64
