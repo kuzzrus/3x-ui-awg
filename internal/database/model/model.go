@@ -890,7 +890,7 @@ type Client struct {
 	// before -- fully backward compatible for callers that never set this.
 	AllowedIPsByInbound map[int][]string `json:"allowedIPsByInbound,omitempty"`
 	PreSharedKey        string           `json:"preSharedKey,omitempty"`
-	KeepAlive           *int             `json:"keepAlive,omitempty"` // seconds between PersistentKeepalive packets; 0 sends none, omit to keep the stored value
+	KeepAlive           *int             `json:"keepAlive,omitempty"`      // seconds between PersistentKeepalive packets; 0 sends none, omit to keep the stored value
 	ForwardedPorts      string           `json:"forwardedPorts,omitempty"` // AmneziaWG per-client port-forwarding spec, e.g. "80,443,8000-8100"
 	Secret              string           `json:"secret,omitempty" example:"ee1234567890abcdef1234567890abcd7777772e636c6f7564666c6172652e636f6d"`
 	AdTag               string           `json:"adTag,omitempty" example:"0123456789abcdef0123456789abcdef"`
