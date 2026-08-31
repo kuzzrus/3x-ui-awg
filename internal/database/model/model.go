@@ -913,6 +913,18 @@ type Client struct {
 	UpdatedAt       int64  `json:"updated_at,omitempty"` // Last update timestamp
 }
 
+// KeepAliveSeconds is the client's PersistentKeepalive, 0 when unset.
+func (c *Client) KeepAliveSeconds() int {
+	if c.KeepAlive == nil {
+		return 0
+	}
+	return *c.KeepAlive
+}
+
+// KeepAlivePtr wraps an explicit PersistentKeepalive, 0 included -- distinct
+// from a nil KeepAlive, which means the field was never sent.
+func KeepAlivePtr(v int) *int { return &v }
+
 type ClientRecord struct {
 	Id              int    `json:"id" gorm:"primaryKey;autoIncrement"`
 	Email           string `json:"email" gorm:"uniqueIndex;not null"`
@@ -1112,18 +1124,6 @@ type Host struct {
 }
 
 func (Host) TableName() string { return "hosts" }
-
-// KeepAliveSeconds is the client's PersistentKeepalive, 0 when unset.
-func (c Client) KeepAliveSeconds() int {
-	if c.KeepAlive == nil {
-		return 0
-	}
-	return *c.KeepAlive
-}
-
-// KeepAlivePtr wraps an explicit PersistentKeepalive, 0 included -- distinct
-// from a nil KeepAlive, which means the field was never sent.
-func KeepAlivePtr(v int) *int { return &v }
 
 func (c *Client) ToRecord() *ClientRecord {
 	rec := &ClientRecord{

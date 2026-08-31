@@ -46,10 +46,8 @@ func seedKeepAliveClient(t *testing.T, email string, keepAlive int) (*model.Inbo
 	return ib, lookupClientRecord(t, email).Id
 }
 
-// The update path restores the stored keepalive whenever the incoming one is
-// nil. Before KeepAlive became a pointer, that was a 0 -> 0 no-op while no UI
-// could set the field; once the client form could, "0 disables it" would
-// have become unreachable on an existing client without this.
+// Before KeepAlive became a pointer, an explicit 0 was indistinguishable
+// from "omitted" and got silently restored from the stored value instead.
 func TestUpdateCanClearKeepAliveOnAnExistingClient(t *testing.T) {
 	setupBulkDB(t)
 	inboundSvc := &InboundService{}
@@ -78,11 +76,8 @@ func TestUpdateCanClearKeepAliveOnAnExistingClient(t *testing.T) {
 	}
 }
 
-// The other half of the same contract: a payload that never mentions
-// keepAlive (a metadata-only edit from the bot or the API) must still leave
-// the stored value alone -- including through the no-attached-inbound
-// fallback path in client_crud.go's Update(), which is a fork-specific code
-// path upstream's own version of this test doesn't exercise.
+// The other half of the contract: omitting keepAlive (e.g. a metadata-only
+// edit) must leave the stored value alone, via UpdateInboundClient's nil check.
 func TestUpdateWithoutKeepAlivePreservesTheStoredValue(t *testing.T) {
 	setupBulkDB(t)
 	inboundSvc := &InboundService{}
@@ -107,11 +102,8 @@ func TestUpdateWithoutKeepAlivePreservesTheStoredValue(t *testing.T) {
 	}
 }
 
-// Fork-specific: the same "omit preserves" contract, exercised through the
-// no-attached-inbound fallback path (client_crud.go's Update(), the
-// len(inboundIds) == 0 branch) rather than through UpdateInboundClient.
-// Upstream doesn't have this code path in the same shape, so this test has
-// no upstream counterpart.
+// Same "omit preserves" contract through client_crud.go's no-attached-inbound
+// fallback path -- fork-specific, upstream has no equivalent code path here.
 func TestUpdateWithoutInboundPreservesKeepAliveOnMetadataOnlyEdit(t *testing.T) {
 	setupBulkDB(t)
 	inboundSvc := &InboundService{}
