@@ -187,14 +187,21 @@ func newHandler(routing Config, decoy DecoyConfig) http.Handler {
 // for -- an infinite redirect loop rather than an error.
 func newLoopbackProxy(port int, useTLS bool) http.Handler {
 	scheme := "http"
-	var transport http.RoundTripper
+	// Keep-alives buy nothing on a hop that never leaves the machine, and
+	// reusing a pooled connection across requests of very different length
+	// (a quick GET, then a POST like restartXrayService that can legitimately
+	// take several seconds) has a real failure mode: the transport can decide
+	// the earlier request is done and half-close its side while the panel is
+	// still writing that request's response, which the panel then answers
+	// with a connection reset -- surfacing to the browser as a bare "Failed
+	// to fetch" with nothing in the panel's own access log. A fresh
+	// connection per request avoids the ambiguity entirely.
+	transport := &http.Transport{DisableKeepAlives: true}
 	if useTLS {
 		scheme = "https"
 		// Verifying this certificate is meaningless: it names the public
 		// domain, not 127.0.0.1, and the hop never leaves the machine.
-		transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // loopback hop, see above
-		}
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // loopback hop, see above
 	}
 	target := &url.URL{Scheme: scheme, Host: net.JoinHostPort("127.0.0.1", strconv.Itoa(port))}
 	return &httputil.ReverseProxy{
