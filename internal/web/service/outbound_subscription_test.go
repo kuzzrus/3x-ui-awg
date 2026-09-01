@@ -2,9 +2,13 @@ package service
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"maps"
+	"net/http"
+	"net/http/httptest"
 	"slices"
+	"strconv"
 	"testing"
 
 	"gorm.io/gorm"
@@ -247,10 +251,30 @@ func TestAssignStableTags(t *testing.T) {
 }
 
 func TestScopeIdentities(t *testing.T) {
-	got := scopeIdentities([]string{"id-a", "id-b", "id-a", "id-a", "id-c"})
-	want := []string{"id-a", "id-b", "id-a#2", "id-a#3", "id-c"}
-	if !slices.Equal(got, want) {
-		t.Fatalf("got %v, want %v", got, want)
+	for _, tc := range []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{name: "nil input", in: nil, want: []string{}},
+		{name: "empty input", in: []string{}, want: []string{}},
+		{
+			name: "no duplicates left unchanged",
+			in:   []string{"id-a", "id-b", "id-c"},
+			want: []string{"id-a", "id-b", "id-c"},
+		},
+		{
+			name: "duplicates get a dup<N># scoped key from the second occurrence on",
+			in:   []string{"id-a", "id-b", "id-a", "id-a", "id-c"},
+			want: []string{"id-a", "id-b", "dup2#id-a", "dup3#id-a", "id-c"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := scopeIdentities(tc.in)
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -270,13 +294,76 @@ func TestDuplicateIdentityTagsStayStableAcrossRefreshes(t *testing.T) {
 	}
 
 	firstAssigned, prev := refresh(nil)
-	secondAssigned, prevAfterSecond := refresh(prev)
+	wantFirst := []string{"sub1-nl", "sub1-nl-backup"}
+	if !slices.Equal(firstAssigned, wantFirst) {
+		t.Fatalf("first refresh: got %v, want %v", firstAssigned, wantFirst)
+	}
 
+	secondAssigned, prevAfterSecond := refresh(prev)
 	if !slices.Equal(firstAssigned, secondAssigned) {
 		t.Fatalf("tags drifted across refreshes: first %v, second %v", firstAssigned, secondAssigned)
 	}
 	if !maps.Equal(prev, prevAfterSecond) {
 		t.Fatalf("persisted identity map drifted: first %v, second %v", prev, prevAfterSecond)
+	}
+}
+
+// tagsInLastFetchedOutbounds decodes the same JSON column fetchAndStore itself
+// writes, so a test can check what actually got persisted, not a value computed alongside it.
+func tagsInLastFetchedOutbounds(t *testing.T, raw string) []string {
+	t.Helper()
+	var obs []map[string]any
+	if err := json.Unmarshal([]byte(raw), &obs); err != nil {
+		t.Fatalf("unmarshal LastFetchedOutbounds: %v", err)
+	}
+	tags := make([]string, len(obs))
+	for i, o := range obs {
+		tag, _ := o["tag"].(string)
+		tags[i] = tag
+	}
+	return tags
+}
+
+// Unlike TestDuplicateIdentityTagsStayStableAcrossRefreshes, this drives two
+// real refreshes through fetchAndStore -- proving the one wired-in call site, not just the functions in isolation.
+func TestFetchAndStoreKeepsDuplicateIdentityTagsStable(t *testing.T) {
+	setupSettingTestDB(t)
+
+	const uuid = "11111111-1111-1111-1111-111111111111"
+	body := "vless://" + uuid + "@example.com:443?type=tcp&security=none#NL\n" +
+		"vless://" + uuid + "@example.com:443?type=tcp&security=none#NL-Alt\n"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+
+	sub := &model.OutboundSubscription{
+		Remark:       "dup-identity-test",
+		Url:          srv.URL,
+		Enabled:      true,
+		AllowPrivate: true, // srv.URL is 127.0.0.1, which the SSRF guard blocks otherwise
+	}
+	if err := database.GetDB().Create(sub).Error; err != nil {
+		t.Fatalf("create subscription: %v", err)
+	}
+
+	s := &OutboundSubscriptionService{}
+	if _, err := s.fetchAndStore(sub); err != nil {
+		t.Fatalf("first fetchAndStore: %v", err)
+	}
+	firstTags := tagsInLastFetchedOutbounds(t, sub.LastFetchedOutbounds)
+	prefix := "sub" + strconv.Itoa(sub.Id) + "-"
+	wantFirst := []string{prefix + "nl", prefix + "nl-alt"}
+	if !slices.Equal(firstTags, wantFirst) {
+		t.Fatalf("first fetch: got %v, want %v", firstTags, wantFirst)
+	}
+
+	if _, err := s.fetchAndStore(sub); err != nil {
+		t.Fatalf("second fetchAndStore: %v", err)
+	}
+	secondTags := tagsInLastFetchedOutbounds(t, sub.LastFetchedOutbounds)
+	if !slices.Equal(firstTags, secondTags) {
+		t.Fatalf("tags drifted through the real fetch path: first %v, second %v", firstTags, secondTags)
 	}
 }
 
