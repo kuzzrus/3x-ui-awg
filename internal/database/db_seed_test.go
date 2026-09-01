@@ -2,9 +2,12 @@ package database
 
 import (
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"regexp"
 	"testing"
+
+	"gorm.io/gorm"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 )
@@ -53,6 +56,41 @@ func TestInitDB_GeneratesPerPanelSubscriptionPaths(t *testing.T) {
 	for key, firstPath := range first {
 		if firstPath == second[key] {
 			t.Fatalf("%s reused across panels: %q", key, firstPath)
+		}
+	}
+}
+
+// TestInitDB_LeavesUpgradedInstallWithoutSubscriptionPaths guards the actual
+// upgrade-safety property: a pre-existing install (has a user, predates this
+// seed) must not get subscription paths silently generated on restart, since
+// getString's fallback to the fixed /sub/, /json/, /clash/ defaults depends
+// on these rows staying absent.
+func TestInitDB_LeavesUpgradedInstallWithoutSubscriptionPaths(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "x-ui.db")
+	if err := InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB (initial): %v", err)
+	}
+	keys := []string{"subPath", "subJsonPath", "subClashPath"}
+	if err := db.Where("key IN ?", keys).Delete(&model.Setting{}).Error; err != nil {
+		t.Fatalf("simulate pre-upgrade DB: %v", err)
+	}
+	if err := CloseDB(); err != nil {
+		t.Fatalf("CloseDB: %v", err)
+	}
+
+	if err := InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB (upgrade): %v", err)
+	}
+	defer func() {
+		if err := CloseDB(); err != nil {
+			t.Errorf("CloseDB failed: %v", err)
+		}
+	}()
+
+	for _, key := range keys {
+		err := db.Where("key = ?", key).First(&model.Setting{}).Error
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			t.Fatalf("%s: got err %v, want gorm.ErrRecordNotFound (upgrade must not seed it)", key, err)
 		}
 	}
 }

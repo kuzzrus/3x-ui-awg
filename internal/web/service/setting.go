@@ -341,11 +341,7 @@ func (s *SettingService) ResetSettings() error {
 		if err := tx.Where("1 = 1").Delete(model.Setting{}).Error; err != nil {
 			return err
 		}
-		paths := []model.Setting{
-			{Key: "subPath", Value: "/" + random.NumLower(16) + "/"},
-			{Key: "subJsonPath", Value: "/" + random.NumLower(16) + "/"},
-			{Key: "subClashPath", Value: "/" + random.NumLower(16) + "/"},
-		}
+		paths := database.RandomSubscriptionPathSettings()
 		return tx.Create(&paths).Error
 	})
 }

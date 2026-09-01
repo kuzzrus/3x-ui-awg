@@ -1221,12 +1221,19 @@ func initUser() error {
 	return nil
 }
 
-func seedRandomSubscriptionPaths() error {
-	settings := []model.Setting{
+// RandomSubscriptionPathSettings returns fresh random values for the three
+// subscription path settings, keyed the same way both InitDB's seed and
+// SettingService.ResetSettings need them.
+func RandomSubscriptionPathSettings() []model.Setting {
+	return []model.Setting{
 		{Key: "subPath", Value: "/" + random.NumLower(16) + "/"},
 		{Key: "subJsonPath", Value: "/" + random.NumLower(16) + "/"},
 		{Key: "subClashPath", Value: "/" + random.NumLower(16) + "/"},
 	}
+}
+
+func seedRandomSubscriptionPaths() error {
+	settings := RandomSubscriptionPathSettings()
 	return db.Transaction(func(tx *gorm.DB) error {
 		for i := range settings {
 			if err := tx.Where("key = ?", settings[i].Key).FirstOrCreate(&settings[i]).Error; err != nil {
