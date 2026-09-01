@@ -41,6 +41,9 @@ const AmneziaWGLogModal = lazy(() => import('./AmneziaWGLogModal'));
 const VersionModal = lazy(() => import('./VersionModal'));
 import './IndexPage.css';
 
+const RESTART_POLL_INTERVAL_MS = 1000;
+const RESTART_POLL_ATTEMPTS = 20;
+
 export default function IndexPage() {
   const { t } = useTranslation();
   const { isDark, isUltra, antdThemeConfig } = useTheme();
@@ -114,12 +117,28 @@ export default function IndexPage() {
   const restartXray = useCallback(async () => {
     setBusy({ busy: true, tip: t('pages.index.restartXray') });
     try {
-      await HttpUtil.post('/panel/api/server/restartXrayService');
-      await refresh();
+      const msg = await HttpUtil.post('/panel/api/server/restartXrayService');
+      if (!msg?.success) return;
+
+      // The panel responds before it actually restarts, so success here only
+      // means "accepted" -- poll until Xray is actually back before declaring victory.
+      for (let attempt = 0; attempt < RESTART_POLL_ATTEMPTS; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, RESTART_POLL_INTERVAL_MS));
+        const fresh = await refresh();
+        if (fresh?.xray.state === 'running') {
+          messageApi.success(t('pages.xray.restartSuccess'));
+          return;
+        }
+        if (fresh?.xray.state === 'error') {
+          messageApi.error(fresh.xray.errorMsg || t('pages.xray.restartError'));
+          return;
+        }
+      }
+      messageApi.warning(t('pages.index.restartXrayTimeout'));
     } finally {
       setBusy({ busy: false });
     }
-  }, [refresh, setBusy, t]);
+  }, [refresh, setBusy, t, messageApi]);
 
   async function handleChannelChange(dev: boolean) {
     const res = await HttpUtil.post('/panel/api/server/setUpdateChannel', { dev });

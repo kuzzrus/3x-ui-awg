@@ -866,16 +866,22 @@ func (s *ServerService) StopXrayService() error {
 	return nil
 }
 
-// ErrRestartInFlight is returned by RestartXrayServiceFromPanel when a panel-
+// ErrRestartInFlight is returned by ClaimRestartFromPanel when a panel-
 // triggered restart is already running.
 var ErrRestartInFlight = common.NewError("a restart is already in progress")
 
-// RestartXrayServiceFromPanel rejects a second panel Restart click instead of
-// queuing behind XrayService's lock, where it would run a redundant restart.
-func (s *ServerService) RestartXrayServiceFromPanel() error {
+// ClaimRestartFromPanel rejects a second concurrent click instead of queuing
+// it behind XrayService's lock. Pair a successful claim with one call to RunClaimedRestartFromPanel.
+func (s *ServerService) ClaimRestartFromPanel() error {
 	if !s.restartInFlight.CompareAndSwap(false, true) {
 		return ErrRestartInFlight
 	}
+	return nil
+}
+
+// Split from the claim so the controller can flush a response over a
+// connection that runs through the Xray process this is about to kill.
+func (s *ServerService) RunClaimedRestartFromPanel() error {
 	defer s.restartInFlight.Store(false)
 	return s.RestartXrayService()
 }
