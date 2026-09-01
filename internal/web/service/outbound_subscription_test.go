@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"errors"
+	"maps"
 	"slices"
 	"testing"
 
@@ -243,6 +244,40 @@ func TestAssignStableTags(t *testing.T) {
 			t.Fatalf("got[1] = %q, want %q", got[1], base+"-1")
 		}
 	})
+}
+
+func TestScopeIdentities(t *testing.T) {
+	got := scopeIdentities([]string{"id-a", "id-b", "id-a", "id-a", "id-c"})
+	want := []string{"id-a", "id-b", "id-a#2", "id-a#3", "id-c"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+// Same-server links differing only by "#NL"/"#NL backup"-style remarks share
+// an identity; unscoped, tags grew an unbounded "-N" suffix every refresh.
+func TestDuplicateIdentityTagsStayStableAcrossRefreshes(t *testing.T) {
+	rawIdentities := []string{"id-shared", "id-shared"}
+	refresh := func(prev map[string]string) (assigned []string, newIdent map[string]string) {
+		parsed := []link.Outbound{{"tag": "NL"}, {"tag": "NL backup"}}
+		scoped := scopeIdentities(rawIdentities)
+		assigned = assignStableTags(parsed, scoped, prev, nil, 1, "")
+		newIdent = map[string]string{}
+		for i, id := range scoped {
+			newIdent[id] = assigned[i]
+		}
+		return assigned, newIdent
+	}
+
+	firstAssigned, prev := refresh(nil)
+	secondAssigned, prevAfterSecond := refresh(prev)
+
+	if !slices.Equal(firstAssigned, secondAssigned) {
+		t.Fatalf("tags drifted across refreshes: first %v, second %v", firstAssigned, secondAssigned)
+	}
+	if !maps.Equal(prev, prevAfterSecond) {
+		t.Fatalf("persisted identity map drifted: first %v, second %v", prev, prevAfterSecond)
+	}
 }
 
 // TestOutboundsContainTag covers the guard that ensures the outbound under test

@@ -388,6 +388,9 @@ func (s *OutboundSubscriptionService) fetchAndStore(sub *model.OutboundSubscript
 		s.recordError(sub, err)
 		return nil, err
 	}
+	// Same-server links differing only by remark share one identity; scope
+	// repeats so each occurrence gets its own slot below, not a shared one.
+	identities = scopeIdentities(identities)
 
 	// Load previous identities -> tags for stability
 	prev := map[string]string{}
@@ -451,6 +454,22 @@ func (s *OutboundSubscriptionService) fetchAndStore(sub *model.OutboundSubscript
 func (s *OutboundSubscriptionService) recordError(sub *model.OutboundSubscription, err error) {
 	sub.LastError = err.Error()
 	_ = database.GetDB().Model(sub).Update("last_error", sub.LastError).Error
+}
+
+// Same-server links differing only by remark share an identity; unscoped,
+// repeats would fight over one persisted tag slot and grow an unbounded suffix.
+func scopeIdentities(identities []string) []string {
+	occurrence := map[string]int{}
+	scoped := make([]string, len(identities))
+	for i, id := range identities {
+		occurrence[id]++
+		if occurrence[id] == 1 {
+			scoped[i] = id
+		} else {
+			scoped[i] = fmt.Sprintf("%s#%d", id, occurrence[id])
+		}
+	}
+	return scoped
 }
 
 // assignStableTags assigns a tag to each parsed outbound, preferring stability:
