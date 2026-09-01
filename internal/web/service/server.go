@@ -28,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/amneziawg"
@@ -153,6 +154,7 @@ type ServerService struct {
 	emaCPU             float64
 	cachedCpuSpeedMhz  float64
 	lastCpuInfoAttempt time.Time
+	restartInFlight    atomic.Bool
 
 	lastStatusMu sync.RWMutex
 	lastStatus   *Status
@@ -864,7 +866,17 @@ func (s *ServerService) StopXrayService() error {
 	return nil
 }
 
+// RestartXrayService is the explicit, admin-triggered restart (the panel's
+// own Restart button). A second call arriving while one is still running
+// rejects instead of queuing behind XrayService's lock: without this, a
+// double-click or an impatient retry both queue up on that lock and each
+// runs a full, redundant stop-then-start once the first one finishes.
 func (s *ServerService) RestartXrayService() error {
+	if !s.restartInFlight.CompareAndSwap(false, true) {
+		return common.NewError("a restart is already in progress")
+	}
+	defer s.restartInFlight.Store(false)
+
 	err := s.xrayService.RestartXray(true)
 	if err != nil {
 		logger.Error("start xray failed:", err)
