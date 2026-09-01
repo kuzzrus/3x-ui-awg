@@ -455,7 +455,8 @@ func (s *OutboundSubscriptionService) recordError(sub *model.OutboundSubscriptio
 
 // assignStableTags assigns a tag to each parsed outbound, preferring stability:
 //  1. reuse the tag previously mapped to the link's identity (prev),
-//  2. else reuse the tag at the same position from the last fetch (prevTagByIndex),
+//  2. else reuse the tag at the same position from the last fetch, unless it
+//     belongs to another identity still present in this batch (prevTagByIndex),
 //  3. else allocate a fresh tag from the prefix + remark (link.SuggestTag).
 //
 // Tags are kept unique within the batch by appending "-N" on collision, and are
