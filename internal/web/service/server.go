@@ -866,17 +866,21 @@ func (s *ServerService) StopXrayService() error {
 	return nil
 }
 
-// RestartXrayService is the explicit, admin-triggered restart (the panel's
-// own Restart button). A second call arriving while one is still running
-// rejects instead of queuing behind XrayService's lock: without this, a
-// double-click or an impatient retry both queue up on that lock and each
-// runs a full, redundant stop-then-start once the first one finishes.
-func (s *ServerService) RestartXrayService() error {
+// ErrRestartInFlight is returned by RestartXrayServiceFromPanel when a panel-
+// triggered restart is already running.
+var ErrRestartInFlight = common.NewError("a restart is already in progress")
+
+// RestartXrayServiceFromPanel rejects a second panel Restart click instead of
+// queuing behind XrayService's lock, where it would run a redundant restart.
+func (s *ServerService) RestartXrayServiceFromPanel() error {
 	if !s.restartInFlight.CompareAndSwap(false, true) {
-		return common.NewError("a restart is already in progress")
+		return ErrRestartInFlight
 	}
 	defer s.restartInFlight.Store(false)
+	return s.RestartXrayService()
+}
 
+func (s *ServerService) RestartXrayService() error {
 	err := s.xrayService.RestartXray(true)
 	if err != nil {
 		logger.Error("start xray failed:", err)
