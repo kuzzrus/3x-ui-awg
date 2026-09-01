@@ -329,9 +329,10 @@ func tagsInLastFetchedOutbounds(t *testing.T, raw string) []string {
 func TestFetchAndStoreKeepsDuplicateIdentityTagsStable(t *testing.T) {
 	setupSettingTestDB(t)
 
+	// 10.0.0.1, not example.com: xray-core rejects unencrypted vless to a public address.
 	const uuid = "11111111-1111-1111-1111-111111111111"
-	body := "vless://" + uuid + "@example.com:443?type=tcp&security=none#NL\n" +
-		"vless://" + uuid + "@example.com:443?type=tcp&security=none#NL-Alt\n"
+	body := "vless://" + uuid + "@10.0.0.1:443?type=tcp&security=none#NL\n" +
+		"vless://" + uuid + "@10.0.0.1:443?type=tcp&security=none#NL-Alt\n"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(body))
 	}))
