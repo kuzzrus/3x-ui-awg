@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -52,6 +53,7 @@ func (a *ServerController) initRouter(g *gin.RouterGroup) {
 	g.GET("/getXrayVersion", a.getXrayVersion)
 	g.GET("/getPanelUpdateInfo", a.getPanelUpdateInfo)
 	g.GET("/getUpdateStatus", a.getUpdateStatus)
+	g.GET("/getRestartStatus", a.getRestartStatus)
 	g.GET("/getConfigJson", a.getConfigJson)
 	g.GET("/getDb", a.getDb)
 	g.GET("/getMigration", a.getMigration)
@@ -67,6 +69,7 @@ func (a *ServerController) initRouter(g *gin.RouterGroup) {
 
 	g.POST("/stopXrayService", a.stopXrayService)
 	g.POST("/restartXrayService", a.restartXrayService)
+	g.POST("/restartXrayServiceAsync", a.restartXrayServiceAsync)
 	g.POST("/installXray/:version", a.installXray)
 	g.POST("/updatePanel", a.updatePanel)
 	g.POST("/setUpdateChannel", a.setUpdateChannel)
@@ -284,38 +287,40 @@ func (a *ServerController) stopXrayService(c *gin.Context) {
 	)
 }
 
-// How long a response gets to cross frontproxy's REALITY relay before the
-// xray-core process carrying it is killed by the restart that follows.
-const restartResponseDrainDelay = 150 * time.Millisecond
-
-// restartXrayService restarts the Xray service. It responds before actually
-// restarting: see restartResponseDrainDelay for why that order matters.
+// restartXrayService restarts the Xray service.
 func (a *ServerController) restartXrayService(c *gin.Context) {
-	if err := a.serverService.ClaimRestartFromPanel(); err != nil {
+	err := a.serverService.RestartXrayServiceFromPanel()
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.xray.restartError"), err)
+		if !errors.Is(err, service.ErrRestartInFlight) {
+			websocket.BroadcastXrayState("error", err.Error())
+		}
+		return
+	}
+	jsonMsg(c, I18nWeb(c, "pages.xray.restartSuccess"), err)
+	websocket.BroadcastXrayState("running", "")
+	websocket.BroadcastNotification(
+		I18nWeb(c, "pages.xray.restartSuccess"),
+		"Xray service has been restarted successfully",
+		"success",
+	)
+}
+
+// restartXrayServiceAsync is the dashboard Restart button's own route (see
+// ServerService.StartRestartFromPanel); poll getRestartStatus for the outcome.
+func (a *ServerController) restartXrayServiceAsync(c *gin.Context) {
+	runID, err := a.serverService.StartRestartFromPanel()
+	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.xray.restartError"), err)
 		return
 	}
+	jsonMsgObj(c, I18nWeb(c, "pages.xray.restartAccepted"), gin.H{"runId": runID}, nil)
+}
 
-	successTitle := I18nWeb(c, "pages.xray.restartSuccess")
-	errorTitle := I18nWeb(c, "pages.xray.restartError")
-	jsonMsg(c, I18nWeb(c, "pages.xray.restartAccepted"), nil)
-	c.Writer.Flush()
-
-	go func() {
-		time.Sleep(restartResponseDrainDelay)
-		if err := a.serverService.RunClaimedRestartFromPanel(); err != nil {
-			logger.Error("start xray failed:", err)
-			websocket.BroadcastXrayState("error", err.Error())
-			websocket.BroadcastNotification(errorTitle, err.Error(), "error")
-			return
-		}
-		websocket.BroadcastXrayState("running", "")
-		websocket.BroadcastNotification(
-			successTitle,
-			"Xray service has been restarted successfully",
-			"success",
-		)
-	}()
+// getRestartStatus reports the outcome of the most recently started
+// dashboard restart (see restartXrayServiceAsync).
+func (a *ServerController) getRestartStatus(c *gin.Context) {
+	jsonObj(c, a.serverService.GetRestartStatus(), nil)
 }
 
 // getLogs retrieves the application logs based on count, level, and syslog filters.

@@ -10,7 +10,15 @@ import {
   SwapOutlined,
 } from '@ant-design/icons';
 
-import { HttpUtil, CPUFormatter, SizeFormatter, ClipboardManager, FileManager } from '@/utils';
+import {
+  HttpUtil,
+  PromiseUtil,
+  CPUFormatter,
+  SizeFormatter,
+  ClipboardManager,
+  FileManager,
+} from '@/utils';
+import type { RestartStatus } from '@/generated/types';
 import {
   USAGE_CRIT_COLOR,
   USAGE_CRIT_PERCENT,
@@ -42,7 +50,7 @@ const VersionModal = lazy(() => import('./VersionModal'));
 import './IndexPage.css';
 
 const RESTART_POLL_INTERVAL_MS = 1000;
-const RESTART_POLL_ATTEMPTS = 20;
+const RESTART_POLL_DEADLINE_MS = 20_000;
 
 export default function IndexPage() {
   const { t } = useTranslation();
@@ -117,20 +125,33 @@ export default function IndexPage() {
   const restartXray = useCallback(async () => {
     setBusy({ busy: true, tip: t('pages.index.restartXray') });
     try {
-      const msg = await HttpUtil.post('/panel/api/server/restartXrayService');
-      if (!msg?.success) return;
+      const started = await HttpUtil.post<{ runId: string }>(
+        '/panel/api/server/restartXrayServiceAsync',
+        undefined,
+        { silentSuccess: true },
+      );
+      if (!started?.success) return;
+      const runId = started.obj?.runId ?? '';
 
-      // The panel responds before it actually restarts, so success here only
-      // means "accepted" -- poll until Xray is actually back before declaring victory.
-      for (let attempt = 0; attempt < RESTART_POLL_ATTEMPTS; attempt++) {
-        await new Promise((resolve) => setTimeout(resolve, RESTART_POLL_INTERVAL_MS));
-        const fresh = await refresh();
-        if (fresh?.xray.state === 'running') {
+      // The endpoint responds before the restart actually runs, so
+      // completion is polled separately, by this run's own id.
+      const deadline = Date.now() + RESTART_POLL_DEADLINE_MS;
+      while (Date.now() < deadline) {
+        await PromiseUtil.sleep(RESTART_POLL_INTERVAL_MS);
+        const status = await HttpUtil.get<RestartStatus>(
+          '/panel/api/server/getRestartStatus',
+          undefined,
+          { silent: true },
+        );
+        const obj = status?.obj;
+        if (obj?.runId !== runId) continue;
+        if (obj.state === 'success') {
           messageApi.success(t('pages.xray.restartSuccess'));
+          await refresh();
           return;
         }
-        if (fresh?.xray.state === 'error') {
-          messageApi.error(fresh.xray.errorMsg || t('pages.xray.restartError'));
+        if (obj.state === 'failed') {
+          messageApi.error(obj.errMsg || t('pages.xray.restartError'));
           return;
         }
       }
