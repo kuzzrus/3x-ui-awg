@@ -84,6 +84,12 @@ func TestStripDisabledRules(t *testing.T) {
 				t.Fatalf("comment key must not survive into the runtime config: %v", r)
 			}
 		}
+		if rules[0]["outboundTag"] != "direct" || rules[1]["outboundTag"] != "block" {
+			t.Fatalf("kept rules or their order are wrong: %v", rules)
+		}
+		if domain, _ := rules[0]["domain"].([]any); len(domain) != 1 || domain[0] != "a.com" {
+			t.Fatalf("annotated rule lost its domain: %v", rules[0])
+		}
 	})
 
 	t.Run("non-object rules pass through, disabled object is dropped", func(t *testing.T) {

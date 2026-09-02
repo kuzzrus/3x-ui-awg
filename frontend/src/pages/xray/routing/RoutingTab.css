@@ -14,6 +14,14 @@
   transition: opacity 0.15s;
 }
 
+.drag-handle:hover {
+  opacity: 0.8;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
 .rule-comment-cell {
   display: block;
   max-width: 140px;
@@ -25,9 +33,6 @@
 }
 
 .rule-comment {
-  display: flex;
-  align-items: center;
-  gap: 4px;
   margin-top: 6px;
   padding: 2px 6px;
   font-size: 12px;
@@ -42,14 +47,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.drag-handle:hover {
-  opacity: 0.8;
-}
-
-.drag-handle:active {
-  cursor: grabbing;
 }
 
 .row-dragging {

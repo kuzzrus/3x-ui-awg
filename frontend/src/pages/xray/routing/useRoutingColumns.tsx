@@ -28,6 +28,7 @@ interface RoutingColumnsParams {
   rowsLength: number;
   showSource: boolean;
   showBalancer: boolean;
+  showComment: boolean;
   onHandlePointerDown: (idx: number, ev: React.PointerEvent) => void;
   openEdit: (idx: number) => void;
   moveUp: (idx: number) => void;
@@ -41,6 +42,7 @@ export function useRoutingColumns({
   rowsLength,
   showSource,
   showBalancer,
+  showComment,
   onHandlePointerDown,
   openEdit,
   moveUp,
@@ -198,6 +200,7 @@ export function useRoutingColumns({
         align: 'left',
         width: 150,
         key: 'comment',
+        hidden: !showComment,
         render: (_v, record) =>
           record.comment ? (
             <Tooltip title={record.comment}>
@@ -331,6 +334,7 @@ export function useRoutingColumns({
       rowsLength,
       showSource,
       showBalancer,
+      showComment,
       remarkByTag,
       onHandlePointerDown,
       openEdit,

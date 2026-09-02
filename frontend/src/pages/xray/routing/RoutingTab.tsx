@@ -325,12 +325,14 @@ export default function RoutingTab({
 
   const hasSource = rows.some((r) => r.sourceIP || r.sourcePort || r.vlessRoute);
   const hasBalancer = rows.some((r) => r.balancerTag);
+  const hasComment = rows.some((r) => r.comment);
 
   const desktopColumns = useRoutingColumns({
     isMobile,
     rowsLength: rows.length,
     showSource: hasSource,
     showBalancer: hasBalancer,
+    showComment: hasComment,
     onHandlePointerDown,
     openEdit,
     moveUp,
