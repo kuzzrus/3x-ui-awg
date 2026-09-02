@@ -18,6 +18,13 @@ import (
 type LocalDeps struct {
 	APIPort        func() int
 	SetNeedRestart func()
+	// ScheduleAmneziaWGRelayResync is SetNeedRestart's AmneziaWG-specific
+	// counterpart: it also marks Xray as needing a restart, but additionally
+	// schedules that restart to run within a couple of seconds rather than
+	// waiting for the next 30s cadenceXrayRestart tick. Used only from the
+	// AmneziaWG branches below -- see XrayService.ScheduleAmneziaWGRelayResync
+	// for why they can't just share SetNeedRestart's cadence.
+	ScheduleAmneziaWGRelayResync func()
 }
 
 type Local struct {
@@ -76,11 +83,12 @@ func (l *Local) AddInbound(_ context.Context, ib *model.Inbound) error {
 		})
 		// A brand new inbound can be the first one to qualify for
 		// injectAmneziawgnetSocks's Xray-side relay inbound (e.g. its first
-		// valid peer). Ensure only updates the embedded Device -- flag Xray
-		// for a resync so the relay actually gets created within the next
-		// ApplyPendingRestart tick instead of only at the next full restart.
-		if l.deps.SetNeedRestart != nil {
-			l.deps.SetNeedRestart()
+		// valid peer). Ensure only updates the embedded Device -- schedule a
+		// fast resync so the relay actually gets created within seconds
+		// instead of a client hitting "connection refused" until the next
+		// 30s cadenceXrayRestart tick.
+		if l.deps.ScheduleAmneziaWGRelayResync != nil {
+			l.deps.ScheduleAmneziaWGRelayResync()
 		}
 		return err
 	}
@@ -101,10 +109,10 @@ func (l *Local) DelInbound(_ context.Context, ib *model.Inbound) error {
 	if ib.Protocol == model.AmneziaWG {
 		amneziawgnet.GetManager().Remove(ib.Id)
 		// The removed inbound may have been the only one backing Xray's
-		// injectAmneziawgnetSocks relay inbound for this tag -- flag a
-		// resync so the now-stale relay gets torn down promptly.
-		if l.deps.SetNeedRestart != nil {
-			l.deps.SetNeedRestart()
+		// injectAmneziawgnetSocks relay inbound for this tag -- schedule a
+		// fast resync so the now-stale relay gets torn down promptly.
+		if l.deps.ScheduleAmneziaWGRelayResync != nil {
+			l.deps.ScheduleAmneziaWGRelayResync()
 		}
 		return nil
 	}
@@ -168,11 +176,11 @@ func (l *Local) updateMtprotoInbound(ctx context.Context, oldIb, newIb *model.In
 // is what actually creates/removes injectAmneziawgnetSocks's relay inbound.
 // A peer edit that changes whether this inbound has a qualifying peer at
 // all (its first peer added, or its last one removed) must still get that
-// relay created or torn down, so flag Xray for a resync unconditionally
+// relay created or torn down, so schedule a fast resync unconditionally
 // here rather than trying to enumerate which of the branches below need it.
 func (l *Local) updateAmneziaWGInbound(ctx context.Context, oldIb, newIb *model.Inbound) error {
-	if l.deps.SetNeedRestart != nil {
-		l.deps.SetNeedRestart()
+	if l.deps.ScheduleAmneziaWGRelayResync != nil {
+		l.deps.ScheduleAmneziaWGRelayResync()
 	}
 	if oldIb.Protocol == model.AmneziaWG && newIb.Protocol != model.AmneziaWG {
 		amneziawgnet.GetManager().Remove(oldIb.Id)
