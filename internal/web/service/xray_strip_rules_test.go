@@ -70,6 +70,22 @@ func TestStripDisabledRules(t *testing.T) {
 		}
 	})
 
+	t.Run("strips the panel-only comment key from every rule", func(t *testing.T) {
+		in := json_util.RawMessage(`{"rules":[
+			{"outboundTag":"direct","domain":["a.com"],"comment":"1C server subnet"},
+			{"outboundTag":"block","domain":["b.com"]}
+		]}`)
+		rules := rulesOf(t, stripDisabledRules(in))
+		if len(rules) != 2 {
+			t.Fatalf("expected 2 rules, got %d: %v", len(rules), rules)
+		}
+		for _, r := range rules {
+			if _, ok := r["comment"]; ok {
+				t.Fatalf("comment key must not survive into the runtime config: %v", r)
+			}
+		}
+	})
+
 	t.Run("non-object rules pass through, disabled object is dropped", func(t *testing.T) {
 		in := json_util.RawMessage(`{"rules":["weird",{"outboundTag":"block","enabled":false}]}`)
 		var parsed struct {
