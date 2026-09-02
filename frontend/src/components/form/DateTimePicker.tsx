@@ -82,8 +82,11 @@ export default function DateTimePicker({
     return LIGHT_THEME;
   }, [isDark, isUltra]);
 
+  // maxDate disables out-of-range date cells but not a later time on the max
+  // date itself, so clamp here instead of silently reverting a controlled value.
   const commitChange = (next: Dayjs | null) => {
     if (next && maxDate && next.isAfter(maxDate)) {
+      onChange(maxDate);
       if (datepicker === 'jalalian') setClearNonce((n) => n + 1);
       return;
     }

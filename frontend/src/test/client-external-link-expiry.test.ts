@@ -14,4 +14,8 @@ describe('resolveExternalLinkExpiry', () => {
   it('stays empty when neither expiry is set', () => {
     expect(resolveExternalLinkExpiry(0, 0)).toBe(0);
   });
+
+  it('treats a negative client expiry (delayed-start encoding) as unset', () => {
+    expect(resolveExternalLinkExpiry(0, -2_592_000_000)).toBe(0);
+  });
 });

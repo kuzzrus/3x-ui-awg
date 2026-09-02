@@ -84,10 +84,12 @@ func (s *SubClashService) GetClash(subId string, host string) (string, string, e
 	}
 	traffic, _ := subReq.AggregateTrafficByEmails(emails)
 	header := fmt.Sprintf("upload=%d; download=%d; total=%d; expire=%d", traffic.Up, traffic.Down, traffic.Total, traffic.ExpiryTime/1000)
-	if len(proxies) == 0 {
-		return "", header, nil
+	// No early return on an empty proxies list: fall through and render it
+	// as a minimal-but-valid Clash doc (PROXY group with only DIRECT) so an
+	// inactive-owner-only subId gets parseable YAML, not a bare 200.
+	if proxies == nil {
+		proxies = []map[string]any{}
 	}
-
 	ensureUniqueProxyNames(proxies)
 
 	proxyNames := make([]string, 0, len(proxies)+1)

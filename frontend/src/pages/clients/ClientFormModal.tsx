@@ -1389,7 +1389,7 @@ export default function ClientFormModal({
                                       expiryDate,
                                     );
                                     const hasSpecificExpiry = Number(expiryField.value) > 0;
-                                    return (
+                                    const picker = (
                                       <DateTimePicker
                                         value={displayedExpiry > 0 ? dayjs(displayedExpiry) : null}
                                         onChange={(v) => expiryField.onChange(v ? v.valueOf() : 0)}
@@ -1398,6 +1398,16 @@ export default function ClientFormModal({
                                         maxDate={expiryDate > 0 ? dayjs(expiryDate) : undefined}
                                       />
                                     );
+                                    if (!hasSpecificExpiry && displayedExpiry > 0) {
+                                      return (
+                                        <Tooltip
+                                          title={t('pages.clients.externalLinkExpiryInherited')}
+                                        >
+                                          {picker}
+                                        </Tooltip>
+                                      );
+                                    }
+                                    return picker;
                                   }}
                                 />
                               </div>
@@ -1466,7 +1476,7 @@ export default function ClientFormModal({
                                       expiryDate,
                                     );
                                     const hasSpecificExpiry = Number(expiryField.value) > 0;
-                                    return (
+                                    const picker = (
                                       <DateTimePicker
                                         value={displayedExpiry > 0 ? dayjs(displayedExpiry) : null}
                                         onChange={(v) => expiryField.onChange(v ? v.valueOf() : 0)}
@@ -1475,6 +1485,16 @@ export default function ClientFormModal({
                                         maxDate={expiryDate > 0 ? dayjs(expiryDate) : undefined}
                                       />
                                     );
+                                    if (!hasSpecificExpiry && displayedExpiry > 0) {
+                                      return (
+                                        <Tooltip
+                                          title={t('pages.clients.externalLinkExpiryInherited')}
+                                        >
+                                          {picker}
+                                        </Tooltip>
+                                      );
+                                    }
+                                    return picker;
                                   }}
                                 />
                               </div>

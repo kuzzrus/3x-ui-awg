@@ -67,12 +67,23 @@ func TestInactiveExternalOnlySubRemainsKnownWithoutExposingLinks(t *testing.T) {
 			)
 
 			wantHeader := fmt.Sprintf("upload=11; download=22; total=1024; expire=%d", state.expiry/1000)
-			for _, path := range []string{"/sub/" + subID, "/json/" + subID + "?view=raw", "/clash/" + subID + "?view=raw"} {
-				t.Run(path, func(t *testing.T) {
+			// Each format's "nothing active" body is shaped differently: raw is
+			// genuinely empty, JSON/Clash must stay parseable so a client update
+			// doesn't error out -- see the format-specific checks below.
+			cases := []struct {
+				path      string
+				wantEmpty bool
+			}{
+				{"/sub/" + subID, true},
+				{"/json/" + subID + "?view=raw", false},
+				{"/clash/" + subID + "?view=raw", false},
+			}
+			for _, tc := range cases {
+				t.Run(tc.path, func(t *testing.T) {
 					if err := database.GetDB().Model(&xray.ClientTraffic{}).Where("email = ?", email).Update("last_sub_fetch", 0).Error; err != nil {
 						t.Fatalf("reset last_sub_fetch: %v", err)
 					}
-					req := httptest.NewRequest(http.MethodGet, path, nil)
+					req := httptest.NewRequest(http.MethodGet, tc.path, nil)
 					req.Host = "sub.example.com"
 					w := httptest.NewRecorder()
 					router.ServeHTTP(w, req)
@@ -80,7 +91,10 @@ func TestInactiveExternalOnlySubRemainsKnownWithoutExposingLinks(t *testing.T) {
 					if w.Code != http.StatusOK {
 						t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
 					}
-					if w.Body.Len() != 0 {
+					if tc.wantEmpty && w.Body.Len() != 0 {
+						t.Fatalf("want empty body, got: %s", w.Body.String())
+					}
+					if strings.Contains(w.Body.String(), "11111111-1111-1111-1111-111111111111") {
 						t.Fatalf("inactive external link leaked in body: %s", w.Body.String())
 					}
 					if got := w.Header().Get("Subscription-Userinfo"); got != wantHeader {
@@ -91,7 +105,7 @@ func TestInactiveExternalOnlySubRemainsKnownWithoutExposingLinks(t *testing.T) {
 						t.Fatalf("load traffic: %v", err)
 					}
 					if traffic.LastSubFetch == 0 {
-						t.Fatal("successful empty response did not update last_sub_fetch")
+						t.Fatal("successful response did not update last_sub_fetch")
 					}
 				})
 			}

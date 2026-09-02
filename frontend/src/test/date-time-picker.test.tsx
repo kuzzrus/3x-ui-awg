@@ -15,13 +15,21 @@ vi.mock('persian-calendar-suite', () => ({
     maxDate?: Date;
     onChange?: (value: number) => void;
   }) => (
-    <button
-      type="button"
-      aria-label="Persian date time picker"
-      data-testid="persian-date-time-picker"
-      data-max-date={maxDate?.toISOString()}
-      onClick={() => onChange?.((maxDate?.getTime() ?? 0) + 1)}
-    />
+    <>
+      <button
+        type="button"
+        aria-label="Persian date time picker"
+        data-testid="persian-date-time-picker"
+        data-max-date={maxDate?.toISOString()}
+        onClick={() => onChange?.((maxDate?.getTime() ?? 0) + 1000)}
+      />
+      <button
+        type="button"
+        aria-label="Persian date time picker (under max)"
+        data-testid="persian-date-time-picker-under-max"
+        onClick={() => onChange?.((maxDate?.getTime() ?? 0) - 1000)}
+      />
+    </>
   ),
 }));
 
@@ -88,7 +96,15 @@ describe('DateTimePicker', () => {
     expect(screen.getByTestId('persian-date-time-picker').dataset.maxDate).toBe(
       maxDate.toDate().toISOString(),
     );
+
+    // Positive control: a value under maxDate passes through unchanged, so
+    // the next assertion (clamped, not rejected outright) is actually meaningful.
+    fireEvent.click(screen.getByTestId('persian-date-time-picker-under-max'));
+    const underCall = onChange.mock.calls.at(-1)?.[0] as Dayjs;
+    expect(underCall.format()).toBe(maxDate.subtract(1, 'second').format());
+
     fireEvent.click(screen.getByTestId('persian-date-time-picker'));
-    expect(onChange).not.toHaveBeenCalled();
+    const overCall = onChange.mock.calls.at(-1)?.[0] as Dayjs;
+    expect(overCall.format()).toBe(maxDate.format());
   });
 });
