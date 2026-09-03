@@ -2512,6 +2512,8 @@ export const sections: readonly Section[] = [
         description:
           'Responds with the bare object <code>{"active":true,"limit":2,"registered":1,"remaining":1,"full":false}</code> — not the <code>{success,msg,obj}</code> panel envelope, like the other subscription-server routes. With no HWID limit configured: <code>{"active":false,"limit":0,"registered":0,"remaining":0,"full":false}</code>.',
         params: [{ name: 'subid', in: 'path', type: 'string', desc: 'Client subscription ID.' }],
+        response: '{"active":true,"limit":2,"registered":1,"remaining":1,"full":false}',
+        errorStatus: 404,
       },
       {
         method: 'GET',

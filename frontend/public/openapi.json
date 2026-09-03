@@ -13231,6 +13231,31 @@
                     },
                     "obj": {}
                   }
+                },
+                "example": {
+                  "active": true,
+                  "limit": 2,
+                  "registered": 1,
+                  "remaining": 1,
+                  "full": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }

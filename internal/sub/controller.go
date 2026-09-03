@@ -680,6 +680,7 @@ func applyHwidHeaders(c *gin.Context, result service.HwidGateResult) {
 // hwidStatus serves read-only device-slot counters for a subscription. It
 // deliberately skips enforceHwid: asking about slots must not consume one.
 func (a *SUBController) hwidStatus(c *gin.Context) {
+	logSubscriptionRoute(c.GetHeader("User-Agent"), "hwid-status")
 	status, found, err := a.clientService.HwidSlotStatusForSubID(c.Param("subid"))
 	if err != nil || !found {
 		writeSubError(c, err)
