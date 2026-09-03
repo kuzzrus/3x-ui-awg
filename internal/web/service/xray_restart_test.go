@@ -2,6 +2,7 @@ package service
 
 import (
 	"testing"
+	"time"
 )
 
 func TestRestartXrayRespectsManualStop(t *testing.T) {
@@ -39,43 +40,42 @@ func TestApplyPendingRestartReArmsFlagOnFailure(t *testing.T) {
 	}
 }
 
-func stopAmneziawgRelayResyncTimer() {
+// resetAmneziawgRelayResyncState clears the shared debounce/rate-limit state
+// so each test below starts clean regardless of what ran before it.
+func resetAmneziawgRelayResyncState() {
 	amneziawgRelayResyncMu.Lock()
 	defer amneziawgRelayResyncMu.Unlock()
 	if amneziawgRelayResyncTimer != nil {
 		amneziawgRelayResyncTimer.Stop()
 		amneziawgRelayResyncTimer = nil
 	}
+	amneziawgRelayResyncLastFire = time.Time{}
 }
 
 func TestScheduleAmneziaWGRelayResyncSetsNeedRestartFlagImmediately(t *testing.T) {
+	resetAmneziawgRelayResyncState()
 	t.Cleanup(func() {
 		isNeedXrayRestart.Store(false)
-		stopAmneziawgRelayResyncTimer()
+		resetAmneziawgRelayResyncState()
 	})
 	isNeedXrayRestart.Store(false)
 
 	(&XrayService{}).ScheduleAmneziaWGRelayResync()
 
-	// The flag must be set synchronously, before the debounce timer has any
-	// chance to fire -- a caller checking IsNeedRestartAndSetFalse right
-	// after this call must already see the pending change.
+	// Must be set synchronously -- a caller checking right after this call
+	// must already see the pending change, not only once the timer fires.
 	if !isNeedXrayRestart.Load() {
 		t.Fatal("expected the need-restart flag to be set immediately, not only once the debounce timer fires")
 	}
 }
 
-// TestScheduleAmneziaWGRelayResyncCoalescesRapidCalls proves a second call
-// arms a fresh timer and cancels the first, rather than leaving both live --
-// two pending timers would mean two restarts scheduled for one burst of
-// edits instead of the intended single debounced restart. Uses
-// (*time.Timer).Stop's own return value (false once a timer has already
-// fired or been stopped) as the observable signal, so this needs no real
-// sleep and cannot flake on timing.
+// Two pending timers would mean two restarts scheduled for one burst of
+// edits, so a second call must cancel the first, not leave both live.
 func TestScheduleAmneziaWGRelayResyncCoalescesRapidCalls(t *testing.T) {
+	resetAmneziawgRelayResyncState()
 	t.Cleanup(func() {
 		isNeedXrayRestart.Store(false)
-		stopAmneziawgRelayResyncTimer()
+		resetAmneziawgRelayResyncState()
 	})
 
 	svc := &XrayService{}
@@ -99,7 +99,58 @@ func TestScheduleAmneziaWGRelayResyncCoalescesRapidCalls(t *testing.T) {
 	if second == first {
 		t.Fatal("a second call must arm a fresh timer, not reuse the first")
 	}
+	// (*time.Timer).Stop returns false once a timer has already fired or
+	// been stopped -- the observable proof the first was really cancelled.
 	if first.Stop() {
 		t.Fatal("the first call's timer should already have been stopped by the second call, not left pending")
+	}
+}
+
+// Proves the timer really fires, not just gets armed -- substitutes
+// amneziawgRelayResyncFire for a channel signal instead of the ambiguous flag.
+func TestScheduleAmneziaWGRelayResyncFiresAfterDelay(t *testing.T) {
+	resetAmneziawgRelayResyncState()
+	origDelay, origFire := amneziawgRelayResyncDelay, amneziawgRelayResyncFire
+	t.Cleanup(func() {
+		amneziawgRelayResyncDelay, amneziawgRelayResyncFire = origDelay, origFire
+		isNeedXrayRestart.Store(false)
+		resetAmneziawgRelayResyncState()
+	})
+	amneziawgRelayResyncDelay = 10 * time.Millisecond
+	fired := make(chan *XrayService, 1)
+	amneziawgRelayResyncFire = func(s *XrayService) { fired <- s }
+
+	svc := &XrayService{}
+	svc.ScheduleAmneziaWGRelayResync()
+
+	select {
+	case got := <-fired:
+		if got != svc {
+			t.Fatal("the timer fired with a different *XrayService than the one that scheduled it")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("debounce timer never fired within the timeout")
+	}
+}
+
+// A recent fire must not arm another timer -- repeated edits should fall
+// back to the pre-existing 30s cron cadence, not restart once per edit.
+func TestScheduleAmneziaWGRelayResyncRateLimitsRepeatedCalls(t *testing.T) {
+	resetAmneziawgRelayResyncState()
+	t.Cleanup(func() {
+		isNeedXrayRestart.Store(false)
+		resetAmneziawgRelayResyncState()
+	})
+	amneziawgRelayResyncMu.Lock()
+	amneziawgRelayResyncLastFire = time.Now()
+	amneziawgRelayResyncMu.Unlock()
+
+	(&XrayService{}).ScheduleAmneziaWGRelayResync()
+
+	amneziawgRelayResyncMu.Lock()
+	armed := amneziawgRelayResyncTimer
+	amneziawgRelayResyncMu.Unlock()
+	if armed != nil {
+		t.Fatal("a call right after a recent fire must not arm another timer")
 	}
 }

@@ -28,18 +28,22 @@ var (
 	isManuallyStopped atomic.Bool // Indicates that Xray was stopped manually from the panel
 	xrayState         xrayLifecycle
 
-	amneziawgRelayResyncMu    sync.Mutex
-	amneziawgRelayResyncTimer *time.Timer
+	amneziawgRelayResyncMu       sync.Mutex
+	amneziawgRelayResyncTimer    *time.Timer
+	amneziawgRelayResyncLastFire time.Time
 )
 
-// amneziawgRelayResyncDelay is how long ScheduleAmneziaWGRelayResync waits
-// after its most recent call before actually applying the pending restart.
-// A var (not const) so tests can shrink it. Debounced rather than immediate:
-// the timer is reset on every call, so a burst of rapid AmneziaWG edits (a
-// new inbound's peers added one at a time) still coalesces into a single
-// restart instead of one per edit -- cadenceXrayRestart's own 30s cron tick
-// remains an unconditional backstop regardless.
+// amneziawgRelayResyncDelay: how long ScheduleAmneziaWGRelayResync waits
+// before firing. A var, not a const, so tests can shrink it.
 var amneziawgRelayResyncDelay = 2 * time.Second
+
+// amneziawgRelayResyncMinGap bounds restart rate, not just latency: once
+// fired, further calls wait for cadenceXrayRestart's own 30s tick instead.
+var amneziawgRelayResyncMinGap = 30 * time.Second
+
+// amneziawgRelayResyncFire is what the timer calls once it fires -- a var so
+// tests can observe it without touching real Xray-restart machinery.
+var amneziawgRelayResyncFire = (*XrayService).ApplyPendingRestart
 
 type xrayLifecycle struct {
 	mu      sync.RWMutex
@@ -1523,27 +1527,26 @@ func (s *XrayService) SetToNeedRestart() {
 	isNeedXrayRestart.Store(true)
 }
 
-// ScheduleAmneziaWGRelayResync marks Xray as needing a restart, like
-// SetToNeedRestart, and additionally arms a short debounced timer so the
-// restart actually runs within amneziawgRelayResyncDelay instead of waiting
-// for cadenceXrayRestart's next 30s tick. Exists specifically for
-// internal/web/runtime.Local's AmneziaWG paths: the embedded interface
-// (internal/amneziawgnet) starts accepting peer traffic synchronously in
-// Ensure/Remove, but the Xray-side SOCKS5 relay bridging it into routing
-// (injectAmneziawgnetSocks) only exists once this pending restart actually
-// runs -- observed live as a real "connection refused" window on a
-// just-created/just-updated inbound. Deliberately not merged into
-// SetToNeedRestart itself, which dozens of unrelated call sites rely on for
-// its batched 30s cadence.
+// ScheduleAmneziaWGRelayResync is SetToNeedRestart plus the debounced,
+// rate-limited timer described by the three amneziawgRelayResync* vars above.
 func (s *XrayService) ScheduleAmneziaWGRelayResync() {
 	s.SetToNeedRestart()
 
 	amneziawgRelayResyncMu.Lock()
 	defer amneziawgRelayResyncMu.Unlock()
+	if time.Since(amneziawgRelayResyncLastFire) < amneziawgRelayResyncMinGap {
+		// A fast resync fired recently; let the 30s cron tick absorb this one.
+		return
+	}
 	if amneziawgRelayResyncTimer != nil {
 		amneziawgRelayResyncTimer.Stop()
 	}
-	amneziawgRelayResyncTimer = time.AfterFunc(amneziawgRelayResyncDelay, s.ApplyPendingRestart)
+	amneziawgRelayResyncTimer = time.AfterFunc(amneziawgRelayResyncDelay, func() {
+		amneziawgRelayResyncMu.Lock()
+		amneziawgRelayResyncLastFire = time.Now()
+		amneziawgRelayResyncMu.Unlock()
+		amneziawgRelayResyncFire(s)
+	})
 }
 
 // GetXrayAPIPort returns the port the local xray process is listening on

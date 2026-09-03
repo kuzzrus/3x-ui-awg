@@ -18,12 +18,8 @@ import (
 type LocalDeps struct {
 	APIPort        func() int
 	SetNeedRestart func()
-	// ScheduleAmneziaWGRelayResync is SetNeedRestart's AmneziaWG-specific
-	// counterpart: it also marks Xray as needing a restart, but additionally
-	// schedules that restart to run within a couple of seconds rather than
-	// waiting for the next 30s cadenceXrayRestart tick. Used only from the
-	// AmneziaWG branches below -- see XrayService.ScheduleAmneziaWGRelayResync
-	// for why they can't just share SetNeedRestart's cadence.
+	// ScheduleAmneziaWGRelayResync: SetNeedRestart plus a fast, rate-limited
+	// timer -- see XrayService.ScheduleAmneziaWGRelayResync. AmneziaWG-only.
 	ScheduleAmneziaWGRelayResync func()
 }
 
@@ -37,6 +33,16 @@ func NewLocal(deps LocalDeps) *Local {
 }
 
 func (l *Local) Name() string { return "local" }
+
+// scheduleAmneziaWGRelayResync prefers the fast hook, falling back to
+// SetNeedRestart so a caller missing the former still sets the flag.
+func (l *Local) scheduleAmneziaWGRelayResync() {
+	if l.deps.ScheduleAmneziaWGRelayResync != nil {
+		l.deps.ScheduleAmneziaWGRelayResync()
+	} else if l.deps.SetNeedRestart != nil {
+		l.deps.SetNeedRestart()
+	}
+}
 
 func (l *Local) withAPI(fn func(api *xray.XrayAPI) error) error {
 	l.mu.Lock()
@@ -81,15 +87,9 @@ func (l *Local) AddInbound(_ context.Context, ib *model.Inbound) error {
 				DisableCookies:         inst.DisableCookies,
 			},
 		})
-		// A brand new inbound can be the first one to qualify for
-		// injectAmneziawgnetSocks's Xray-side relay inbound (e.g. its first
-		// valid peer). Ensure only updates the embedded Device -- schedule a
-		// fast resync so the relay actually gets created within seconds
-		// instead of a client hitting "connection refused" until the next
-		// 30s cadenceXrayRestart tick.
-		if l.deps.ScheduleAmneziaWGRelayResync != nil {
-			l.deps.ScheduleAmneziaWGRelayResync()
-		}
+		// A brand new inbound can be the first to qualify for the relay --
+		// schedule a fast resync instead of waiting up to 30s for it to appear.
+		l.scheduleAmneziaWGRelayResync()
 		return err
 	}
 	body, err := json.MarshalIndent(ib.GenXrayInboundConfig(), "", "  ")
@@ -108,12 +108,9 @@ func (l *Local) DelInbound(_ context.Context, ib *model.Inbound) error {
 	}
 	if ib.Protocol == model.AmneziaWG {
 		amneziawgnet.GetManager().Remove(ib.Id)
-		// The removed inbound may have been the only one backing Xray's
-		// injectAmneziawgnetSocks relay inbound for this tag -- schedule a
-		// fast resync so the now-stale relay gets torn down promptly.
-		if l.deps.ScheduleAmneziaWGRelayResync != nil {
-			l.deps.ScheduleAmneziaWGRelayResync()
-		}
+		// This may have been the only inbound backing the relay -- schedule
+		// a fast resync so the now-stale relay gets torn down promptly.
+		l.scheduleAmneziaWGRelayResync()
 		return nil
 	}
 	return l.withAPI(func(api *xray.XrayAPI) error {
@@ -179,9 +176,7 @@ func (l *Local) updateMtprotoInbound(ctx context.Context, oldIb, newIb *model.In
 // relay created or torn down, so schedule a fast resync unconditionally
 // here rather than trying to enumerate which of the branches below need it.
 func (l *Local) updateAmneziaWGInbound(ctx context.Context, oldIb, newIb *model.Inbound) error {
-	if l.deps.ScheduleAmneziaWGRelayResync != nil {
-		l.deps.ScheduleAmneziaWGRelayResync()
-	}
+	l.scheduleAmneziaWGRelayResync()
 	if oldIb.Protocol == model.AmneziaWG && newIb.Protocol != model.AmneziaWG {
 		amneziawgnet.GetManager().Remove(oldIb.Id)
 		if !newIb.Enable {
