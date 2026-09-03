@@ -50,10 +50,12 @@ type managed struct {
 	dev          *Device
 	udpRelay     *UDPRelay
 	portForwards *PortForwardSet
-	peers        atomic.Pointer[PeerIndex]
-	inst         amneziawg.Instance
-	structFP     string
-	uapiConfig   string
+	// peers is the live snapshot the attached TCP/UDP handlers read; an
+	// in-place reconfigure must Store into this same struct, not a new one.
+	peers      atomic.Pointer[PeerIndex]
+	inst       amneziawg.Instance
+	structFP   string
+	uapiConfig string
 }
 
 func (m *managed) lookupPeer(addr netip.Addr) (amneziawg.Peer, bool) {
@@ -74,6 +76,9 @@ func (m *managed) handleUDP(src, dst netip.AddrPort, payload []byte) {
 
 func (m *managed) close() {
 	m.portForwards.Close()
+	// Cleared before Close: a TCP handler already past lookupPeer (its own
+	// goroutine, see AttachTCPForwarder) must fail closed, not resolve a peer.
+	m.peers.Store(nil)
 	// Stop packet delivery before closing the relay so an in-flight handler
 	// cannot publish a new session after the relay has already been swept.
 	m.dev.Close()
