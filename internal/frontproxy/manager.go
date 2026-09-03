@@ -57,6 +57,7 @@ func (m *Manager) Start(opts Options) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.server != nil {
+		logger.Info("frontproxy: Start: already running, no-op")
 		return nil
 	}
 	if opts.Port <= 0 || opts.Port > 65535 {
