@@ -247,17 +247,25 @@ func (s *FrontProxyService) Stop() error {
 // AutoStart brings the door up at boot if the admin left it enabled. It
 // never returns an error: the reverse proxy is a secondary feature and must
 // not be able to stop the panel itself from starting.
+//
+// Logged at Info, not Debug: this runs once per boot, and a real
+// unexplained hang here needs these checkpoints visible by default.
 func (s *FrontProxyService) AutoStart() {
+	logger.Info("frontproxy: AutoStart: checking whether enabled")
 	enabled, err := s.GetFrontProxyEnable()
 	if err != nil || !enabled {
 		return
 	}
+	logger.Info("frontproxy: AutoStart: enabled, resolving config from settings")
 	opts, err := s.Options()
 	if err != nil {
 		logger.Warningf("frontproxy: cannot build config, reverse proxy stays down: %v", err)
 		return
 	}
+	logger.Info("frontproxy: AutoStart: config resolved, starting manager")
 	if err := frontproxy.GetManager().Start(opts); err != nil {
 		logger.Warningf("frontproxy: failed to auto-start on boot: %v", err)
+		return
 	}
+	logger.Info("frontproxy: AutoStart: manager.Start returned")
 }
