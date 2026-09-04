@@ -74,17 +74,19 @@ func TestCurrentTunnelSkipsMalformedLines(t *testing.T) {
 	}
 }
 
-// The tail-scan optimization (added after the bot review flagged unbounded
-// log growth) must not lose a notice that is still within the scanned tail.
-func TestCurrentTunnelTailScanFindsRecentNotice(t *testing.T) {
+// Tunnels and ClientRegion fire once near the start of a run and never
+// again, so CurrentTunnel must still find them deep inside a large log.
+func TestCurrentTunnelFindsNoticeFarFromEndOfLargeLog(t *testing.T) {
 	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
 	if err := os.MkdirAll(configDir(), 0o700); err != nil {
 		t.Fatalf("creating config dir: %v", err)
 	}
+	early := `{"noticeType":"Tunnels","data":{"count":1}}` + "\n" +
+		`{"noticeType":"ClientRegion","data":{"region":"LV"}}` + "\n"
 	padding := strings.Repeat(`{"noticeType":"Ignored","data":{}}`+"\n", 20000)
-	content := padding + `{"noticeType":"Tunnels","data":{"count":1}}` + "\n"
-	if len(content)-len(`{"noticeType":"Tunnels","data":{"count":1}}`+"\n") < tailScanBytes {
-		t.Fatalf("test fixture padding (%d bytes) does not exceed tailScanBytes (%d); grow padding", len(padding), tailScanBytes)
+	content := early + padding
+	if len(padding) < 512<<10 {
+		t.Fatalf("test fixture padding (%d bytes) is not large enough to exercise this", len(padding))
 	}
 	if err := os.WriteFile(NoticesPath(), []byte(content), 0o600); err != nil {
 		t.Fatalf("writing notices fixture: %v", err)
@@ -94,7 +96,7 @@ func TestCurrentTunnelTailScanFindsRecentNotice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CurrentTunnel: %v", err)
 	}
-	if !status.Connected || status.TunnelCount != 1 {
-		t.Errorf("CurrentTunnel over a >tailScanBytes log = %+v, want the trailing Tunnels notice picked up", status)
+	if !status.Connected || status.TunnelCount != 1 || status.ClientRegion != "LV" {
+		t.Errorf("CurrentTunnel over a large log = %+v, want the early Tunnels/ClientRegion notices still picked up", status)
 	}
 }

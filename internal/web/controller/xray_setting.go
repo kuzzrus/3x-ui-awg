@@ -309,8 +309,7 @@ func (a *XraySettingController) tor(c *gin.Context) {
 }
 
 // psiphon handles the managed Psiphon sidecar (internal/psiphon) based on the
-// action parameter. "region" only restarts the process -- the UI calls "verify"
-// separately afterward, so the two don't stack into one slow request.
+// action parameter. "region" only restarts; the UI calls "verify" separately.
 func (a *XraySettingController) psiphon(c *gin.Context) {
 	action := c.Param("action")
 	var resp any
@@ -330,9 +329,6 @@ func (a *XraySettingController) psiphon(c *gin.Context) {
 		err = a.PsiphonService.SetEgressRegion(c.PostForm("region"))
 	case "verify":
 		resp, err = a.PsiphonService.CurrentExit()
-	}
-	if resp == nil && err == nil {
-		resp, err = a.PsiphonService.Status()
 	}
 	jsonObj(c, resp, err)
 }

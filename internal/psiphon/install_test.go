@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -17,9 +18,15 @@ func sha256Sum(t *testing.T, s string) []byte {
 	return sum[:]
 }
 
-// A 63-character constant (one hex digit short) made Install fail
-// unconditionally -- confirmed live against the panel before this fix.
-func TestReleaseSHA256Length(t *testing.T) {
+// Pins the exact value, not just its shape: a 64-character-but-wrong string
+// would pass a length-only check and still fail every real Install.
+func TestReleaseSHA256Value(t *testing.T) {
+	// Independently retyped from `curl -sL <pinned URL> | sha256sum`, not
+	// copied from the production constant, so the two must agree on purpose.
+	const want = "47f8956f3f3cf9813d4cbee4665adc99b1f8ffa788c13dc5e03e824cc29217b0"
+	if releaseSHA256 != want {
+		t.Fatalf("releaseSHA256 = %q, want %q", releaseSHA256, want)
+	}
 	got, err := hex.DecodeString(releaseSHA256)
 	if err != nil {
 		t.Fatalf("releaseSHA256 does not decode as hex: %v", err)
@@ -100,5 +107,8 @@ func TestDownloadBinaryRejectsWrongDigest(t *testing.T) {
 	err := downloadBinary(context.Background(), srv.Client(), "asset", wrong, dst)
 	if err == nil {
 		t.Fatal("downloadBinary with a wrong digest returned nil error, want a checksum failure")
+	}
+	if !strings.Contains(err.Error(), "checksum verification") {
+		t.Errorf("downloadBinary error = %q, want it to mention checksum verification", err.Error())
 	}
 }

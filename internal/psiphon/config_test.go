@@ -3,6 +3,7 @@ package psiphon
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -34,23 +35,28 @@ func TestApplyForcedFields(t *testing.T) {
 	}
 }
 
-// A literal "null" unmarshals into a nil map with no error; applyForcedFields
-// then panics assigning into it, so SaveConfig must reject it first.
+// "null" is the case that matters -- it unmarshals into a nil map with no
+// error, and applyForcedFields would panic assigning into it. The others were already rejected by json.Unmarshal itself.
 func TestSaveConfigRejectsNonObjectJSON(t *testing.T) {
 	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
 	for _, tc := range []struct {
-		name string
-		body string
+		name      string
+		body      string
+		wantInMsg string
 	}{
-		{"null", "null"},
-		{"array", "[1,2,3]"},
-		{"number", "42"},
-		{"string", `"just a string"`},
-		{"not json at all", "definitely not json"},
+		{"null", "null", "expected a JSON object"},
+		{"array", "[1,2,3]", ""},
+		{"number", "42", ""},
+		{"string", `"just a string"`, ""},
+		{"not json at all", "definitely not json", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := SaveConfig([]byte(tc.body)); err == nil {
+			err := SaveConfig([]byte(tc.body))
+			if err == nil {
 				t.Fatalf("SaveConfig(%q) returned nil error, want a rejection", tc.body)
+			}
+			if tc.wantInMsg != "" && !strings.Contains(err.Error(), tc.wantInMsg) {
+				t.Errorf("SaveConfig(%q) error = %q, want it to contain %q", tc.body, err.Error(), tc.wantInMsg)
 			}
 		})
 	}

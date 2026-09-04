@@ -120,22 +120,25 @@ type Region struct {
 	Name string `json:"name"`
 }
 
-// verifyTimeout bounds the live exit check, kept well under the panel HTTP
-// server's 30s WriteTimeout (web.go) even stacked behind SetEgressRegion's own restart.
-const verifyTimeout = 15 * time.Second
+// verifyTimeout bounds the live exit check. No longer stacked behind a
+// restart (see SetEgressRegion), so the full budget under the 30s WriteTimeout applies.
+const verifyTimeout = 25 * time.Second
 
-// invalidRegion reports an unrecognized code before anything is touched --
-// EgressRegion accepts empty (auto), so only a non-empty, unknown code is rejected.
+// invalidRegion catches a typo without freezing the API to isoCountries' own
+// curated set -- an uncommon real code like Kosovo's "XK" must still work.
 func invalidRegion(region string) bool {
 	if region == "" {
-		return false
+		return false // EgressRegion's own "auto"
 	}
-	for _, r := range isoCountries {
-		if r.Code == region {
-			return false
+	if len(region) != 2 {
+		return true
+	}
+	for _, c := range region {
+		if c < 'A' || c > 'Z' {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 // SetEgressRegion patches EgressRegion and restarts the process. Deliberately
