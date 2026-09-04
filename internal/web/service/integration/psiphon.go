@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
@@ -108,8 +109,8 @@ func (s *PsiphonService) SaveConfig(raw []byte) error {
 	return psiphon.GetManager().Restart()
 }
 
-// AvailableRegions lists every ISO 3166-1 alpha-2 code, not a Psiphon-curated
-// subset -- that would only ever be a stale snapshot; SetEgressRegion's live verification answers "does it work," not this list.
+// AvailableRegions lists ISO 3166-1 codes (states plus common territories),
+// not a Psiphon-curated subset -- "Verify" answers "does it work," not this list.
 func AvailableRegions() []Region { return isoCountries }
 
 // Region is one entry in the picker: an ISO 3166-1 alpha-2 code and its
@@ -119,22 +120,37 @@ type Region struct {
 	Name string `json:"name"`
 }
 
-// verifyTimeout bounds the live exit check -- more generous than a status
-// poll needs, since a fresh Psiphon connection can take a while.
-const verifyTimeout = 45 * time.Second
+// verifyTimeout bounds the live exit check. No longer stacked behind a
+// restart (see SetEgressRegion), so the full budget under the 30s WriteTimeout applies.
+const verifyTimeout = 25 * time.Second
 
-// SetEgressRegion patches EgressRegion, restarts the process, and reports
-// what the new tunnel actually reaches -- not just what the config now says.
-func (s *PsiphonService) SetEgressRegion(region string) (psiphon.ExitInfo, error) {
+// invalidRegion catches a typo without freezing the API to isoCountries' own
+// curated set -- an uncommon real code like Kosovo's "XK" must still work.
+func invalidRegion(region string) bool {
+	if region == "" {
+		return false // EgressRegion's own "auto"
+	}
+	if len(region) != 2 {
+		return true
+	}
+	for _, c := range region {
+		if c < 'A' || c > 'Z' {
+			return true
+		}
+	}
+	return false
+}
+
+// SetEgressRegion patches EgressRegion and restarts the process. Deliberately
+// does not also verify here -- stacked behind a restart it risks the panel's WriteTimeout; the UI calls CurrentExit as a separate follow-up.
+func (s *PsiphonService) SetEgressRegion(region string) error {
+	if invalidRegion(region) {
+		return fmt.Errorf("unknown region code %q", region)
+	}
 	if err := psiphon.SetEgressRegion(region); err != nil {
-		return psiphon.ExitInfo{}, err
+		return err
 	}
-	if err := psiphon.GetManager().Restart(); err != nil {
-		return psiphon.ExitInfo{}, err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), verifyTimeout)
-	defer cancel()
-	return psiphon.CurrentExit(ctx)
+	return psiphon.GetManager().Restart()
 }
 
 // CurrentExit is the "Verify" button's action outside of a region change --

@@ -1923,7 +1923,7 @@ export const sections: readonly Section[] = [
             name: 'action',
             in: 'path',
             type: 'string',
-            desc: 'status — return {installed, configured, running, port, tunnel, lastLog}. start — launch the managed Psiphon process. stop — stop it. install — download the pinned ConsoleClient release. uninstall — stop the process and remove the binary/config/data. region — set EgressRegion (sends region), restart, and return the live-verified {ip, country}. verify — dial out through the SOCKS port and return the live {ip, country} without changing the region.',
+            desc: "status — return {installed, configured, running, port, tunnel, lastLog}. start — launch the managed Psiphon process. stop — stop it. install — download the pinned ConsoleClient release. uninstall — stop the process and remove the binary/config/data. region — set EgressRegion (sends region) and restart; call verify afterward to confirm the new exit, kept as a separate request so the two can't together exceed the panel's write timeout. verify — dial out through the SOCKS port and return the live {ip, country}.",
           },
           {
             name: 'region',
@@ -1943,7 +1943,7 @@ export const sections: readonly Section[] = [
             name: 'config',
             in: 'body (multipart)',
             type: 'file',
-            desc: 'The psiphon.config JSON file. LocalSocksProxyPort, DisableLocalHTTPProxy and ListenInterface are overwritten regardless of what the file says.',
+            desc: 'The psiphon.config JSON file. LocalSocksProxyPort, DisableLocalSocksProxy, DisableLocalHTTPProxy and ListenInterface are overwritten regardless of what the file says.',
           },
         ],
         body: 'multipart/form-data with a "config" file field',
@@ -1952,7 +1952,7 @@ export const sections: readonly Section[] = [
         method: 'GET',
         path: '/panel/api/xray/psiphon/regions',
         summary:
-          'List every ISO 3166-1 alpha-2 code for the egress-region picker (not a Psiphon-curated subset -- see the psiphon/:action region action to actually apply and verify one).',
+          'List ISO 3166-1 codes (states plus common territories) for the egress-region picker (not a Psiphon-curated subset -- see the psiphon/:action region action to actually apply and verify one).',
       },
       {
         method: 'POST',

@@ -28,8 +28,8 @@ type TunnelStatus struct {
 	ClientRegion string `json:"clientRegion,omitempty"`
 }
 
-// CurrentTunnel scans NoticesPath for the latest Tunnels/ConnectedServerRegion/
-// ClientRegion notices. A missing log returns a zero TunnelStatus, not an error.
+// CurrentTunnel scans the whole of NoticesPath, not just a tail: Tunnels and
+// ClientRegion fire once, not periodically, so a bounded read can miss the only copy of either on a long-lived tunnel.
 func CurrentTunnel() (TunnelStatus, error) {
 	f, err := os.Open(NoticesPath())
 	if err != nil {

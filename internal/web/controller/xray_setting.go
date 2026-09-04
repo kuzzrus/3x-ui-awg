@@ -309,7 +309,7 @@ func (a *XraySettingController) tor(c *gin.Context) {
 }
 
 // psiphon handles the managed Psiphon sidecar (internal/psiphon) based on the
-// action parameter. "region" restarts the process and returns the live-verified exit.
+// action parameter. "region" only restarts; the UI calls "verify" separately.
 func (a *XraySettingController) psiphon(c *gin.Context) {
 	action := c.Param("action")
 	var resp any
@@ -326,7 +326,7 @@ func (a *XraySettingController) psiphon(c *gin.Context) {
 	case "uninstall":
 		err = a.PsiphonService.Uninstall()
 	case "region":
-		resp, err = a.PsiphonService.SetEgressRegion(c.PostForm("region"))
+		err = a.PsiphonService.SetEgressRegion(c.PostForm("region"))
 	case "verify":
 		resp, err = a.PsiphonService.CurrentExit()
 	}
