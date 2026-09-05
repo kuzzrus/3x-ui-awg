@@ -35,6 +35,7 @@ interface TunnelStatus {
 interface PsiphonStatus {
   installed: boolean;
   configured: boolean;
+  defaultConfig: boolean;
   running: boolean;
   port: number;
   tunnel: TunnelStatus;
@@ -329,6 +330,11 @@ export default function PsiphonModal({
                 </Button>
               </Popconfirm>
             </div>
+            {status?.configured && status.defaultConfig && (
+              <Typography.Paragraph type="secondary" style={{ marginTop: 8, fontSize: 12 }}>
+                {t('pages.xray.psiphon.defaultConfigHint')}
+              </Typography.Paragraph>
+            )}
             {status?.lastLog && (
               <div style={{ fontSize: 12, color: '#888', marginTop: 8 }}>{status.lastLog}</div>
             )}

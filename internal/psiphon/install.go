@@ -61,9 +61,16 @@ var downloadURL = func(asset string) string {
 	)
 }
 
-// Install downloads the pinned Psiphon ConsoleClient release. Already-installed
-// is a no-op. client comes from the caller so the download honors the panel's own proxy, matching adguard.Install.
+// Install downloads the pinned Psiphon ConsoleClient release and seeds the
+// bundled default config (see ensureDefaultConfig) if none exists yet.
+// Already-installed is a no-op for the binary, but the config check still
+// runs -- an install that predates this feature, or one whose config was
+// wiped by Uninstall, gets one seeded here too. client comes from the caller
+// so the download honors the panel's own proxy, matching adguard.Install.
 func Install(ctx context.Context, client *http.Client) error {
+	if err := ensureDefaultConfig(); err != nil {
+		return err
+	}
 	if IsInstalled() {
 		return nil
 	}

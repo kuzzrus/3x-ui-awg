@@ -1,9 +1,13 @@
 package psiphon
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeNotices(t *testing.T, lines ...string) {
@@ -98,5 +102,89 @@ func TestCurrentTunnelFindsNoticeFarFromEndOfLargeLog(t *testing.T) {
 	}
 	if !status.Connected || status.TunnelCount != 1 || status.ClientRegion != "LV" {
 		t.Errorf("CurrentTunnel over a large log = %+v, want the early Tunnels/ClientRegion notices still picked up", status)
+	}
+}
+
+func TestRetryExitSucceedsFirstTry(t *testing.T) {
+	calls := 0
+	want := ExitInfo{IP: "1.2.3.4", Country: "IT"}
+	got, err := retryExit(context.Background(), time.Second, time.Millisecond, func() (ExitInfo, error) {
+		calls++
+		return want, nil
+	})
+	if err != nil {
+		t.Fatalf("retryExit: %v", err)
+	}
+	if got != want {
+		t.Errorf("retryExit = %+v, want %+v", got, want)
+	}
+	if calls != 1 {
+		t.Errorf("retryExit called fn %d times on an immediate success, want 1", calls)
+	}
+}
+
+// The exact scenario this exists for: the tunnel isn't up yet when Verify is
+// first clicked (the SOCKS "general failure" case), then connects a couple
+// of retries later, well inside the budget.
+func TestRetryExitSucceedsAfterFailures(t *testing.T) {
+	calls := 0
+	want := ExitInfo{IP: "5.6.7.8", Country: "IN"}
+	got, err := retryExit(context.Background(), time.Second, time.Millisecond, func() (ExitInfo, error) {
+		calls++
+		if calls < 3 {
+			return ExitInfo{}, errors.New("general SOCKS server failure")
+		}
+		return want, nil
+	})
+	if err != nil {
+		t.Fatalf("retryExit: %v", err)
+	}
+	if got != want {
+		t.Errorf("retryExit = %+v, want %+v", got, want)
+	}
+	if calls != 3 {
+		t.Errorf("retryExit called fn %d times, want exactly 3 (2 failures + 1 success)", calls)
+	}
+}
+
+func TestRetryExitReturnsLastErrorAfterBudgetExhausted(t *testing.T) {
+	calls := 0
+	_, err := retryExit(context.Background(), 20*time.Millisecond, 5*time.Millisecond, func() (ExitInfo, error) {
+		calls++
+		return ExitInfo{}, fmt.Errorf("attempt %d failed", calls)
+	})
+	if err == nil {
+		t.Fatal("retryExit with an always-failing fn returned nil error, want the last failure")
+	}
+	if !strings.Contains(err.Error(), fmt.Sprintf("attempt %d failed", calls)) {
+		t.Errorf("retryExit error = %q, want it to be the last attempt's own error (attempt %d)", err.Error(), calls)
+	}
+	if calls < 2 {
+		t.Errorf("retryExit called fn only %d time(s) over a 20ms budget with a 5ms interval, want at least 2", calls)
+	}
+}
+
+func TestRetryExitRespectsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	done := make(chan struct{})
+	var err error
+	go func() {
+		_, err = retryExit(ctx, time.Minute, 10*time.Millisecond, func() (ExitInfo, error) {
+			calls++
+			if calls == 1 {
+				cancel()
+			}
+			return ExitInfo{}, errors.New("still failing")
+		})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("retryExit did not return promptly after ctx was cancelled")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("retryExit error = %v, want context.Canceled", err)
 	}
 }
