@@ -91,6 +91,36 @@ func TestDownloadBinaryVerifiesDigest(t *testing.T) {
 	}
 }
 
+// Install must seed the bundled default config even when the binary is
+// already present and its own early return skips everything else --
+// otherwise a pre-existing install (or one whose config Uninstall just
+// wiped) never gets one.
+func TestInstallSeedsConfigWhenAlreadyInstalled(t *testing.T) {
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+
+	if err := os.MkdirAll(Dir(), 0o700); err != nil {
+		t.Fatalf("creating %s: %v", Dir(), err)
+	}
+	if err := os.WriteFile(BinPath(), []byte("pretend-binary"), 0o750); err != nil {
+		t.Fatalf("seeding a fake already-installed binary: %v", err)
+	}
+	if !IsInstalled() {
+		t.Fatal("IsInstalled() = false right after writing BinPath(), setup is broken")
+	}
+	if IsConfigured() {
+		t.Fatal("IsConfigured() = true before Install ran, want a clean temp dir")
+	}
+
+	// A client that would fail any real request -- Install must never reach
+	// the download path here, since IsInstalled() is already true.
+	if err := Install(context.Background(), http.DefaultClient); err != nil {
+		t.Fatalf("Install with an already-present binary: %v", err)
+	}
+	if !IsConfigured() {
+		t.Error("IsConfigured() = false after Install, want the default config seeded")
+	}
+}
+
 func TestDownloadBinaryRejectsWrongDigest(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("actual content"))

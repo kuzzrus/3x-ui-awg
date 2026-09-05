@@ -102,6 +102,19 @@ func socksHTTPClient(timeout time.Duration) (*http.Client, error) {
 	}, nil
 }
 
+// exitRetryInterval/exitRetryBudget: right after Start (or a region change's
+// Restart), the tunnel routinely takes several seconds to actually finish
+// connecting -- candidate rotation, an occasional "restricted provider ID"
+// skip, then a connect (observed live: ~24s on one run). A Verify click in
+// that window used to make exactly one attempt and surface Psiphon's own
+// raw "general SOCKS server failure" instead of a real answer. Retrying
+// inside this budget turns a too-early click into a real result almost
+// always, while staying comfortably under verifyTimeout's 25s.
+const (
+	exitRetryInterval = 2 * time.Second
+	exitRetryBudget   = 15 * time.Second
+)
+
 // CurrentExit dials out through the managed SOCKS proxy to confirm what is
 // really reachable -- a real network round-trip, the same split internal/tor draws between IsRunning and CurrentIP.
 func CurrentExit(ctx context.Context) (ExitInfo, error) {
@@ -109,6 +122,35 @@ func CurrentExit(ctx context.Context) (ExitInfo, error) {
 	if err != nil {
 		return ExitInfo{}, err
 	}
+	return retryExit(ctx, exitRetryBudget, exitRetryInterval, func() (ExitInfo, error) {
+		return fetchExit(ctx, client)
+	})
+}
+
+// retryExit re-attempts fn on failure until it succeeds, budget elapses, or
+// ctx ends, whichever comes first. Split out from CurrentExit so the
+// retry/timing policy is testable without a real SOCKS proxy behind it.
+func retryExit(ctx context.Context, budget, interval time.Duration, fn func() (ExitInfo, error)) (ExitInfo, error) {
+	deadline := time.Now().Add(budget)
+	for {
+		info, err := fn()
+		if err == nil {
+			return info, nil
+		}
+		if !time.Now().Before(deadline) {
+			return ExitInfo{}, err
+		}
+		select {
+		case <-ctx.Done():
+			return ExitInfo{}, ctx.Err()
+		case <-time.After(interval):
+		}
+	}
+}
+
+// fetchExit makes one attempt -- split out so CurrentExit's retry loop
+// doesn't have to duplicate the request/decode logic.
+func fetchExit(ctx context.Context, client *http.Client) (ExitInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://ipinfo.io/json", nil)
 	if err != nil {
 		return ExitInfo{}, err

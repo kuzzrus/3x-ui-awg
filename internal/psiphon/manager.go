@@ -7,9 +7,13 @@
 // packaged by any distro -- this package downloads an official release itself,
 // the same shape as internal/adguard. Unlike both, this package never
 // generates working credentials: Psiphon's PropagationChannelId/SponsorId/
-// server-list access are Psiphon Inc.'s to issue, not ours to invent, so the
-// admin supplies their own psiphon.config and this package only patches the
-// handful of fields it must control (see SaveConfig).
+// server-list access are Psiphon Inc.'s to issue, not ours to invent. Install
+// seeds a bundled reference config on first use (see ensureDefaultConfig for
+// where that config actually comes from) so Psiphon works without a manual
+// step, but an admin's own psiphon.config -- via SaveConfig, same as always
+// -- is never overwritten by it. Either way, this package only patches the
+// handful of fields it must control regardless of the config's origin (see
+// applyForcedFields).
 package psiphon
 
 import (

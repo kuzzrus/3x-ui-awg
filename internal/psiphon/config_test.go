@@ -113,3 +113,98 @@ func TestSaveConfigAndEgressRegionRoundTrip(t *testing.T) {
 		t.Errorf("ListenInterface after SetEgressRegion = %v, want empty (loopback)", parsed["ListenInterface"])
 	}
 }
+
+func TestEnsureDefaultConfigSeedsWhenMissing(t *testing.T) {
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+
+	if IsConfigured() {
+		t.Fatal("IsConfigured() = true before ensureDefaultConfig ran, want a clean temp dir")
+	}
+	if err := ensureDefaultConfig(); err != nil {
+		t.Fatalf("ensureDefaultConfig: %v", err)
+	}
+	if !IsConfigured() {
+		t.Fatal("IsConfigured() = false after ensureDefaultConfig, want the bundled config in place")
+	}
+
+	raw, err := os.ReadFile(ConfigPath())
+	if err != nil {
+		t.Fatalf("reading seeded config: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		t.Fatalf("parsing seeded config: %v", err)
+	}
+	// The bundled file itself still has the raw Docker-deployment shape
+	// (ListenInterface "any", port 1080) -- seeding must run it through
+	// SaveConfig's own applyForcedFields, not write defaultConfig verbatim.
+	if parsed["ListenInterface"] != "" {
+		t.Errorf("seeded config ListenInterface = %v, want empty (loopback) -- forced fields weren't applied", parsed["ListenInterface"])
+	}
+	if got, want := parsed["LocalSocksProxyPort"], float64(SocksPort); got != want {
+		t.Errorf("seeded config LocalSocksProxyPort = %v, want %v", got, want)
+	}
+	if parsed["PropagationChannelId"] == nil || parsed["PropagationChannelId"] == "" {
+		t.Error("seeded config has no PropagationChannelId -- defaultConfig didn't embed correctly")
+	}
+}
+
+func TestEnsureDefaultConfigNeverOverwritesExisting(t *testing.T) {
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+
+	admin := map[string]any{"PropagationChannelId": "admins-own-config"}
+	raw, err := json.Marshal(admin)
+	if err != nil {
+		t.Fatalf("marshaling admin config: %v", err)
+	}
+	if err := SaveConfig(raw); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+
+	if err := ensureDefaultConfig(); err != nil {
+		t.Fatalf("ensureDefaultConfig: %v", err)
+	}
+
+	got, err := os.ReadFile(ConfigPath())
+	if err != nil {
+		t.Fatalf("reading config back: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(got, &parsed); err != nil {
+		t.Fatalf("parsing config back: %v", err)
+	}
+	if parsed["PropagationChannelId"] != "admins-own-config" {
+		t.Errorf("ensureDefaultConfig overwrote an existing admin config: PropagationChannelId = %v", parsed["PropagationChannelId"])
+	}
+}
+
+func TestUsesDefaultConfig(t *testing.T) {
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+
+	if err := ensureDefaultConfig(); err != nil {
+		t.Fatalf("ensureDefaultConfig: %v", err)
+	}
+	got, err := UsesDefaultConfig()
+	if err != nil {
+		t.Fatalf("UsesDefaultConfig after seeding: %v", err)
+	}
+	if !got {
+		t.Error("UsesDefaultConfig() = false right after ensureDefaultConfig seeded it, want true")
+	}
+
+	admin := map[string]any{"PropagationChannelId": "admins-own", "SponsorId": "admins-own-too"}
+	raw, err := json.Marshal(admin)
+	if err != nil {
+		t.Fatalf("marshaling admin config: %v", err)
+	}
+	if err := SaveConfig(raw); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	got, err = UsesDefaultConfig()
+	if err != nil {
+		t.Fatalf("UsesDefaultConfig after an admin upload: %v", err)
+	}
+	if got {
+		t.Error("UsesDefaultConfig() = true after an admin uploaded their own config, want false")
+	}
+}
