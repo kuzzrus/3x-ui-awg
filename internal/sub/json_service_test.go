@@ -432,3 +432,14 @@ func TestSubJsonServiceWireguardNoKey(t *testing.T) {
 		t.Fatalf("genWireguard = %s, want nil for a keyless wireguard client", raw)
 	}
 }
+
+// AmneziaWG has no Xray outbound representation (its own vpn:// format
+// covers it) -- getConfig must skip it entirely, not emit an entry with no
+// working proxy.
+func TestSubJsonServiceSkipsAmneziaWG(t *testing.T) {
+	inbound := &model.Inbound{Listen: "203.0.113.8", Port: 51820, Protocol: model.AmneziaWG}
+	got := NewSubJsonService("", "", "", nil).getConfig(&SubService{address: "sub.example.com"}, inbound, model.Client{}, "sub.example.com")
+	if len(got) != 0 {
+		t.Fatalf("getConfig emitted %d unsupported AmneziaWG Xray config(s), want 0", len(got))
+	}
+}

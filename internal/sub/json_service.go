@@ -547,6 +547,10 @@ func (s *SubJsonService) getConfig(subReq *SubService, inbound *model.Inbound, c
 				continue
 			}
 			newOutbounds = append(newOutbounds, wgOutbound)
+		case "amneziawg":
+			// AmneziaWG's own vpn:// format has no Xray outbound
+			// representation -- skip rather than emit an entry with none.
+			continue
 		}
 
 		newOutbounds = append(newOutbounds, s.defaultOutbounds...)
