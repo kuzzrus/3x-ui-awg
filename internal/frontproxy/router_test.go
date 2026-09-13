@@ -29,7 +29,7 @@ func TestResolveTargetRoutesSecretPaths(t *testing.T) {
 		{"/wp-login.php", RouteDecoy},
 	}
 	for _, tc := range cases {
-		if got := c.resolveTarget(tc.path); got != tc.want {
+		if got := c.resolveTarget(tc.path, ""); got != tc.want {
 			t.Errorf("resolveTarget(%q) = %v, want %v", tc.path, got, tc.want)
 		}
 	}
@@ -40,7 +40,7 @@ func TestResolveTargetRoutesSecretPaths(t *testing.T) {
 func TestResolveTargetRejectsPrefixLookalikes(t *testing.T) {
 	c := testConfig()
 	for _, path := range []string{"/nAMUGqBqnQ6crf3zvEX", "/nAMUGqBqnQ6crf3zvE-admin", "/pojht0vsfvseghbdnrX"} {
-		if got := c.resolveTarget(path); got != RouteDecoy {
+		if got := c.resolveTarget(path, ""); got != RouteDecoy {
 			t.Errorf("resolveTarget(%q) = %v, want RouteDecoy", path, got)
 		}
 	}
@@ -57,7 +57,7 @@ func TestResolveTargetRejectsTraversalIntoSecrets(t *testing.T) {
 		"/x/../pojht0vsfvseghbdnr/abc",
 		"/..%2fnAMUGqBqnQ6crf3zvE/",
 	} {
-		if got := c.resolveTarget(path); got != RouteDecoy {
+		if got := c.resolveTarget(path, ""); got != RouteDecoy {
 			t.Errorf("resolveTarget(%q) = %v, want RouteDecoy", path, got)
 		}
 	}
@@ -68,7 +68,7 @@ func TestResolveTargetRejectsTraversalIntoSecrets(t *testing.T) {
 func TestResolveTargetIgnoresSubPathWhenDisabled(t *testing.T) {
 	c := testConfig()
 	c.SubEnabled = false
-	if got := c.resolveTarget("/pojht0vsfvseghbdnr/abc"); got != RouteDecoy {
+	if got := c.resolveTarget("/pojht0vsfvseghbdnr/abc", ""); got != RouteDecoy {
 		t.Errorf("got %v, want RouteDecoy when sub is disabled", got)
 	}
 }
@@ -79,7 +79,7 @@ func TestResolveTargetRootBasePathNeverMatches(t *testing.T) {
 	for _, base := range []string{"/", "", "//"} {
 		c := Config{PanelBasePath: base, PanelPort: 2053}
 		for _, path := range []string{"/", "/anything", "/panel/"} {
-			if got := c.resolveTarget(path); got != RouteDecoy {
+			if got := c.resolveTarget(path, ""); got != RouteDecoy {
 				t.Errorf("base %q: resolveTarget(%q) = %v, want RouteDecoy", base, path, got)
 			}
 		}
@@ -91,11 +91,77 @@ func TestResolveTargetRootBasePathNeverMatches(t *testing.T) {
 func TestResolveTargetToleratesSlashSpelling(t *testing.T) {
 	for _, base := range []string{"/secret/", "secret", "/secret", "secret/"} {
 		c := Config{PanelBasePath: base, PanelPort: 2053}
-		if got := c.resolveTarget("/secret/panel"); got != RoutePanel {
+		if got := c.resolveTarget("/secret/panel", ""); got != RoutePanel {
 			t.Errorf("base %q: got %v, want RoutePanel", base, got)
 		}
-		if got := c.resolveTarget("/other"); got != RouteDecoy {
+		if got := c.resolveTarget("/other", ""); got != RouteDecoy {
 			t.Errorf("base %q: got %v, want RouteDecoy", base, got)
 		}
+	}
+}
+
+func testConfigWithTproxy() Config {
+	c := testConfig()
+	c.TproxyTarget = "127.0.0.1:19999"
+	c.TproxyCapabilities = []string{"cap-alice", "cap-bob"}
+	return c
+}
+
+// A request carrying a known capability reaches the relay regardless of
+// path -- tproxy-server itself, not this router, is the authority on which
+// paths its own protocol accepts.
+func TestResolveTargetRoutesValidBridgeCapability(t *testing.T) {
+	c := testConfigWithTproxy()
+	for _, path := range []string{"/", "/anything"} {
+		if got := c.resolveTarget(path, "bridge=cap-bob"); got != RouteTproxy {
+			t.Errorf("resolveTarget(%q, bridge=cap-bob) = %v, want RouteTproxy", path, got)
+		}
+	}
+}
+
+// An unrecognized, missing, or malformed bridge value must read exactly like
+// an ordinary request to a domain with no tproxy configured at all.
+func TestResolveTargetRejectsInvalidBridgeCapability(t *testing.T) {
+	c := testConfigWithTproxy()
+	cases := []string{
+		"",
+		"bridge=",
+		"bridge=wrong-capability",
+		"bridge=wrong&bridge=also-wrong",
+		"%zz", // unparseable query
+	}
+	for _, q := range cases {
+		if got := c.resolveTarget("/", q); got != RouteDecoy {
+			t.Errorf("resolveTarget(\"/\", %q) = %v, want RouteDecoy", q, got)
+		}
+	}
+}
+
+// url.Values.Get returns the first value for a repeated key; a genuine
+// capability in that position must still be recognized.
+func TestResolveTargetUsesFirstBridgeValueOnDuplicateParams(t *testing.T) {
+	c := testConfigWithTproxy()
+	if got := c.resolveTarget("/", "bridge=cap-bob&bridge=wrong"); got != RouteTproxy {
+		t.Errorf("resolveTarget with a valid first bridge value = %v, want RouteTproxy", got)
+	}
+}
+
+// Known panel/sub paths still win over a coincidentally-present bridge query
+// -- resolveTarget checks them first, so a client link is never mistaken for
+// a tproxy bridge request just because it happens to carry ?bridge=.
+func TestResolveTargetPanelSubTakePriorityOverBridge(t *testing.T) {
+	c := testConfigWithTproxy()
+	if got := c.resolveTarget("/nAMUGqBqnQ6crf3zvE/panel", "bridge=cap-bob"); got != RoutePanel {
+		t.Errorf("got %v, want RoutePanel even with a valid bridge query present", got)
+	}
+}
+
+// With no tproxy client configured, TproxyTarget is empty and the route must
+// never activate, even if a caller somehow supplied a matching capability.
+func TestResolveTargetTproxyDisabledWhenNoTarget(t *testing.T) {
+	c := testConfig()
+	c.TproxyCapabilities = []string{"cap-alice"}
+	if got := c.resolveTarget("/", "bridge=cap-alice"); got != RouteDecoy {
+		t.Errorf("got %v, want RouteDecoy when TproxyTarget is empty", got)
 	}
 }
