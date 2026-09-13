@@ -455,6 +455,10 @@ func (s *ClientService) AddInboundClient(inboundSvc *InboundService, data *model
 			if client.NaiveProxyPassword == "" {
 				return false, common.NewError("naiveproxy client requires a password")
 			}
+		case "tproxy":
+			if client.TproxySecret == "" {
+				return false, common.NewError("tproxy client requires a secret")
+			}
 		default:
 			if client.ID == "" {
 				return false, common.NewError("empty client ID")
@@ -663,6 +667,8 @@ func (s *ClientService) UpdateInboundClient(inboundSvc *InboundService, data *mo
 	case "mtproto":
 		newClientId = clients[0].Email
 	case "naiveproxy":
+		newClientId = clients[0].Email
+	case "tproxy":
 		newClientId = clients[0].Email
 	default:
 		newClientId = clients[0].ID

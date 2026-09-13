@@ -313,6 +313,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "subId": "",
     "tgId": 0,
     "totalGB": 0,
+    "tproxySecret": "",
     "trafficReset": "never",
     "trafficResetDay": 1,
     "updated_at": 0
@@ -353,6 +354,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "subId": "",
     "tgId": 0,
     "totalGB": 0,
+    "tproxySecret": "",
     "trafficReset": "",
     "trafficResetDay": 0,
     "updatedAt": 0,

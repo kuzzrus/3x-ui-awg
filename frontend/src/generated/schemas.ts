@@ -1281,6 +1281,10 @@ export const SCHEMAS: Record<string, unknown> = {
         "format": "int64",
         "type": "integer"
       },
+      "tproxySecret": {
+        "description": "TproxySecret is this client's raw MTProto secret: it derives the\ntproxy-server bridge capability and is also MTProxy's own -S value.",
+        "type": "string"
+      },
       "trafficReset": {
         "description": "Per-client traffic reset cycle, independent of the inbound's own (#5497).",
         "enum": [
@@ -1434,6 +1438,9 @@ export const SCHEMAS: Record<string, unknown> = {
         "format": "int64",
         "type": "integer"
       },
+      "tproxySecret": {
+        "type": "string"
+      },
       "trafficReset": {
         "type": "string"
       },
@@ -1478,6 +1485,7 @@ export const SCHEMAS: Record<string, unknown> = {
       "subId",
       "tgId",
       "totalGB",
+      "tproxySecret",
       "trafficReset",
       "trafficResetDay",
       "updatedAt",
@@ -2205,7 +2213,8 @@ export const SCHEMAS: Record<string, unknown> = {
           "tun",
           "mtproto",
           "amneziawg",
-          "naiveproxy"
+          "naiveproxy",
+          "tproxy"
         ],
         "example": "vless",
         "type": "string"

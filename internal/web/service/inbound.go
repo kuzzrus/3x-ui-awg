@@ -1058,6 +1058,10 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 			if client.NaiveProxyPassword == "" {
 				return inbound, false, common.NewError("naiveproxy client requires a password")
 			}
+		case "tproxy":
+			if client.TproxySecret == "" {
+				return inbound, false, common.NewError("tproxy client requires a secret")
+			}
 		default:
 			if client.ID == "" {
 				return inbound, false, common.NewError("empty client ID")

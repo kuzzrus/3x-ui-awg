@@ -1259,6 +1259,9 @@ func (s *ClientService) BulkCreate(inboundSvc *InboundService, payloads []Client
 			if prep[idx].client.NaiveProxyPassword == "" {
 				prep[idx].client.NaiveProxyPassword = rec.NaiveProxyPassword
 			}
+			if prep[idx].client.TproxySecret == "" {
+				prep[idx].client.TproxySecret = rec.TproxySecret
+			}
 		}
 		if owner, ok := existingSubOwner[prep[idx].client.SubID]; ok && owner != le {
 			failed[idx] = true

@@ -34,6 +34,7 @@ const (
 	MTProto     Protocol = "mtproto"
 	AmneziaWG   Protocol = "amneziawg"
 	NaiveProxy  Protocol = "naiveproxy"
+	Tproxy      Protocol = "tproxy"
 )
 
 // User represents a user account in the 3x-ui panel.
@@ -63,7 +64,7 @@ type Inbound struct {
 	// Xray configuration fields
 	Listen            string   `json:"listen" form:"listen"`
 	Port              int      `json:"port" form:"port" validate:"gte=0,lte=65535" example:"443"`
-	Protocol          Protocol `json:"protocol" form:"protocol" validate:"required,oneof=vmess vless trojan shadowsocks wireguard hysteria http mixed tunnel tun mtproto amneziawg naiveproxy" example:"vless"`
+	Protocol          Protocol `json:"protocol" form:"protocol" validate:"required,oneof=vmess vless trojan shadowsocks wireguard hysteria http mixed tunnel tun mtproto amneziawg naiveproxy tproxy" example:"vless"`
 	Settings          string   `json:"settings" form:"settings"`
 	StreamSettings    string   `json:"streamSettings" form:"streamSettings"`
 	Tag               string   `json:"tag" form:"tag" gorm:"unique" example:"in-443-tcp"`
@@ -898,18 +899,21 @@ type Client struct {
 	// NaiveProxyPassword is the HTTP Basic Auth password Caddy's forward_proxy
 	// checks; the username is this client's Email, not a separate field.
 	NaiveProxyPassword string `json:"naiveProxyPassword,omitempty"`
-	Email              string `json:"email"`                        // Client email identifier
-	LimitIP            int    `json:"limitIp"`                      // IP limit for this client
-	TotalGB            int64  `json:"totalGB" form:"totalGB"`       // Total traffic limit in GB
-	ExpiryTime         int64  `json:"expiryTime" form:"expiryTime"` // Expiration timestamp
-	Enable             bool   `json:"enable" form:"enable"`         // Whether the client is enabled
-	TgID               int64  `json:"tgId" form:"tgId"`             // Telegram user ID for notifications
-	SubID              string `json:"subId" form:"subId"`           // Subscription identifier
-	Group              string `json:"group,omitempty" form:"group"` // Logical grouping label
-	Comment            string `json:"comment" form:"comment"`       // Client comment
-	Reset              int    `json:"reset" form:"reset"`           // Reset period in days
-	ResetDay           int    `json:"resetDay" form:"resetDay"`     // Calendar renewal day 1-31, 0 = interval mode
-	ResetMax           int    `json:"resetMax" form:"resetMax"`     // Max auto-renew count, 0 = unlimited
+	// TproxySecret is this client's raw MTProto secret: it derives the
+	// tproxy-server bridge capability and is also MTProxy's own -S value.
+	TproxySecret string `json:"tproxySecret,omitempty"`
+	Email        string `json:"email"`                        // Client email identifier
+	LimitIP      int    `json:"limitIp"`                      // IP limit for this client
+	TotalGB      int64  `json:"totalGB" form:"totalGB"`       // Total traffic limit in GB
+	ExpiryTime   int64  `json:"expiryTime" form:"expiryTime"` // Expiration timestamp
+	Enable       bool   `json:"enable" form:"enable"`         // Whether the client is enabled
+	TgID         int64  `json:"tgId" form:"tgId"`             // Telegram user ID for notifications
+	SubID        string `json:"subId" form:"subId"`           // Subscription identifier
+	Group        string `json:"group,omitempty" form:"group"` // Logical grouping label
+	Comment      string `json:"comment" form:"comment"`       // Client comment
+	Reset        int    `json:"reset" form:"reset"`           // Reset period in days
+	ResetDay     int    `json:"resetDay" form:"resetDay"`     // Calendar renewal day 1-31, 0 = interval mode
+	ResetMax     int    `json:"resetMax" form:"resetMax"`     // Max auto-renew count, 0 = unlimited
 	// Per-client traffic reset cycle, independent of the inbound's own (#5497).
 	TrafficReset    string `json:"trafficReset,omitempty" form:"trafficReset" validate:"omitempty,oneof=never hourly daily weekly monthly"`
 	TrafficResetDay int    `json:"trafficResetDay,omitempty" form:"trafficResetDay" validate:"omitempty,gte=1,lte=31"`
@@ -948,6 +952,7 @@ type ClientRecord struct {
 	Secret             string `json:"secret" gorm:"column:secret"`
 	AdTag              string `json:"adTag" gorm:"column:ad_tag;default:''"`
 	NaiveProxyPassword string `json:"naiveProxyPassword" gorm:"column:naive_proxy_password;default:''"`
+	TproxySecret       string `json:"tproxySecret" gorm:"column:tproxy_secret;default:''"`
 	LimitIP            int    `json:"limitIp" gorm:"column:limit_ip"`
 	LimitHwid          int    `json:"limitHwid" gorm:"column:limit_hwid;default:0"`
 	TotalGB            int64  `json:"totalGB" gorm:"column:total_gb"`
@@ -1164,6 +1169,7 @@ func (c *Client) ToRecord() *ClientRecord {
 		AdTag:          c.AdTag,
 
 		NaiveProxyPassword: c.NaiveProxyPassword,
+		TproxySecret:       c.TproxySecret,
 	}
 	if c.Reverse != nil {
 		if b, err := json.Marshal(c.Reverse); err == nil {
@@ -1224,6 +1230,7 @@ func (r *ClientRecord) ToClient() *Client {
 		AdTag:          r.AdTag,
 
 		NaiveProxyPassword: r.NaiveProxyPassword,
+		TproxySecret:       r.TproxySecret,
 	}
 	if r.Reverse != "" {
 		var rev ClientReverse
