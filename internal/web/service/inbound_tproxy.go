@@ -51,7 +51,7 @@ func (s *InboundService) DesiredTproxyInstances() ([]tproxy.Instance, error) {
 		off := disabled[ib.Id]
 		secrets := make([]tproxy.ClientSecret, 0, len(clients))
 		for _, c := range clients {
-			if !c.Enable || c.TproxySecret == "" {
+			if !c.Enable || c.TproxySecret == "" || c.Email == "" {
 				continue
 			}
 			if _, skip := off[c.Email]; skip {

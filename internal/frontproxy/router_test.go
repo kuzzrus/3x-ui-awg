@@ -107,9 +107,8 @@ func testConfigWithTproxy() Config {
 	return c
 }
 
-// A request carrying a known capability reaches the relay regardless of
-// path -- tproxy-server itself, not this router, is the authority on which
-// paths its own protocol accepts.
+// A known capability reaches the relay regardless of path -- tproxy-server
+// itself is the authority on which paths its own protocol accepts.
 func TestResolveTargetRoutesValidBridgeCapability(t *testing.T) {
 	c := testConfigWithTproxy()
 	for _, path := range []string{"/", "/anything"} {
@@ -146,9 +145,8 @@ func TestResolveTargetUsesFirstBridgeValueOnDuplicateParams(t *testing.T) {
 	}
 }
 
-// Known panel/sub paths still win over a coincidentally-present bridge query
-// -- resolveTarget checks them first, so a client link is never mistaken for
-// a tproxy bridge request just because it happens to carry ?bridge=.
+// Known panel/sub paths win over a coincidentally-present bridge query --
+// checked first, so a client link is never mistaken for a bridge request.
 func TestResolveTargetPanelSubTakePriorityOverBridge(t *testing.T) {
 	c := testConfigWithTproxy()
 	if got := c.resolveTarget("/nAMUGqBqnQ6crf3zvE/panel", "bridge=cap-bob"); got != RoutePanel {

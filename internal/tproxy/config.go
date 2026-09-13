@@ -44,11 +44,11 @@ type serverConfig struct {
 	ProfilesFile   string `json:"profiles_file"`
 }
 
-// renderServerConfig builds tproxy-server's config.json for the one
-// panel-wide relay process. hostname is frontproxy's own public domain.
+// renderServerConfig builds config.json; hostname is normalized identically
+// to DeriveCapability's own hashing input, so the two can never drift apart.
 func renderServerConfig(hostname, listenAddr, adminAddr string) ([]byte, error) {
 	cfg := serverConfig{
-		PublicHostname: hostname,
+		PublicHostname: strings.ToLower(strings.TrimSpace(hostname)),
 		BasePath:       "",
 		Listen:         listenAddr,
 		AdminListen:    adminAddr,

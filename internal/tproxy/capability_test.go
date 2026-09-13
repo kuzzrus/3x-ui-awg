@@ -1,9 +1,12 @@
 package tproxy
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
-// TestDeriveCapabilityPublishedVectors pins the implementation against
-// PROTOCOL.md's own published test vectors, not just internal self-consistency.
+// Vectors verified against telegramdesktop/tproxy-server's own PROTOCOL.md
+// and DeriveCapability (commit f7a6acc4d536a787d442fd7df3ba4ebfd728f406).
 func TestDeriveCapabilityPublishedVectors(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -26,7 +29,7 @@ func TestDeriveCapabilityPublishedVectors(t *testing.T) {
 	}
 }
 
-func TestDeriveCapabilityDiffersByHostnameCase(t *testing.T) {
+func TestDeriveCapabilityNormalizesHostnameCase(t *testing.T) {
 	lower, err := DeriveCapability("proxy.example.com", "000102030405060708090a0b0c0d0e0f")
 	if err != nil {
 		t.Fatalf("DeriveCapability: %v", err)
@@ -41,7 +44,20 @@ func TestDeriveCapabilityDiffersByHostnameCase(t *testing.T) {
 }
 
 func TestDeriveCapabilityRejectsMalformedSecret(t *testing.T) {
-	if _, err := DeriveCapability("proxy.example.com", "not-a-secret"); err == nil {
-		t.Fatal("DeriveCapability accepted a malformed secret")
+	cases := []struct {
+		name   string
+		secret string
+		want   string
+	}{
+		{"wrong length", "not-a-secret", "client secret must be 32 hex digits, optionally dd-prefixed (got 12 characters)"},
+		{"right length, not hex", strings.Repeat("z", 32), "client secret must be 32 hex digits, optionally dd-prefixed (got 32 characters)"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := DeriveCapability("proxy.example.com", c.secret)
+			if err == nil || err.Error() != c.want {
+				t.Errorf("DeriveCapability(%q) error = %v, want %q", c.secret, err, c.want)
+			}
+		})
 	}
 }

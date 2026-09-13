@@ -13,12 +13,14 @@ import (
 const bridgeContext = "tdesktop-web-proxy-bridge-v1\n"
 
 // DeriveCapability computes the bridge capability a request's ?bridge= query
-// must match, per PROTOCOL.md's own published formula and test vectors.
+// must match; see capability_test.go for the formula's exact source.
 func DeriveCapability(hostname, secret string) (string, error) {
 	normalized, err := normalizeSecret(secret)
 	if err != nil {
 		return "", err
 	}
+	// Keeps a dd-prefixed secret's leading 0xdd byte in the key -- upstream's
+	// own DeriveCapability doesn't strip it either (capability_test.go).
 	key, err := hex.DecodeString(normalized)
 	if err != nil {
 		return "", err

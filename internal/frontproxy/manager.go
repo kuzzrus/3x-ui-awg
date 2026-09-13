@@ -235,16 +235,17 @@ func newLoopbackProxy(port int, useTLS bool) http.Handler {
 	}
 }
 
-// newTproxyRelayProxy forwards to the shared relay -- always plain HTTP, a
-// loopback backend behind this listener's own TLS termination.
+// newTproxyRelayProxy forwards to the shared relay over plain HTTP. Pooled,
+// unlike the panel/sub hop: this one carries per-client traffic.
 func newTproxyRelayProxy(target string) http.Handler {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.DisableKeepAlives = true
 	targetURL := &url.URL{Scheme: "http", Host: target}
 	return &httputil.ReverseProxy{
 		Transport: transport,
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(targetURL)
+			// tproxy-server itself 404s any Host but its own public_hostname.
+			pr.Out.Host = pr.In.Host
 			pr.SetXForwarded()
 		},
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {

@@ -175,6 +175,48 @@ func TestHandlerSurvivesDeadUpstream(t *testing.T) {
 	}
 }
 
+// A valid bridge must reach the relay with the client's original Host intact
+// -- tproxy-server itself 404s any Host but its own public_hostname.
+func TestHandlerRoutesValidBridgeToTproxyRelay(t *testing.T) {
+	tproxyPort := upstreamOn(t, "TPROXY")
+	h := newHandler(Config{
+		PanelBasePath:      "/p/",
+		PanelPort:          1,
+		TproxyTarget:       "127.0.0.1:" + strconv.Itoa(tproxyPort),
+		TproxyCapabilities: []string{"real-capability"},
+	}, DecoyConfig{Mode: DecoyTemplate, Template: "parked"})
+
+	req := httptest.NewRequest(http.MethodGet, "/?bridge=real-capability", nil)
+	req.Host = "proxy.example.com"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	body := rec.Body.String()
+	if !strings.Contains(body, "TPROXY") {
+		t.Fatalf("did not reach the tproxy relay, got %q", body)
+	}
+	if !strings.Contains(body, "host=proxy.example.com") {
+		t.Errorf("relay saw the wrong Host, got %q", body)
+	}
+}
+
+// A wrong or missing bridge value must fall through to the decoy, not the
+// relay -- the entire point of checking it last.
+func TestHandlerFallsThroughToDecoyOnInvalidBridge(t *testing.T) {
+	tproxyPort := upstreamOn(t, "TPROXY")
+	h := newHandler(Config{
+		TproxyTarget:       "127.0.0.1:" + strconv.Itoa(tproxyPort),
+		TproxyCapabilities: []string{"real-capability"},
+	}, DecoyConfig{Mode: DecoyTemplate, Template: "parked"})
+
+	for _, path := range []string{"/?bridge=wrong", "/"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if strings.Contains(rec.Body.String(), "TPROXY") {
+			t.Errorf("%s reached the tproxy relay, want the decoy", path)
+		}
+	}
+}
+
 // Starting with a root base path must be refused: the door could not tell
 // the panel apart from the decoy, so every request would hit the panel.
 func TestStartRejectsRootBasePath(t *testing.T) {
