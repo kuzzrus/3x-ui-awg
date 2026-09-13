@@ -456,8 +456,8 @@ func (s *ClientService) AddInboundClient(inboundSvc *InboundService, data *model
 				return false, common.NewError("naiveproxy client requires a password")
 			}
 		case "tproxy":
-			if client.TproxySecret == "" {
-				return false, common.NewError("tproxy client requires a secret")
+			if !model.ValidTproxySecret(client.TproxySecret) {
+				return false, common.NewError("tproxy client requires a 32-hex-digit secret, optionally dd-prefixed")
 			}
 		default:
 			if client.ID == "" {

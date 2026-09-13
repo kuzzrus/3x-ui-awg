@@ -652,6 +652,22 @@ func ValidMtprotoAdTag(tag string) bool {
 	return err == nil
 }
 
+// ValidTproxySecret reports whether a tproxy client secret is well-formed: 32
+// hex characters, or 34 with a "dd" prefix -- internal/tproxy's own rule.
+func ValidTproxySecret(secret string) bool {
+	trimmed := strings.ToLower(strings.TrimSpace(secret))
+	if len(trimmed) == 34 {
+		if !strings.HasPrefix(trimmed, "dd") {
+			return false
+		}
+		trimmed = trimmed[2:]
+	} else if len(trimmed) != 32 {
+		return false
+	}
+	_, err := hex.DecodeString(trimmed)
+	return err == nil
+}
+
 // StripMtprotoInboundSecret removes the vestigial inbound-level `secret` from an
 // mtproto inbound's settings JSON. MTProto is multi-client: every secret lives on
 // a client, and mtg's [secrets] config plus every share link read only the

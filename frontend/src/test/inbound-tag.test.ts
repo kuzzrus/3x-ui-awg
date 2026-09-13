@@ -61,6 +61,7 @@ describe('composeInboundTag transport suffix parity', () => {
       base({ protocol: 'tunnel', settings: { allowedNetwork: 'udp' } }),
       'in-443-udp',
     ],
+    ['tproxy claims no transport', base({ protocol: 'tproxy' }), 'in-443-any'],
   ];
 
   it.each(cases)('%s', (_name, input, want) => {

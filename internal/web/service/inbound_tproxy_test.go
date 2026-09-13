@@ -14,15 +14,9 @@ func TestFillProtocolDefaultsTproxy(t *testing.T) {
 	if err := cs.fillProtocolDefaults(c, ib); err != nil {
 		t.Fatal(err)
 	}
-	// Must decode as the plain 32-hex-digit form MTProxy's own -S flag (and
-	// this package's normalizeSecret) accept -- not just any 32 characters.
-	if len(c.TproxySecret) != 32 {
-		t.Fatalf("tproxy secret = %q, want 32 characters", c.TproxySecret)
-	}
-	for _, r := range c.TproxySecret {
-		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
-			t.Fatalf("tproxy secret = %q, want lowercase hex digits only", c.TproxySecret)
-		}
+	// Must satisfy internal/tproxy's own normalizeSecret, not just be 32 characters.
+	if !model.ValidTproxySecret(c.TproxySecret) || len(c.TproxySecret) != 32 {
+		t.Fatalf("tproxy secret = %q, want a well-formed 32-hex-digit secret", c.TproxySecret)
 	}
 
 	// An existing secret is not overwritten.

@@ -87,6 +87,8 @@ func TestInboundTransports(t *testing.T) {
 		{"mixed udp on", model.Mixed, `{"network":"tcp"}`, `{"udp":true}`, transportTCP | transportUDP},
 		{"mixed udp off", model.Mixed, `{"network":"tcp"}`, `{"udp":false}`, transportTCP},
 		{"mixed udp missing", model.Mixed, `{"network":"tcp"}`, `{}`, transportTCP},
+
+		{"tproxy claims no transport", model.Tproxy, ``, ``, transportBits(0)},
 	}
 
 	for _, c := range cases {
