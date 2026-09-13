@@ -75,6 +75,18 @@ func TestUpdate_PersistsFields_NoInbound(t *testing.T) {
 			readBack: func(rec *model.ClientRecord) any { return rec.UUID },
 			want:     "22222222-2222-2222-2222-222222222222",
 		},
+		{
+			name:     "naiveProxyPassword",
+			mutate:   func(c *model.Client) { c.NaiveProxyPassword = "a1b2c3d4e5f6" },
+			readBack: func(rec *model.ClientRecord) any { return rec.NaiveProxyPassword },
+			want:     "a1b2c3d4e5f6",
+		},
+		{
+			name:     "tproxySecret",
+			mutate:   func(c *model.Client) { c.TproxySecret = "00112233445566778899aabbccddeeff" },
+			readBack: func(rec *model.ClientRecord) any { return rec.TproxySecret },
+			want:     "00112233445566778899aabbccddeeff",
+		},
 	}
 
 	for _, tc := range cases {

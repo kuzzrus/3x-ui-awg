@@ -38,6 +38,9 @@ func applyClientRecordMerge(row *model.ClientRecord, incoming *model.ClientRecor
 	if incoming.NaiveProxyPassword != "" {
 		row.NaiveProxyPassword = incoming.NaiveProxyPassword
 	}
+	if incoming.TproxySecret != "" {
+		row.TproxySecret = incoming.TproxySecret
+	}
 	row.Flow = incoming.Flow
 	if incoming.Security != "" {
 		row.Security = incoming.Security

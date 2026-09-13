@@ -199,6 +199,9 @@ func (s *ClientService) Create(inboundSvc *InboundService, payload *ClientCreate
 		if client.NaiveProxyPassword == "" {
 			client.NaiveProxyPassword = existing.NaiveProxyPassword
 		}
+		if client.TproxySecret == "" {
+			client.TproxySecret = existing.TproxySecret
+		}
 	}
 
 	if client.SubID != "" {
@@ -281,6 +284,12 @@ func (s *ClientService) fillProtocolDefaults(c *model.Client, ib *model.Inbound)
 	case model.NaiveProxy:
 		if c.NaiveProxyPassword == "" {
 			c.NaiveProxyPassword = strings.ReplaceAll(uuid.NewString(), "-", "")
+		}
+	case model.Tproxy:
+		// A UUIDv4 stripped of dashes is 32 lowercase hex digits -- exactly
+		// the plain (non dd-prefixed) secret form MTProxy's own -S accepts.
+		if c.TproxySecret == "" {
+			c.TproxySecret = strings.ReplaceAll(uuid.NewString(), "-", "")
 		}
 	}
 	return nil
@@ -500,6 +509,9 @@ func (s *ClientService) Update(inboundSvc *InboundService, id int, updated model
 	if updated.NaiveProxyPassword == "" {
 		updated.NaiveProxyPassword = existing.NaiveProxyPassword
 	}
+	if updated.TproxySecret == "" {
+		updated.TproxySecret = existing.TproxySecret
+	}
 	// KeepAlive is a pointer for the same reason: ToRecord() collapses nil to
 	// 0, so an omitted field must be backfilled here, not left to convert.
 	if updated.KeepAlive == nil {
@@ -603,6 +615,7 @@ func (s *ClientService) Update(inboundSvc *InboundService, id int, updated model
 				"auth":                 merged.Auth,
 				"secret":               merged.Secret,
 				"naive_proxy_password": merged.NaiveProxyPassword,
+				"tproxy_secret":        merged.TproxySecret,
 				"flow":                 merged.Flow,
 				"security":             merged.Security,
 				"wg_private_key":       merged.PrivateKey,

@@ -175,6 +175,9 @@ func initModels() error {
 	if err := migrateNaiveProxyPasswordColumn(); err != nil {
 		return err
 	}
+	if err := migrateTproxySecretColumn(); err != nil {
+		return err
+	}
 	if err := migrateClientEmailLowerIndex(); err != nil {
 		return err
 	}
@@ -367,6 +370,15 @@ func migrateNaiveProxyPasswordColumn() error {
 		return nil
 	}
 	return db.Exec("UPDATE clients SET naive_proxy_password = '' WHERE naive_proxy_password IS NULL").Error
+}
+
+// migrateTproxySecretColumn is migrateNaiveProxyPasswordColumn's exact shape
+// for the sibling tproxy_secret column.
+func migrateTproxySecretColumn() error {
+	if !db.Migrator().HasColumn(&model.ClientRecord{}, "tproxy_secret") {
+		return nil
+	}
+	return db.Exec("UPDATE clients SET tproxy_secret = '' WHERE tproxy_secret IS NULL").Error
 }
 
 // The client identity checks match emails case-insensitively; without an

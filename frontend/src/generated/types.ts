@@ -309,6 +309,7 @@ export interface Client {
   subId: string;
   tgId: number;
   totalGB: number;
+  tproxySecret?: string;
   trafficReset?: string;
   trafficResetDay?: number;
   updated_at?: number;
@@ -351,6 +352,7 @@ export interface ClientRecord {
   subId: string;
   tgId: number;
   totalGB: number;
+  tproxySecret: string;
   trafficReset: string;
   trafficResetDay: number;
   updatedAt: number;
