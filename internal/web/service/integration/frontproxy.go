@@ -8,6 +8,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
 	"github.com/mhsanaei/3x-ui/v3/internal/frontproxy"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
+	"github.com/mhsanaei/3x-ui/v3/internal/tproxy"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/service"
 )
 
@@ -15,6 +16,7 @@ import (
 // and remembers whether it should be running across restarts.
 type FrontProxyService struct {
 	service.SettingService
+	inboundService service.InboundService
 }
 
 // DecoyDir is where an uploaded decoy site lives, following the same
@@ -121,17 +123,20 @@ func (s *FrontProxyService) Options() (frontproxy.Options, error) {
 	if err != nil {
 		return frontproxy.Options{}, err
 	}
+	tproxyCapabilities, tproxyTarget := s.tproxyRouting(tlsSettings.Domain)
 
 	return frontproxy.Options{
 		Listen: listen,
 		Port:   port,
 		Routing: frontproxy.Config{
-			PanelBasePath: basePath,
-			PanelPort:     panelPort,
-			SubPath:       subPath,
-			SubPort:       subPort,
-			SubEnabled:    subEnable,
-			UpstreamTLS:   s.upstreamServesTLS(),
+			PanelBasePath:      basePath,
+			PanelPort:          panelPort,
+			SubPath:            subPath,
+			SubPort:            subPort,
+			SubEnabled:         subEnable,
+			UpstreamTLS:        s.upstreamServesTLS(),
+			TproxyCapabilities: tproxyCapabilities,
+			TproxyTarget:       tproxyTarget,
 		},
 		Decoy: decoy,
 		TLS:   tlsSettings,
@@ -221,6 +226,34 @@ func (s *FrontProxyService) tlsSettings() (frontproxy.TLSSettings, error) {
 		KeyFile:    keyFile,
 		StorageDir: certStorageDir(),
 	}, nil
+}
+
+// tproxyRouting is best-effort: a DB error or a not-yet-started tproxy-server
+// must not stop frontproxy itself, which REALITY's fallback also depends on.
+func (s *FrontProxyService) tproxyRouting(domain string) (capabilities []string, target string) {
+	instances, err := s.inboundService.DesiredTproxyInstances()
+	if err != nil {
+		logger.Warningf("frontproxy: cannot read desired tproxy clients: %v", err)
+		return nil, ""
+	}
+	for _, inst := range instances {
+		for _, c := range inst.Clients {
+			capability, cErr := tproxy.DeriveCapability(domain, c.Secret)
+			if cErr != nil {
+				logger.Warningf("frontproxy: tproxy client %q: %v", c.Name, cErr)
+				continue
+			}
+			capabilities = append(capabilities, capability)
+		}
+	}
+	if len(capabilities) == 0 {
+		return nil, ""
+	}
+	target, ok := tproxy.GetManager().ServerAddr()
+	if !ok {
+		return capabilities, ""
+	}
+	return capabilities, target
 }
 
 // Start brings the reverse proxy up and persists the choice so panel boot

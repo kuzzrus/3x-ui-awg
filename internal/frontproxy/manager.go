@@ -175,17 +175,20 @@ func (m *Manager) IsRunning() bool {
 }
 
 // newHandler dispatches each request to the panel, the subscription server,
-// or the decoy, per the routing config.
+// the tproxy relay, or the decoy, per the routing config.
 func newHandler(routing Config, decoy DecoyConfig) http.Handler {
 	panelProxy := newLoopbackProxy(routing.PanelPort, routing.UpstreamTLS)
 	subProxy := newLoopbackProxy(routing.SubPort, routing.UpstreamTLS)
+	tproxyProxy := newTproxyRelayProxy(routing.TproxyTarget)
 	decoyHandler := newDecoyHandler(decoy)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch routing.resolveTarget(r.URL.Path) {
+		switch routing.resolveTarget(r.URL.Path, r.URL.RawQuery) {
 		case RoutePanel:
 			panelProxy.ServeHTTP(w, r)
 		case RouteSub:
 			subProxy.ServeHTTP(w, r)
+		case RouteTproxy:
+			tproxyProxy.ServeHTTP(w, r)
 		default:
 			decoyHandler.ServeHTTP(w, r)
 		}
@@ -227,6 +230,26 @@ func newLoopbackProxy(port int, useTLS bool) http.Handler {
 		},
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
 			logger.Warningf("frontproxy: upstream 127.0.0.1:%d unreachable: %v", port, err)
+			w.WriteHeader(http.StatusBadGateway)
+		},
+	}
+}
+
+// newTproxyRelayProxy forwards to the shared relay over plain HTTP. Pooled,
+// unlike the panel/sub hop: this one carries per-client traffic.
+func newTproxyRelayProxy(target string) http.Handler {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	targetURL := &url.URL{Scheme: "http", Host: target}
+	return &httputil.ReverseProxy{
+		Transport: transport,
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(targetURL)
+			// tproxy-server itself 404s any Host but its own public_hostname.
+			pr.Out.Host = pr.In.Host
+			pr.SetXForwarded()
+		},
+		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
+			logger.Warningf("frontproxy: tproxy relay %s unreachable: %v", target, err)
 			w.WriteHeader(http.StatusBadGateway)
 		},
 	}

@@ -8,7 +8,11 @@
 // that nginx would.
 package frontproxy
 
-import "strings"
+import (
+	"crypto/hmac"
+	"net/url"
+	"strings"
+)
 
 // Route names where a reverse-proxy request should be sent.
 type Route int
@@ -20,6 +24,9 @@ const (
 	RoutePanel
 	// RouteSub is the subscription server, reached under its own path.
 	RouteSub
+	// RouteTproxy is the Telegram web-proxy relay, selected by an
+	// authenticated ?bridge= capability rather than a path prefix.
+	RouteTproxy
 )
 
 // Config is the routing half of the reverse proxy, resolved from settings.
@@ -33,18 +40,46 @@ type Config struct {
 	// UpstreamTLS is set when the panel and subscription listeners serve TLS
 	// themselves, which they do whenever certificate files are configured.
 	UpstreamTLS bool
+	// TproxyCapabilities are every active tproxy client's precomputed
+	// DeriveCapability value; empty disables the route entirely.
+	TproxyCapabilities []string
+	// TproxyTarget is the shared tproxy-server relay's loopback address.
+	TproxyTarget string
 }
 
-// resolveTarget picks the destination for one request path. Subscription is
-// checked first so a sub path nested under the panel's base still reaches it.
-func (c Config) resolveTarget(path string) Route {
+// resolveTarget picks the destination for one request path and query. Sub is
+// checked before panel; tproxy last, right before the decoy fallback.
+func (c Config) resolveTarget(path, rawQuery string) Route {
 	if c.SubEnabled && matchesPrefix(path, c.SubPath) {
 		return RouteSub
 	}
 	if matchesPrefix(path, c.PanelBasePath) {
 		return RoutePanel
 	}
+	if c.TproxyTarget != "" && c.matchesTproxyCapability(rawQuery) {
+		return RouteTproxy
+	}
 	return RouteDecoy
+}
+
+// matchesTproxyCapability checks every candidate, not just up to the first
+// match, so response time cannot reveal how close a wrong guess came.
+func (c Config) matchesTproxyCapability(rawQuery string) bool {
+	values, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return false
+	}
+	bridge := values.Get("bridge")
+	if bridge == "" {
+		return false
+	}
+	found := false
+	for _, capability := range c.TproxyCapabilities {
+		if hmac.Equal([]byte(bridge), []byte(capability)) {
+			found = true
+		}
+	}
+	return found
 }
 
 // matchesPrefix reports whether path is at or under base. A root or empty
