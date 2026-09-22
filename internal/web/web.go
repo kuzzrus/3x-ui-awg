@@ -25,6 +25,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/mtproto"
 	"github.com/mhsanaei/3x-ui/v3/internal/psiphon"
 	"github.com/mhsanaei/3x-ui/v3/internal/tor"
+	"github.com/mhsanaei/3x-ui/v3/internal/tproxy"
 	"github.com/mhsanaei/3x-ui/v3/internal/tuic"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/common"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/sys"
@@ -304,6 +305,7 @@ const (
 	cadenceMtproto       = "@every 10s"
 	cadenceAmneziaWG     = "@every 10s"
 	cadenceTuic          = "@every 10s"
+	cadenceTproxy        = "@every 10s"
 	cadenceClientIPScan  = "@every 10s"
 	cadenceNodeHeartbeat = "@every 5s"
 	cadenceNodeTraffic   = "@every 5s"
@@ -353,6 +355,11 @@ func (s *Server) startTask(restartXray bool, loc *time.Location) {
 	tuicJob := job.NewTuicJob()
 	_, _ = s.cron.AddJob(cadenceTuic, tuicJob)
 	go tuicJob.Run()
+
+	// Reconcile the tproxy relay/engines; no traffic step yet (stats port unscraped)
+	tproxyJob := job.NewTproxyJob()
+	_, _ = s.cron.AddJob(cadenceTproxy, tproxyJob)
+	go tproxyJob.Run()
 
 	// check client ips from log file every 10 sec
 	_, _ = s.cron.AddJob(cadenceClientIPScan, job.NewCheckClientIpJob())
@@ -828,6 +835,7 @@ func (s *Server) stop(stopXray bool, stopTgBot bool) error {
 		psiphon.GetManager().StopAll()
 		adguard.GetManager().StopAll()
 		tuic.GetManager().StopAll()
+		tproxy.GetManager().StopAll()
 		amneziawgnet.GetOutboundManager().StopAll()
 	}
 	if s.cron != nil {
