@@ -128,7 +128,7 @@ func (m *Manager) Ensure(hostname string, inst Instance) error {
 		m.mu.Unlock()
 		return err
 	}
-	serverStarted, err := m.recomputeSharedServerLocked(hostname)
+	serverStarted, _, err := m.recomputeSharedServerLocked(hostname)
 	m.mu.Unlock()
 	if err != nil {
 		return err
@@ -236,32 +236,36 @@ func (m *Manager) removeMTProxyLocked(id int) {
 }
 
 // recomputeSharedServerLocked restarts the shared relay when the aggregate
-// profile set changed (or stops it once empty); nil return means no change.
-func (m *Manager) recomputeSharedServerLocked(hostname string) (*childProcess, error) {
+// profile set changed (or stops it once empty). changed reports whether the
+// relay's running/stopped state actually moved, so a caller ticking on a
+// timer (unlike an admin-triggered CRUD call) can skip reacting when nothing
+// did.
+func (m *Manager) recomputeSharedServerLocked(hostname string) (*childProcess, bool, error) {
 	specs := m.profileSpecsLocked()
 
 	if len(specs) == 0 {
+		wasRunning := m.server != nil
 		if m.server != nil {
 			_ = m.server.proc.Stop()
 			m.server = nil
 			logger.Info("tproxy: stopped shared relay (no clients on any inbound)")
 		}
 		removeFirewall(context.Background())
-		return nil, nil
+		return nil, wasRunning, nil
 	}
 
 	profilesJSON, err := renderProfiles(specs)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	fp := hostname + "\x00" + string(profilesJSON)
 
 	if m.server != nil && m.server.proc.IsRunning() && m.server.fingerprint == fp {
-		return nil, nil
+		return nil, false, nil
 	}
 
 	if err := ensureFirewall(context.Background(), m.mtproxyPortsSetLocked()); err != nil {
-		return nil, fmt.Errorf("tproxy: firewall: %w", err)
+		return nil, false, fmt.Errorf("tproxy: firewall: %w", err)
 	}
 
 	listenAddr, adminAddr := "", ""
@@ -270,35 +274,35 @@ func (m *Manager) recomputeSharedServerLocked(hostname string) (*childProcess, e
 	} else {
 		listenAddr, err = freeLocalAddr()
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		adminAddr, err = freeLocalAddr()
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
 
 	if err := os.MkdirAll(dir(), 0o700); err != nil {
-		return nil, fmt.Errorf("tproxy: cannot create %s: %w", dir(), err)
+		return nil, false, fmt.Errorf("tproxy: cannot create %s: %w", dir(), err)
 	}
 	if err := os.MkdirAll(publicDirPath(), 0o755); err != nil {
-		return nil, fmt.Errorf("tproxy: cannot create %s: %w", publicDirPath(), err)
+		return nil, false, fmt.Errorf("tproxy: cannot create %s: %w", publicDirPath(), err)
 	}
 	if err := ensurePublicPlaceholder(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := ensureTokenKey(tokenKeyPath()); err != nil {
-		return nil, fmt.Errorf("tproxy: token key: %w", err)
+		return nil, false, fmt.Errorf("tproxy: token key: %w", err)
 	}
 	if err := os.WriteFile(profilesPath(), profilesJSON, 0o600); err != nil {
-		return nil, fmt.Errorf("tproxy: cannot write %s: %w", profilesPath(), err)
+		return nil, false, fmt.Errorf("tproxy: cannot write %s: %w", profilesPath(), err)
 	}
 	cfgJSON, err := renderServerConfig(hostname, listenAddr, adminAddr)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := os.WriteFile(serverConfigPath(), cfgJSON, 0o600); err != nil {
-		return nil, fmt.Errorf("tproxy: cannot write %s: %w", serverConfigPath(), err)
+		return nil, false, fmt.Errorf("tproxy: cannot write %s: %w", serverConfigPath(), err)
 	}
 
 	if m.server != nil {
@@ -306,11 +310,11 @@ func (m *Manager) recomputeSharedServerLocked(hostname string) (*childProcess, e
 	}
 	proc := newChildProcess(tproxyServerBinaryPath(), []string{"-config", serverConfigPath()}, listenAddr, "tproxy-server")
 	if err := proc.Start(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	m.server = &managedServer{proc: proc, listenAddr: listenAddr, adminAddr: adminAddr, fingerprint: fp}
 	logger.Info("tproxy: started shared relay")
-	return proc, nil
+	return proc, true, nil
 }
 
 // profileSpecsLocked builds the cross-inbound profile list from m.instances;
@@ -353,7 +357,7 @@ func (m *Manager) Remove(hostname string, id int) {
 	m.mu.Lock()
 	m.removeMTProxyLocked(id)
 	delete(m.instances, id)
-	_, err := m.recomputeSharedServerLocked(hostname)
+	_, _, err := m.recomputeSharedServerLocked(hostname)
 	m.mu.Unlock()
 	if err != nil {
 		logger.Warningf("tproxy: remove inbound %d: relay recompute failed: %v", id, err)
@@ -361,13 +365,16 @@ func (m *Manager) Remove(hostname string, id int) {
 }
 
 // Reconcile drives the running set toward desired, awaiting readiness outside
-// the lock so one slow instance cannot stall the others.
-func (m *Manager) Reconcile(hostname string, desired []Instance) {
+// the lock so one slow instance cannot stall the others. changed reports
+// whether anything actually started, stopped, or restarted -- a caller that
+// ticks on a timer rather than reacting to an admin action should gate any
+// downstream reload on it, instead of reloading on every tick regardless.
+func (m *Manager) Reconcile(hostname string, desired []Instance) (changed bool) {
 	if err := checkPlatform(runtime.GOOS, runtime.GOARCH); err != nil {
 		if len(desired) > 0 {
 			logger.Warningf("tproxy: reconcile skipped: %v", err)
 		}
-		return
+		return false
 	}
 	m.mu.Lock()
 	m.sweepOrphansLocked()
@@ -380,6 +387,7 @@ func (m *Manager) Reconcile(hostname string, desired []Instance) {
 		if _, ok := want[id]; !ok {
 			m.removeMTProxyLocked(id)
 			delete(m.instances, id)
+			changed = true
 		}
 	}
 
@@ -396,14 +404,16 @@ func (m *Manager) Reconcile(hostname string, desired []Instance) {
 		}
 		if proc != nil {
 			toAwait = append(toAwait, pending{inst.Id, proc})
+			changed = true
 		}
 	}
 
-	serverProc, err := m.recomputeSharedServerLocked(hostname)
+	serverProc, serverChanged, err := m.recomputeSharedServerLocked(hostname)
 	m.mu.Unlock()
 	if err != nil {
 		logger.Warningf("tproxy: reconcile: shared relay recompute failed: %v", err)
 	}
+	changed = changed || serverChanged
 
 	for _, p := range toAwait {
 		if err := p.proc.WaitReady(); err != nil {
@@ -415,6 +425,7 @@ func (m *Manager) Reconcile(hostname string, desired []Instance) {
 			logger.Warningf("tproxy: shared relay: %v", err)
 		}
 	}
+	return changed
 }
 
 // StopAll stops every managed process and drops the firewall table. Called on

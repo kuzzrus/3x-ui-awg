@@ -824,6 +824,14 @@ func (s *Server) StopPanelOnly() error {
 
 func (s *Server) stop(stopXray bool, stopTgBot bool) error {
 	s.cancel()
+	// Stop the scheduler before tearing down anything a job can still call
+	// into. cron's own Stop() only blocks new ticks -- awaiting the context
+	// it returns also waits out one already in flight, so a reconcile tick
+	// can't re-spawn a process right after the StopAll calls below just
+	// cleared it (SkipIfStillRunning caps this at one in-flight tick).
+	if s.cron != nil {
+		<-s.cron.Stop().Done()
+	}
 	// Bakes in domain/cert/port at Start(), so it must bounce even on a
 	// panel-only restart -- unlike the sidecars below, which must not.
 	frontproxy.GetManager().StopAll()
@@ -837,9 +845,6 @@ func (s *Server) stop(stopXray bool, stopTgBot bool) error {
 		tuic.GetManager().StopAll()
 		tproxy.GetManager().StopAll()
 		amneziawgnet.GetOutboundManager().StopAll()
-	}
-	if s.cron != nil {
-		s.cron.Stop()
 	}
 	if s.bus != nil {
 		s.bus.Stop()
