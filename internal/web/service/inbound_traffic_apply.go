@@ -102,6 +102,10 @@ func (s *InboundService) applyTrafficMutationBatch(b *trafficMutationBatch) bool
 			s.applyLocalTuic(plan.inbound.Id)
 			continue
 		}
+		if plan.inbound.Protocol == model.Tproxy {
+			s.applyLocalTproxy(plan.inbound.Id)
+			continue
+		}
 		rt, err := s.runtimeFor(&plan.inbound)
 		if err == nil {
 			switch plan.action {

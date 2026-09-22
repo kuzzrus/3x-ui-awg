@@ -1229,6 +1229,10 @@ func (s *ClientService) DelInboundClientByEmail(inboundSvc *InboundService, inbo
 				inboundSvc.applyLocalAmneziaWG(oldInbound.Id)
 			} else if oldInbound.Protocol == model.TUIC {
 				inboundSvc.applyLocalTuic(oldInbound.Id)
+			} else if oldInbound.Protocol == model.Tproxy {
+				// Same reasoning as MTProto above: the engine is started with
+				// the full secret list as -S args, so any delete re-applies it.
+				inboundSvc.applyLocalTproxy(oldInbound.Id)
 			} else if needApiDel {
 				// Local inbound: a disabled client isn't in the running Xray, so only
 				// a live one (needApiDel) needs an API removal.
