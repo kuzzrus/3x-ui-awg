@@ -130,7 +130,20 @@ func defaultAmneziaWGServer() (*amneziawg.ServerSettings, error) {
 		H3:           obf.H3,
 		H4:           obf.H4,
 		I1:           obf.I1,
-		AwgVersion:   amneziawg.AwgVersion2,
+		// A fresh server always gets the full 3.1 field set below, so it
+		// must declare itself version 3 too -- ValidateAwgVersion rejects
+		// any non-empty AWG3-only field otherwise.
+		AwgVersion: amneziawg.AwgVersion3,
+
+		HeaderProtectionKey:    obf.HeaderProtectionKey,
+		ContentPaddingAddition: obf.ContentPaddingAddition,
+		RekeyAfterTime:         obf.RekeyAfterTime,
+		RekeyTimeout:           obf.RekeyTimeout,
+		RejectAfterTime:        obf.RejectAfterTime,
+		KeepaliveTimeout:       obf.KeepaliveTimeout,
+		MaxHandshakeAttempts:   obf.MaxHandshakeAttempts,
+		RandomTrailers:         obf.RandomTrailers,
+		DisableCookies:         obf.DisableCookies,
 	}
 	if err := fillAmneziaWGServerKeys(server); err != nil {
 		return nil, err
@@ -221,6 +234,17 @@ func (s *InboundService) normalizeAmneziaWGSettings(inbound *model.Inbound, oldS
 	} else if err := resolveAmneziaWGServerKeys(parsed.Server, oldSettings); err != nil {
 		return err
 	}
+	// Canonicalize before validating: a hand-edited "110 - 140" must read the
+	// same as the generator's own "110-140", and whitespace-only must collapse
+	// to "off" rather than be stored as a value the renderer treats as set.
+	parsed.Server.HeaderProtectionKey = strings.TrimSpace(parsed.Server.HeaderProtectionKey)
+	for _, f := range []*string{
+		&parsed.Server.ContentPaddingAddition, &parsed.Server.RekeyAfterTime,
+		&parsed.Server.RekeyTimeout, &parsed.Server.RejectAfterTime,
+		&parsed.Server.KeepaliveTimeout, &parsed.Server.MaxHandshakeAttempts,
+	} {
+		*f = amneziawg.CanonicalizeUintRange(*f)
+	}
 	if err := amneziawg.ValidateObfuscation(parsed.Server.Obfuscation()); err != nil {
 		return fmt.Errorf("amneziawg: %w", err)
 	}
@@ -285,6 +309,12 @@ func (s *InboundService) normalizeAmneziaWGSettings(inbound *model.Inbound, oldS
 		if err := amneziawg.ValidateAwgTimerValue(tf.field, tf.value); err != nil {
 			return fmt.Errorf("amneziawg: %w", err)
 		}
+		if err := amneziawg.ValidateAwgTimerNonZero(tf.field, tf.value); err != nil {
+			return fmt.Errorf("amneziawg: %w", err)
+		}
+	}
+	if err := amneziawg.ValidateAwgRekeyBeforeReject(parsed.Server.RekeyAfterTime, parsed.Server.RejectAfterTime); err != nil {
+		return fmt.Errorf("amneziawg: %w", err)
 	}
 	// EffectiveAwgVersion first, so a record saved before AwgVersion existed
 	// (already has a working AWG3-only field with an empty AwgVersion) is

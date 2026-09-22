@@ -86,8 +86,11 @@ func GenerateObfuscation20(preset string) Obfuscation20 {
 	for o.S1+56 == o.S2 {
 		o.S2 = randInt(15, 150)
 	}
-	o.S3 = randInt(8, 55) // cookie padding (max 64)
-	o.S4 = randInt(4, 27) // transport padding (max 32)
+	// Floored at 12, not this file's usual 8/4: HeaderProtectionKey is always
+	// generated below, and ValidateHeaderProtection rejects it unless every
+	// S1-S4 is >= headerProtectionMinPadding.
+	o.S3 = randInt(12, 55) // cookie padding (max 64)
+	o.S4 = randInt(12, 27) // transport padding (max 32)
 
 	h := generateHValues()
 	o.H1, o.H2, o.H3, o.H4 = h[0], h[1], h[2], h[3]
@@ -101,7 +104,52 @@ func GenerateObfuscation20(preset string) Obfuscation20 {
 	o.I4 = fmt.Sprintf("<r %d>", randInt(32, 256))
 	o.I5 = fmt.Sprintf("<r %d>", randInt(32, 256))
 
+	o.HeaderProtectionKey = generateHeaderProtectionKey()
+
+	// Total padding stays <= 64: it rides on full-size transport packets, the
+	// same MTU headroom that caps S4 at 32.
+	cpLo := randInt(8, 24)
+	o.ContentPaddingAddition = fmt.Sprintf("%d-%d", cpLo, cpLo+randInt(8, 40))
+
+	// Timing windows bracket WireGuard's own constants (rekey 120s, reject
+	// 180s) so sessions still renew before expiry.
+	rkLo := randInt(100, 120)
+	rkHi := rkLo + randInt(10, 40)
+	o.RekeyAfterTime = fmt.Sprintf("%d-%d", rkLo, rkHi)
+
+	// Every reject value exceeds every rekey value by >= 30s by construction.
+	rjLo := rkHi + randInt(30, 60)
+	o.RejectAfterTime = fmt.Sprintf("%d-%d", rjLo, rjLo+randInt(30, 90))
+
+	rtLo := randInt(3, 6)
+	o.RekeyTimeout = fmt.Sprintf("%d-%d", rtLo, rtLo+randInt(1, 4))
+
+	// Max 20s: under clients' typical 25s PersistentKeepalive and ~30s NAT UDP
+	// timeouts, or idle links lose their NAT mapping.
+	kaLo := randInt(8, 12)
+	o.KeepaliveTimeout = fmt.Sprintf("%d-%d", kaLo, kaLo+randInt(2, 8))
+
+	haLo := randInt(15, 25)
+	o.MaxHandshakeAttempts = fmt.Sprintf("%d-%d", haLo, haLo+randInt(5, 25))
+
+	o.RandomTrailers = true
+	// Cookie replies are DPI-fingerprintable; this stealth default trades away
+	// WG's handshake-flood mitigation and is toggleable per inbound.
+	o.DisableCookies = true
+
 	return o
+}
+
+// generateHeaderProtectionKey returns a fresh base64-encoded 32-byte key, or
+// "" if crypto/rand itself fails (ValidateHeaderProtection then requires the
+// caller either raise S1-S4 or leave header protection off, never emit a
+// truncated key).
+func generateHeaderProtectionKey() string {
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(key)
 }
 
 // generateHValues returns four distinct single values for H1-H4, matching
@@ -385,16 +433,76 @@ func ValidateAwgTimerValue(field, v string) error {
 	return nil
 }
 
+// ValidateAwgTimerNonZero additionally rejects a timer value of exactly
+// zero -- grammar-valid (same as H1-H4), but zero would disable the timer
+// or retry loop outright rather than tune it. A blank value (feature off)
+// and a low-high range both pass; only the bare literal "0" is rejected.
+func ValidateAwgTimerNonZero(field, v string) error {
+	lo, hi, ok := parseUintRange(v)
+	if !ok || lo != 0 || hi != 0 {
+		return nil
+	}
+	return fmt.Errorf("invalid %s: 0 would disable it -- leave it blank instead, or use a low-high range", field)
+}
+
+// parseUintRange parses "N" (lo == hi) or "low-high"; ok is false when blank
+// or non-numeric. Bounds are NOT checked here.
+func parseUintRange(v string) (lo, hi int64, ok bool) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0, 0, false
+	}
+	if loS, hiS, isRange := strings.Cut(v, "-"); isRange {
+		l, err1 := strconv.ParseInt(strings.TrimSpace(loS), 10, 64)
+		h, err2 := strconv.ParseInt(strings.TrimSpace(hiS), 10, 64)
+		if err1 != nil || err2 != nil {
+			return 0, 0, false
+		}
+		return l, h, true
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	return n, n, true
+}
+
+// ValidateAwgRekeyBeforeReject rejects a rekey window that can outlast the
+// reject window: every possible rekey must fire before the earliest reject,
+// or a session already due to renew gets torn down instead. A blank side
+// means WireGuard's own default (rekey 120s, reject 180s).
+func ValidateAwgRekeyBeforeReject(rekeyAfterTime, rejectAfterTime string) error {
+	if rekeyAfterTime == "" && rejectAfterTime == "" {
+		return nil
+	}
+	rekeyHi, rejectLo := int64(120), int64(180)
+	if rekeyAfterTime != "" {
+		if _, hi, ok := parseUintRange(rekeyAfterTime); ok {
+			rekeyHi = hi
+		}
+	}
+	if rejectAfterTime != "" {
+		if lo, _, ok := parseUintRange(rejectAfterTime); ok {
+			rejectLo = lo
+		}
+	}
+	if rekeyHi >= rejectLo {
+		return fmt.Errorf("invalid rekeyAfterTime/rejectAfterTime: max rekey %d must be below min reject %d", rekeyHi, rejectLo)
+	}
+	return nil
+}
+
 // ValidateHeaderProtection rejects enabling AmneziaWG 3.0 header protection
 // against an obfuscation set whose S1-S4 aren't all wide enough for it.
-// headerProtectionKey empty (disabled, the default) is always valid --
-// header protection is strictly opt-in and never auto-enabled (see
-// GenerateObfuscation20's own doc comment: S3's/S4's generated ranges can
-// land below headerProtectionMinPadding, since nothing before this feature
-// ever required otherwise). A non-empty key requires every one of S1-S4 to
-// be >= headerProtectionMinPadding, checked in a fixed S1->S4 order so the
-// error always names the first offending field, not whichever one a map
-// iteration happened to visit first.
+// headerProtectionKey empty is always valid -- a record saved before this
+// field existed, or one with it deliberately cleared, still has S3/S4 free
+// to sit below headerProtectionMinPadding. GenerateObfuscation20 itself
+// floors S3/S4 at headerProtectionMinPadding and always fills the key, so a
+// freshly generated set never trips this; only a hand-edited or pre-upgrade
+// one can. A non-empty key requires every one of S1-S4 to be >=
+// headerProtectionMinPadding, checked in a fixed S1->S4 order so the error
+// always names the first offending field, not whichever one a map iteration
+// happened to visit first.
 func ValidateHeaderProtection(headerProtectionKey string, o Obfuscation20) error {
 	if headerProtectionKey == "" {
 		return nil

@@ -1,6 +1,7 @@
 package amneziawg
 
 import (
+	"encoding/base64"
 	"strconv"
 	"strings"
 	"testing"
@@ -71,11 +72,13 @@ func TestGenerateObfuscation20DefaultRanges(t *testing.T) {
 		if o.S1+56 == o.S2 {
 			t.Fatalf("S1+56 == S2 (%d+56 == %d): violates kernel constraint", o.S1, o.S2)
 		}
-		if o.S3 < 8 || o.S3 > 55 {
-			t.Fatalf("S3 = %d, want [8,55]", o.S3)
+		// Floored at 12, not S1/S2's 15: HeaderProtectionKey is always
+		// generated below, and ValidateHeaderProtection needs S1-S4 >= 12.
+		if o.S3 < 12 || o.S3 > 55 {
+			t.Fatalf("S3 = %d, want [12,55]", o.S3)
 		}
-		if o.S4 < 4 || o.S4 > 27 {
-			t.Fatalf("S4 = %d, want [4,27]", o.S4)
+		if o.S4 < 12 || o.S4 > 27 {
+			t.Fatalf("S4 = %d, want [12,27]", o.S4)
 		}
 		for name, h := range map[string]string{"H1": o.H1, "H2": o.H2, "H3": o.H3, "H4": o.H4} {
 			if err := validateHValue(h); err != nil {
@@ -93,6 +96,39 @@ func TestGenerateObfuscation20DefaultRanges(t *testing.T) {
 			if err != nil || n < 32 || n > 256 {
 				t.Fatalf("%s = %q, embedded N must be an integer in [32,256]", name, i)
 			}
+		}
+
+		key, err := base64.StdEncoding.DecodeString(o.HeaderProtectionKey)
+		if err != nil || len(key) != 32 {
+			t.Fatalf("HeaderProtectionKey = %q, want base64 of 32 bytes (err=%v)", o.HeaderProtectionKey, err)
+		}
+		parseRange := func(t *testing.T, name, v string) (lo, hi int) {
+			t.Helper()
+			loS, hiS, ok := strings.Cut(v, "-")
+			lo, loErr := strconv.Atoi(loS)
+			hi, hiErr := strconv.Atoi(hiS)
+			if !ok || loErr != nil || hiErr != nil || lo >= hi {
+				t.Fatalf("%s = %q, want a \"low-high\" range with low < high", name, v)
+			}
+			return lo, hi
+		}
+		for name, v := range map[string]string{
+			"ContentPaddingAddition": o.ContentPaddingAddition,
+			"RekeyAfterTime":         o.RekeyAfterTime,
+			"RejectAfterTime":        o.RejectAfterTime,
+			"RekeyTimeout":           o.RekeyTimeout,
+			"KeepaliveTimeout":       o.KeepaliveTimeout,
+			"MaxHandshakeAttempts":   o.MaxHandshakeAttempts,
+		} {
+			parseRange(t, name, v)
+		}
+		_, rekeyHi := parseRange(t, "RekeyAfterTime", o.RekeyAfterTime)
+		rejectLo, _ := parseRange(t, "RejectAfterTime", o.RejectAfterTime)
+		if rejectLo <= rekeyHi {
+			t.Fatalf("RejectAfterTime low (%d) must exceed RekeyAfterTime high (%d) by construction", rejectLo, rekeyHi)
+		}
+		if !o.RandomTrailers || !o.DisableCookies {
+			t.Fatalf("fresh defaults must enable RandomTrailers/DisableCookies, got %v/%v", o.RandomTrailers, o.DisableCookies)
 		}
 	}
 }
