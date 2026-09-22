@@ -746,7 +746,7 @@ func (s *SubClashService) buildAmneziaWGProxy(subReq *SubService, inbound *model
 
 	// Always emitted: mihomo's own 1408 default sits above the interface
 	// amneziawgnet actually runs once s4 passes 12, so the tunnel fragments.
-	proxy["mtu"] = amneziawg.EffectiveMTU(server.MTU, server.S4)
+	proxy["mtu"] = amneziawg.EffectiveMTU(server.MTU, server.S4, 1420)
 
 	var dns []string
 	if server.PrimaryDNS != "" {

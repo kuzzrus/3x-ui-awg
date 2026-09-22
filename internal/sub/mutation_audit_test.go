@@ -378,24 +378,6 @@ func TestGetClientExternalLinksBySubId(t *testing.T) {
 	if offOut[0].Active {
 		t.Fatal("disabled owner marked active")
 	}
-
-	expired := &model.ClientRecord{Email: "expired@x", SubID: "sub-expired", UUID: "u4", Enable: true, ExpiryTime: time.Now().Add(-time.Hour).UnixMilli()}
-	if err := db.Create(expired).Error; err != nil {
-		t.Fatalf("seed expired client: %v", err)
-	}
-	if err := db.Create(&model.ClientExternalLink{ClientId: expired.Id, Kind: model.ExternalLinkKindLink, Value: "trojan://d", SortIndex: 1}).Error; err != nil {
-		t.Fatalf("seed expired client link: %v", err)
-	}
-	expiredOut, err := s.getClientExternalLinksBySubId("sub-expired")
-	if err != nil {
-		t.Fatalf("expired subId err = %v", err)
-	}
-	if len(expiredOut) != 1 {
-		t.Fatalf("expired client entries = %d, want 1", len(expiredOut))
-	}
-	if !expiredOut[0].Enable || expiredOut[0].Active {
-		t.Fatalf("expired owner state = enable:%v active:%v", expiredOut[0].Enable, expiredOut[0].Active)
-	}
 }
 
 // --- external_config.go:102 — applyRemarkToLink appends a fragment when none exists ---

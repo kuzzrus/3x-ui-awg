@@ -1418,7 +1418,7 @@ func TestBuildAmneziaWGProxyForClashEffectiveMTU(t *testing.T) {
 
 	t.Run("unset MTU falls back to 1420-s4", func(t *testing.T) {
 		proxy := build(t, 0, 27)
-		want := amneziawg.EffectiveMTU(0, 27)
+		want := amneziawg.EffectiveMTU(0, 27, 1420)
 		if proxy["mtu"] != want {
 			t.Fatalf("mtu = %v, want %d (amneziawg.EffectiveMTU)", proxy["mtu"], want)
 		}

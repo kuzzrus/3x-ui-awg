@@ -584,7 +584,7 @@ func TestTestOutboundsTCPModeForcesAmneziaWGToHTTPProbe(t *testing.T) {
 	})
 
 	batch := mustJSON(t, []any{map[string]any{"tag": "awg", "protocol": "amneziawg"}})
-	results, err := (&OutboundService{}).TestOutbounds(batch, srv.URL, "", "tcp")
+	results, err := (&OutboundService{}).TestOutbounds(batch, srv.URL, "", "tcp", "", "")
 	if err != nil {
 		t.Fatalf("TestOutbounds: %v", err)
 	}

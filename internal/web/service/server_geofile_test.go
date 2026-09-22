@@ -169,7 +169,7 @@ func restartStub(t *testing.T, called *bool) {
 func TestUpdateGeofileInstallsVerifiedFile(t *testing.T) {
 	srv, _ := geofileServer(t, []fakeUpstream{{repo: "a", assets: map[string]string{"geoip.dat": "good geoip payload"}}})
 	binFolder := geofileTestEnv(t, map[string]geofileEntry{
-		"geoip.dat": {srv.URL + "/a", "geoip.dat", "geoip.dat"},
+		"geoip.dat": {srv.URL + "/a", "geoip.dat", "geoip.dat", ""},
 	})
 
 	var restarted bool
@@ -198,7 +198,7 @@ func TestUpdateGeofileRejectsDigestMismatch(t *testing.T) {
 		corrupt: map[string]bool{"geoip.dat": true},
 	}})
 	binFolder := geofileTestEnv(t, map[string]geofileEntry{
-		"geoip.dat": {srv.URL + "/a", "geoip.dat", "geoip.dat"},
+		"geoip.dat": {srv.URL + "/a", "geoip.dat", "geoip.dat", ""},
 	})
 
 	var restarted bool
@@ -229,8 +229,8 @@ func TestUpdateGeofileInstallsNeitherFileOfAFailedUpstream(t *testing.T) {
 		corrupt: map[string]bool{"geosite.dat": true},
 	}})
 	binFolder := geofileTestEnv(t, map[string]geofileEntry{
-		"geoip.dat":   {srv.URL + "/a", "geoip.dat", "geoip.dat"},
-		"geosite.dat": {srv.URL + "/a", "geosite.dat", "geosite.dat"},
+		"geoip.dat":   {srv.URL + "/a", "geoip.dat", "geoip.dat", ""},
+		"geosite.dat": {srv.URL + "/a", "geosite.dat", "geosite.dat", ""},
 	})
 
 	var restarted bool
@@ -264,8 +264,8 @@ func TestUpdateGeofileKeepsGoodUpstreamWhenAnotherFails(t *testing.T) {
 		},
 	})
 	binFolder := geofileTestEnv(t, map[string]geofileEntry{
-		"geoip.dat":    {srv.URL + "/aaa", "geoip.dat", "geoip.dat"},
-		"geoip_RU.dat": {srv.URL + "/zzz", "geoip.dat", "geoip_RU.dat"},
+		"geoip.dat":    {srv.URL + "/aaa", "geoip.dat", "geoip.dat", ""},
+		"geoip_RU.dat": {srv.URL + "/zzz", "geoip.dat", "geoip_RU.dat", ""},
 	})
 
 	var restarted bool
@@ -320,7 +320,7 @@ func TestUpdateGeofileSurvivesReleaseRotation(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	binFolder := geofileTestEnv(t, map[string]geofileEntry{
-		"geoip.dat": {srv.URL + "/a", "geoip.dat", "geoip.dat"},
+		"geoip.dat": {srv.URL + "/a", "geoip.dat", "geoip.dat", ""},
 	})
 
 	var restarted bool
@@ -352,7 +352,7 @@ func TestUpdateGeofileSkipsRestartWhenNotModified(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	binFolder := geofileTestEnv(t, map[string]geofileEntry{
-		"geoip.dat": {srv.URL + "/a", "geoip.dat", "geoip.dat"},
+		"geoip.dat": {srv.URL + "/a", "geoip.dat", "geoip.dat", ""},
 	})
 
 	existing := filepath.Join(binFolder, "geoip.dat")
@@ -381,7 +381,7 @@ func TestUpdateGeofileSkipsRestartWhenNotModified(t *testing.T) {
 
 func TestUpdateGeofileRejectsNameOutsideAllowlist(t *testing.T) {
 	geofileTestEnv(t, map[string]geofileEntry{
-		"geoip.dat": {"https://example.invalid", "geoip.dat", "geoip.dat"},
+		"geoip.dat": {"https://example.invalid", "geoip.dat", "geoip.dat", ""},
 	})
 
 	err := (&ServerService{}).UpdateGeofile("../../etc/passwd")
