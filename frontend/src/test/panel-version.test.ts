@@ -42,6 +42,13 @@ describe('isPanelUpdateAvailable', () => {
     expect(isPanelUpdateAvailable('v3.6.0', '3.5.0-awg.1')).toBe(true);
     expect(isPanelUpdateAvailable('v3.5.0-awg.1', '3.6.0')).toBe(false);
   });
+
+  it('compares dev builds by commit and never across channels', () => {
+    expect(isPanelUpdateAvailable('dev+1a2b3c4d', 'dev+0f0f0f0f')).toBe(true);
+    expect(isPanelUpdateAvailable('dev+1a2b3c4d', 'dev+1a2b3c4d')).toBe(false);
+    expect(isPanelUpdateAvailable('v3.5.0', 'dev+1a2b3c4d')).toBe(false);
+    expect(isPanelUpdateAvailable('dev+1a2b3c4d', '3.5.0')).toBe(false);
+  });
 });
 
 describe('formatPanelVersion', () => {

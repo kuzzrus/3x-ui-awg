@@ -14,13 +14,17 @@ import (
 // happen to be reachable during a transition.
 const SOCKSBasePort = 65100
 
+// relayPortSlots is how many ids fit above SOCKSBasePort before wrapping.
+const relayPortSlots = 65535 - SOCKSBasePort
+
 // SOCKSPortForInbound returns the loopback port of one AmneziaWG inbound's
-// own Xray SOCKS5 relay inbound, derived deterministically from its id so
-// the config-generation code (which builds the inbound) and the relay code
+// own Xray SOCKS5 relay inbound, derived deterministically from its id
+// (wrapping ids past relayPortSlots so no id ever lacks a port) so the
+// config-generation code (which builds the inbound) and the relay code
 // (which dials it) never have to agree on a runtime-negotiated value --
 // mirrors amneziawg.EgressPortForInbound's own reasoning exactly.
 func SOCKSPortForInbound(inboundID int) int {
-	return SOCKSBasePort + inboundID
+	return SOCKSBasePort + 1 + (inboundID-1)%relayPortSlots
 }
 
 var (

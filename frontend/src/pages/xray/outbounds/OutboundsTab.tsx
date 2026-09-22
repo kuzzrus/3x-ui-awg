@@ -40,6 +40,7 @@ import {
   SyncOutlined,
 } from '@ant-design/icons';
 
+import { isOutboundProtocol } from '@/schemas/primitives';
 import { HttpUtil } from '@/utils';
 import { onNumber } from '@/utils/onNumber';
 import PromptModal from '@/components/feedback/PromptModal';
@@ -65,6 +66,8 @@ import { useOutboundColumns } from './useOutboundColumns';
 import OutboundCardList from './OutboundCardList';
 import SubscriptionOutbounds from './SubscriptionOutbounds';
 
+const defaultOutboundSubscriptionUserAgent = '3x-ui-outbound-sub/1.0';
+
 interface OutboundSub {
   id: number;
   remark?: string;
@@ -72,6 +75,7 @@ interface OutboundSub {
   enabled?: boolean;
   allowPrivate?: boolean;
   allowInsecure?: boolean;
+  userAgent?: string;
   prepend?: boolean;
   priority?: number;
   tagPrefix?: string;
@@ -145,6 +149,7 @@ export default function OutboundsTab({
     remark: '',
     url: '',
     tagPrefix: '',
+    userAgent: '',
     updateInterval: 600,
     enabled: true,
     allowPrivate: false,
@@ -188,7 +193,7 @@ export default function OutboundsTab({
     const tags = new Set<string>();
     (templateSettings?.outbounds || []).forEach((o, i) => {
       if (i === editingIndex) return;
-      if (o?.protocol === 'blackhole') return;
+      if (isOutboundProtocol(o, 'blackhole')) return;
       if (o?.tag) tags.add(o.tag);
     });
     for (const tag of subscriptionOutboundTags || []) {
@@ -343,6 +348,7 @@ export default function OutboundsTab({
     remark?: string;
     url?: string;
     tagPrefix?: string;
+    userAgent?: string;
     updateInterval?: number;
     enabled?: boolean;
     allowPrivate?: boolean;
@@ -353,6 +359,7 @@ export default function OutboundsTab({
       remark: src.remark ?? '',
       url: src.url ?? '',
       tagPrefix: src.tagPrefix ?? '',
+      userAgent: src.userAgent ?? '',
       updateInterval: src.updateInterval ?? 600,
       enabled: src.enabled ?? true,
       allowPrivate: src.allowPrivate ?? false,
@@ -365,6 +372,7 @@ export default function OutboundsTab({
       remark: '',
       url: '',
       tagPrefix: '',
+      userAgent: '',
       updateInterval: 600,
       enabled: true,
       allowPrivate: false,
@@ -379,6 +387,7 @@ export default function OutboundsTab({
       remark: sub.remark ?? '',
       url: sub.url ?? '',
       tagPrefix: sub.tagPrefix ?? '',
+      userAgent: sub.userAgent ?? '',
       updateInterval: sub.updateInterval ?? 600,
       enabled: sub.enabled ?? true,
       allowPrivate: sub.allowPrivate ?? false,
@@ -432,7 +441,12 @@ export default function OutboundsTab({
     try {
       const r = await HttpUtil.post<{ tag?: string; protocol?: string }[]>(
         '/panel/api/xray/outbound-subs/parse',
-        { url: newSub.url, allowPrivate: newSub.allowPrivate },
+        {
+          url: newSub.url,
+          userAgent: newSub.userAgent,
+          allowPrivate: newSub.allowPrivate,
+          allowInsecure: newSub.allowInsecure,
+        },
       );
       if (r?.success && Array.isArray(r.obj)) {
         setPreviewData(r.obj);
@@ -768,6 +782,13 @@ export default function OutboundsTab({
                   value={newSub.tagPrefix}
                   onChange={(e) => setNewSub({ ...newSub, tagPrefix: e.target.value })}
                   placeholder={t('pages.xray.outboundSub.tagPrefixPlaceholder')}
+                />
+              </Form.Item>
+              <Form.Item label={t('pages.xray.outboundSub.userAgent')}>
+                <Input
+                  value={newSub.userAgent}
+                  onChange={(e) => setNewSub({ ...newSub, userAgent: e.target.value })}
+                  placeholder={defaultOutboundSubscriptionUserAgent}
                 />
               </Form.Item>
               <Form.Item label={t('pages.xray.outboundSub.interval')}>

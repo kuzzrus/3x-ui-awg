@@ -34,6 +34,18 @@ type Obfuscation20 struct {
 	I3 string `json:"i3,omitempty"`
 	I4 string `json:"i4,omitempty"`
 	I5 string `json:"i5,omitempty"`
+
+	// HeaderProtectionKey is a base64 32-byte key shared by both ends; the
+	// ranges/booleans below are 3.x-only and optional.
+	HeaderProtectionKey    string `json:"headerProtectionKey,omitempty"`
+	ContentPaddingAddition string `json:"contentPaddingAddition,omitempty"`
+	RekeyAfterTime         string `json:"rekeyAfterTime,omitempty"`
+	RekeyTimeout           string `json:"rekeyTimeout,omitempty"`
+	RejectAfterTime        string `json:"rejectAfterTime,omitempty"`
+	KeepaliveTimeout       string `json:"keepaliveTimeout,omitempty"`
+	MaxHandshakeAttempts   string `json:"maxHandshakeAttempts,omitempty"`
+	RandomTrailers         bool   `json:"randomTrailers,omitempty"`
+	DisableCookies         bool   `json:"disableCookies,omitempty"`
 }
 
 // Peer is one desired AmneziaWG peer: a client device the interface accepts.
@@ -59,8 +71,11 @@ type Instance struct {
 	Tag           string
 	InterfaceName string
 	ListenPort    int
-	PrivateKey    string
-	PublicKey     string
+	// Listen is an optional host bind address (e.g. "203.0.113.10").
+	// Empty/wildcard keeps dual-stack StdNetBind; a real IP pins the UDP socket.
+	Listen     string
+	PrivateKey string
+	PublicKey  string
 	// Address holds the interface's own tunnel address(es), e.g. "10.8.1.1/24".
 	// Carries both the IPv4 and (when enabled) IPv6 server address.
 	Address []string

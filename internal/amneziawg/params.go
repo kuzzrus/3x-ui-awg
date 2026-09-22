@@ -2,7 +2,9 @@ package amneziawg
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"fmt"
+	"math"
 	"math/big"
 	"net/netip"
 	"regexp"
@@ -121,7 +123,7 @@ func generateHValues() [4]string {
 	const lo = 5
 	bandSize := (awgHMax - lo + 1) / 4
 	var out [4]string
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		bandLo := lo + i*bandSize
 		bandHi := bandLo + bandSize - 1
 		out[i] = fmt.Sprintf("%d", randInt(bandLo, bandHi))
@@ -138,6 +140,28 @@ func ValidateObfuscation(o Obfuscation20) error {
 	if o.Jmin > o.Jmax {
 		return fmt.Errorf("invalid Jmin/Jmax: %d must not exceed %d", o.Jmin, o.Jmax)
 	}
+	// amneziawg-go parses jc/jmin/jmax as uint32 and s1-s4 as uint16
+	// (device/uapi.go); a wider value makes IpcSet reject the whole device.
+	for _, f := range []struct {
+		name string
+		v    int
+		max  int64
+	}{
+		{"Jc", o.Jc, math.MaxUint32},
+		{"Jmin", o.Jmin, math.MaxUint32},
+		{"Jmax", o.Jmax, math.MaxUint32},
+		{"S1", o.S1, math.MaxUint16},
+		{"S2", o.S2, math.MaxUint16},
+	} {
+		if int64(f.v) < 0 || int64(f.v) > f.max {
+			return fmt.Errorf("invalid %s value %d (must be 0..%d)", f.name, f.v, f.max)
+		}
+	}
+	for i, spec := range []string{o.I1, o.I2, o.I3, o.I4, o.I5} {
+		if err := validateObfChain(spec); err != nil {
+			return fmt.Errorf("invalid I%d: %w", i+1, err)
+		}
+	}
 	if o.S3 < 0 || o.S3 > 64 {
 		return fmt.Errorf("invalid S3 value %d (must be 0..64)", o.S3)
 	}
@@ -151,6 +175,66 @@ func ValidateObfuscation(o Obfuscation20) error {
 		if err := validateHValue(h); err != nil {
 			return fmt.Errorf("invalid H%d: %w", i+1, err)
 		}
+	}
+	return nil
+}
+
+// obfChainTags mirrors amneziawg-go's own obfBuilders map (device/obf.go): an
+// unknown tag makes newObfChain fail, and IpcSet then rejects the whole device.
+var obfChainTags = map[string]bool{
+	"b": true, "t": true, "r": true, "rc": true,
+	"rd": true, "d": true, "ds": true, "dz": true,
+}
+
+// validateObfChain checks an I1-I5 signature-packet spec's "<tag value>"
+// structure. Each tag's own value grammar stays amneziawg-go's to enforce.
+func validateObfChain(spec string) error {
+	if strings.TrimSpace(spec) == "" {
+		return nil
+	}
+	remaining := spec
+	for {
+		start := strings.IndexByte(remaining, '<')
+		if start == -1 {
+			return nil
+		}
+		end := strings.IndexByte(remaining[start:], '>')
+		if end == -1 {
+			return fmt.Errorf("spec %q is missing an enclosing '>'", spec)
+		}
+		fields := strings.Fields(remaining[start+1 : start+end])
+		if len(fields) == 0 {
+			return fmt.Errorf("spec %q has an empty <> tag", spec)
+		}
+		if !obfChainTags[fields[0]] {
+			return fmt.Errorf("spec %q uses unknown tag <%s>", spec, fields[0])
+		}
+		remaining = remaining[start+end+1:]
+	}
+}
+
+// CanonicalizeUintRange stores a pasted "110 - 140" as "110-140", and
+// collapses a whitespace-only value back to "feature off".
+func CanonicalizeUintRange(v string) string {
+	return strings.ReplaceAll(strings.TrimSpace(v), " ", "")
+}
+
+// validateHeaderProtectionKey accepts blank (feature off) or a base64 32-byte
+// key. Control chars are rejected up front: DecodeString silently ignores
+// \r\n, so a line-wrapped pasted key would pass and then split client configs.
+func validateHeaderProtectionKey(v string) error {
+	if v == "" {
+		return nil
+	}
+	if err := ValidateConfigValue("headerProtectionKey", v); err != nil {
+		return err
+	}
+	key, err := base64.StdEncoding.DecodeString(v)
+	if err != nil {
+		return fmt.Errorf("invalid headerProtectionKey: not base64: %w", err)
+	}
+	if len(key) != 32 {
+		return fmt.Errorf("invalid headerProtectionKey: got %d bytes, want 32", len(key))
 	}
 	return nil
 }

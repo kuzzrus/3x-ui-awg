@@ -14,7 +14,13 @@ function inboundTransports(
   streamSettings: Record<string, unknown> | undefined,
   settings: Record<string, unknown> | undefined,
 ): TransportBits {
-  if (protocol === 'hysteria' || protocol === 'wireguard' || protocol === 'amneziawg') return UDP;
+  if (
+    protocol === 'hysteria' ||
+    protocol === 'wireguard' ||
+    protocol === 'amneziawg' ||
+    protocol === 'tuic'
+  )
+    return UDP;
   // Lives entirely in frontproxy + supervised child processes, like the
   // backend's own inboundTransports -- never asks Xray to bind a port.
   if (protocol === 'tproxy') return 0;

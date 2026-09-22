@@ -34,14 +34,17 @@ type HwidGateResult struct {
 // HwidSlotStatus is the aggregate device-slot view exposed to subscribers:
 // counters only, no hwid value or hash, no email, no device metadata.
 type HwidSlotStatus struct {
-	Active     bool `json:"active"`
-	Limit      int  `json:"limit"`
-	Registered int  `json:"registered"`
-	Remaining  int  `json:"remaining"`
-	Full       bool `json:"full"`
+	Active     bool `json:"active" example:"true"`
+	Limit      int  `json:"limit" example:"2"`
+	Registered int  `json:"registered" example:"1"`
+	Remaining  int  `json:"remaining" example:"1"`
+	Full       bool `json:"full" example:"false"`
 }
 
-const minHwidLength = 6
+const (
+	minHwidLength         = 6
+	hwidFingerprintLength = 12
+)
 
 type ClientHwidInfo struct {
 	Id          int    `json:"id"`
@@ -51,11 +54,19 @@ type ClientHwidInfo struct {
 	DeviceOS    string `json:"deviceOs"`
 	OsVersion   string `json:"osVersion"`
 	DeviceModel string `json:"deviceModel"`
+	Fingerprint string `json:"fingerprint"`
 }
 
 func hashHwid(raw string) string {
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
+}
+
+func shortHwidFingerprint(hash string) string {
+	if len(hash) <= hwidFingerprintLength {
+		return hash
+	}
+	return hash[:hwidFingerprintLength]
 }
 
 func trimHwidMeta(s string) string {
@@ -232,6 +243,7 @@ func (s *ClientService) ListClientHwids(email string) ([]ClientHwidInfo, error) 
 			DeviceOS:    r.DeviceOS,
 			OsVersion:   r.OsVersion,
 			DeviceModel: r.DeviceModel,
+			Fingerprint: shortHwidFingerprint(r.HwidHash),
 		})
 	}
 	return out, nil

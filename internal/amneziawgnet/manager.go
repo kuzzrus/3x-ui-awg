@@ -221,8 +221,8 @@ func (m *Manager) ensureLocked(d Desired) error {
 			conn.Close()
 			return
 		}
-		// Load the latest immutable peer snapshot without entering the
-		// lifecycle lock held while a device reconfigures or closes.
+		// Reload for every connection: in-place reconfiguration swaps the peer
+		// index without reattaching handlers and may hold the lifecycle lock.
 		peer, ok := next.lookupPeer(srcAddrPort.Addr().Unmap())
 		if !ok {
 			conn.Close()
@@ -275,8 +275,14 @@ func socksRelayForInstance(inst amneziawg.Instance) SocksRelay {
 // unset) needs newUnconfiguredDevice's shrunk netstack MTU applied too, and
 // that only happens on rebuild -- comparing the raw field would fingerprint
 // as unchanged and leave the running interface on its old, now-wrong MTU.
+// Listen is folded in via normalizedListenFP since newResolvingBind pins the
+// UDP socket to it at build time too -- collapsed so wildcard spellings that
+// resolve to the same effective Bind don't force a rebuild.
 func addressFingerprint(inst amneziawg.Instance) string {
-	return fmt.Sprintf("%d|%s", amneziawg.EffectiveMTU(inst.MTU, inst.Obfuscation.S4, defaultMTU), strings.Join(inst.Address, ","))
+	return fmt.Sprintf("%d|%s|%s",
+		amneziawg.EffectiveMTU(inst.MTU, inst.Obfuscation.S4, defaultMTU),
+		strings.Join(inst.Address, ","),
+		normalizedListenFP(inst.Listen))
 }
 
 // Reconcile brings every desired instance's embedded interface up to date

@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -49,6 +50,8 @@ type xrayLifecycle struct {
 	mu      sync.RWMutex
 	process *xray.Process
 	result  string
+	// heldBack is why the running core still serves the previous config.
+	heldBack string
 }
 
 func (s *xrayLifecycle) snapshot() (*xray.Process, string) {
@@ -61,7 +64,20 @@ func (s *xrayLifecycle) replace(process *xray.Process) {
 	s.mu.Lock()
 	s.process = process
 	s.result = ""
+	s.heldBack = ""
 	s.mu.Unlock()
+}
+
+func (s *xrayLifecycle) holdBack(reason string) {
+	s.mu.Lock()
+	s.heldBack = reason
+	s.mu.Unlock()
+}
+
+func (s *xrayLifecycle) heldBackReason() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.heldBack
 }
 
 func (s *xrayLifecycle) storeResult(process *xray.Process, result string) {
@@ -118,6 +134,12 @@ func (s *XrayService) GetXrayErr() error {
 	}
 
 	return err
+}
+
+// GetHeldBackConfig returns why the running core still serves its previous
+// config, or "" when the pending config was applied.
+func (s *XrayService) GetHeldBackConfig() string {
+	return xrayState.heldBackReason()
 }
 
 // GetXrayResult returns the result string from the Xray process.
@@ -191,6 +213,11 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 	// still carry sessionPlacement/sessionKey; lift them too (same reason as
 	// the per-inbound lift below).
 	xrayConfig.OutboundConfigs = liftOutboundsXhttpSessionIDKeys(xrayConfig.OutboundConfigs)
+	// Bridge amneziawg outbounds before anything else reads OutboundConfigs;
+	// the core has no amneziawg proxy and would reject the raw entry.
+	if err := transformAmneziaWGOutbounds(xrayConfig); err != nil {
+		return nil, err
+	}
 
 	_, _, _ = s.inboundService.AddTraffic(nil, nil)
 
@@ -206,7 +233,8 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 			continue
 		}
 		if inbound.Protocol == model.MTProto || inbound.Protocol == model.AmneziaWG ||
-			inbound.Protocol == model.NaiveProxy || inbound.Protocol == model.Tproxy {
+			inbound.Protocol == model.NaiveProxy || inbound.Protocol == model.Tproxy ||
+			inbound.Protocol == model.TUIC {
 			continue
 		}
 		settings := map[string]any{}
@@ -1061,6 +1089,19 @@ func ensureStatsPolicy(policy json_util.RawMessage) json_util.RawMessage {
 	return out
 }
 
+// caseVariantKeys returns every key of parsed that equals want ignoring case,
+// lowest first so the fold is deterministic when several variants are present.
+func caseVariantKeys(parsed map[string]any, want string) []string {
+	var keys []string
+	for key := range parsed {
+		if strings.EqualFold(key, want) {
+			keys = append(keys, key)
+		}
+	}
+	slices.Sort(keys)
+	return keys
+}
+
 func resolveXrayLogPaths(logCfg json_util.RawMessage) json_util.RawMessage {
 	if len(logCfg) == 0 {
 		return logCfg
@@ -1071,12 +1112,29 @@ func resolveXrayLogPaths(logCfg json_util.RawMessage) json_util.RawMessage {
 	}
 	changed := false
 	for _, key := range []string{"access", "error"} {
-		v, ok := parsed[key].(string)
+		// xray-core decodes this object with encoding/json, whose case-insensitive
+		// field match makes "Access" reach AccessLog too — fold every variant.
+		variants := caseVariantKeys(parsed, key)
+		value, hasValue := parsed[key]
+		for _, variant := range variants {
+			if variant == key {
+				continue
+			}
+			if !hasValue {
+				value, hasValue = parsed[variant], true
+			}
+			delete(parsed, variant)
+			changed = true
+		}
+		v, ok := value.(string)
 		if !ok {
 			continue
 		}
 		trimmed := strings.TrimSpace(v)
 		if trimmed == "" || strings.EqualFold(trimmed, "none") {
+			if changed {
+				parsed[key] = v
+			}
 			continue
 		}
 		base := path.Base(filepath.ToSlash(trimmed))
@@ -1361,11 +1419,27 @@ func (s *XrayService) RestartXray(isForce bool) error {
 			logger.Debug("It does not need to restart Xray")
 			return nil
 		}
+		// A config the core cannot bind never replaces one that works: its failed
+		// start exits the core, and the watchdog would then loop on it forever.
+		if conflicts := bindConflicts(xrayConfig, process.GetConfig()); len(conflicts) > 0 {
+			refused := fmt.Sprintf("config refused: %s", conflicts[0])
+			for _, conflict := range conflicts {
+				logger.Error("xray config refused:", conflict.String())
+			}
+			// The refusal is otherwise invisible: the operator's request
+			// succeeded, so the status page has to carry the stale state.
+			xrayState.holdBack(refused)
+			return fmt.Errorf("xray %s", refused)
+		}
 		if !isForce && !configUnchanged && s.tryHotApply(process, xrayConfig) {
 			logger.Info("Xray config changes applied through the core API, no restart needed")
 			return nil
 		}
 		_ = process.Stop()
+	} else if conflicts := bindConflicts(xrayConfig, nil); len(conflicts) > 0 {
+		// Nothing is running to protect and the core is the authority on what it
+		// can bind: start it and let its own error name the port it lost.
+		logger.Warning("xray config may not start:", conflicts[0].String())
 	}
 
 	process = xray.NewProcess(xrayConfig)
@@ -1377,6 +1451,20 @@ func (s *XrayService) RestartXray(isForce bool) error {
 	}
 
 	return nil
+}
+
+// restartToDropClients reports whether a diff that strands clients must be
+// applied by restarting instead of through the API.
+func (s *XrayService) restartToDropClients(diff *xray.HotDiff) bool {
+	if diff == nil || !diff.DropsUsers() {
+		return false
+	}
+	restart, err := s.settingService.GetRestartXrayOnClientDisable()
+	if err != nil {
+		logger.Warning("get RestartXrayOnClientDisable failed:", err)
+		return false
+	}
+	return restart
 }
 
 // tryHotApply attempts to reconcile the running Xray instance with newCfg
@@ -1395,6 +1483,12 @@ func (s *XrayService) tryHotApply(process *xray.Process, newCfg *xray.Config) bo
 	if diff.Empty() {
 		process.SetConfig(newCfg)
 		return true
+	}
+	// The core's RemoveUser drops the credential only, so a disabled or deleted
+	// client needs the restart this setting asks for.
+	if s.restartToDropClients(diff) {
+		logger.Info("hot apply: clients left the config, restarting to drop their live sessions")
+		return false
 	}
 
 	apiPort := process.GetAPIPort()

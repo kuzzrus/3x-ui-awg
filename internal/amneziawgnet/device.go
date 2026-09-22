@@ -5,7 +5,6 @@ import (
 	"net/netip"
 	"strings"
 
-	awgconn "github.com/amnezia-vpn/amneziawg-go/v3/conn"
 	"github.com/amnezia-vpn/amneziawg-go/v3/device"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 
@@ -76,11 +75,18 @@ type DeviceOptions struct {
 type Device struct {
 	*device.Device
 	Stack *stack.Stack
+
+	// localAddrs snapshots the netstack interface addresses (gVisor exposes
+	// no read-back); set once at construction, read-only afterwards.
+	localAddrs []netip.Addr
 }
+
+// LocalAddresses returns the configured tunnel-local address(es).
+func (d *Device) LocalAddresses() []netip.Addr { return d.localAddrs }
 
 // NewDevice constructs, configures, and brings up an embedded AmneziaWG
 // interface for inst in one call: a gVisor-backed tun.Device sized to
-// inst.MTU (or defaultMTU), addressed with inst.Address, configured via
+// amneziawg.EffectiveMTU, addressed with inst.Address, configured via
 // UAPI with inst.Obfuscation, inst.PrivateKey, opts' AWG 3.0 fields, and one
 // UAPI peer per inst.Peers entry. It does not attach a forwarder or start
 // relaying traffic -- that's the caller's job (see AttachTCPForwarder /
@@ -135,9 +141,10 @@ func newUnconfiguredDevice(inst amneziawg.Instance, opts DeviceOptions) (*Device
 	if logger == nil {
 		logger = device.NewLogger(device.LogLevelSilent, "")
 	}
-	dev := device.NewDevice(tun, awgconn.NewDefaultBind(), logger)
+	bind := newResolvingBind(inst.Listen)
+	dev := device.NewDevice(tun, bind, logger)
 
-	return &Device{Device: dev, Stack: gstack}, nil
+	return &Device{Device: dev, Stack: gstack, localAddrs: addrs}, nil
 }
 
 // Configure applies inst/opts to d via UAPI and brings the interface up.
@@ -212,13 +219,17 @@ func buildUAPIConfig(inst amneziawg.Instance, opts DeviceOptions) (string, error
 	writeOptionalLine(&b, "i4", o.I4)
 	writeOptionalLine(&b, "i5", o.I5)
 
+	// An omitted line means "unchanged" to amneziawg-go, so a cleared key can
+	// only reach a live device as the all-zero one that disables the feature.
+	hpHex := strings.Repeat("0", 64)
 	if opts.HeaderProtectionKey != "" {
-		hpHex, err := wireguard.KeyToHex(opts.HeaderProtectionKey)
+		var err error
+		hpHex, err = wireguard.KeyToHex(opts.HeaderProtectionKey)
 		if err != nil {
 			return "", fmt.Errorf("invalid header protection key: %w", err)
 		}
-		fmt.Fprintf(&b, "header_protection_key=%s\n", hpHex)
 	}
+	fmt.Fprintf(&b, "header_protection_key=%s\n", hpHex)
 	if opts.ContentPaddingAddition != "" {
 		fmt.Fprintf(&b, "content_padding_addition=%s\n", opts.ContentPaddingAddition)
 	}

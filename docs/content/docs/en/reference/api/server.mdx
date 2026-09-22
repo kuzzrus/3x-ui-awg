@@ -92,13 +92,11 @@ _openapi:
       title: Generate a new X25519 keypair for Reality.
       url: '#generate-a-new-x25519-keypair-for-reality'
     - depth: 2
-      title: Generate a new ML-DSA-65 keypair (post-quantum signature). Returns
-        {privateKey, publicKey, seed}.
-      url: '#generate-a-new-ml-dsa-65-keypair-post-quantum-signature-returns-privatekey-publickey-seed'
+      title: Generate a new ML-DSA-65 keypair. Returns {seed, verify}.
+      url: '#generate-a-new-ml-dsa-65-keypair-returns-seed-verify'
     - depth: 2
-      title: Generate a new ML-KEM-768 keypair (post-quantum KEM). Returns {clientKey,
-        serverKey}.
-      url: '#generate-a-new-ml-kem-768-keypair-post-quantum-kem-returns-clientkey-serverkey'
+      title: Generate a new ML-KEM-768 keypair. Returns {seed, client}.
+      url: '#generate-a-new-ml-kem-768-keypair-returns-seed-client'
     - depth: 2
       title: Generate VLESS encryption auth options. Returns an auths array each with
         id, label, encryption, and decryption fields.
@@ -110,6 +108,18 @@ _openapi:
       title: Reload Xray with the current config. Typically required after structural
         inbound or routing changes.
       url: '#reload-xray-with-the-current-config-typically-required-after-structural-inbound-or-routing-changes'
+    - depth: 2
+      title: Same reload as POST restartXrayService, but responds before the restart
+        runs and reports the outcome through GET getRestartStatus. Used by the
+        panel’s own dashboard; other callers should keep using
+        restartXrayService.
+      url: '#same-reload-as-post-restartxrayservice-but-responds-before-the-restart-runs-and-reports-the-outcome-through-get-getrestartstatus-used-by-the-panels-own-dashboard-other-callers-should-keep-using-restartxrayservice'
+    - depth: 2
+      title: Report the outcome of the most recently started dashboard restart (see
+        POST restartXrayServiceAsync). Compare the returned runId against the
+        one restartXrayServiceAsync returned to tell this run apart from a stale
+        result.
+      url: '#report-the-outcome-of-the-most-recently-started-dashboard-restart-see-post-restartxrayserviceasync-compare-the-returned-runid-against-the-one-restartxrayserviceasync-returned-to-tell-this-run-apart-from-a-stale-result'
     - depth: 2
       title: Download and install the specified Xray version. Pass "latest" for the
         newest release.
@@ -123,9 +133,31 @@ _openapi:
         dev release. Only effective on dev builds.
       url: '#toggle-the-panel-update-channel-between-stable-and-the-rolling-per-commit-dev-release-only-effective-on-dev-builds'
     - depth: 2
-      title: Refresh the default GeoIP / GeoSite data files. Body can include a
-        fileName, or use the /:fileName variant.
-      url: '#refresh-the-default-geoip--geosite-data-files-body-can-include-a-filename-or-use-the-filename-variant'
+      title: Report the host’s actual unattended-upgrades configuration (read from
+        /etc/apt/apt.conf.d/ directly, never a cached flag) plus the outcome of
+        the most recent runNow.
+      url: '#report-the-hosts-actual-unattended-upgrades-configuration-read-from-etcaptaptconfd-directly-never-a-cached-flag-plus-the-outcome-of-the-most-recent-runnow'
+    - depth: 2
+      title: Install the unattended-upgrades OS package via apt-get if it is not
+        already present. Does not change any setting -- see configure.
+      url: '#install-the-unattended-upgrades-os-package-via-apt-get-if-it-is-not-already-present-does-not-change-any-setting----see-configure'
+    - depth: 2
+      title: Write this panel’s own apt.conf.d drop-in (update scope, auto-reboot) and
+        turn the periodic timer on.
+      url: '#write-this-panels-own-aptconfd-drop-in-update-scope-auto-reboot-and-turn-the-periodic-timer-on'
+    - depth: 2
+      title: Turn off the periodic timer and remove this panel’s own drop-in. Does not
+        remove the unattended-upgrades package itself.
+      url: '#turn-off-the-periodic-timer-and-remove-this-panels-own-drop-in-does-not-remove-the-unattended-upgrades-package-itself'
+    - depth: 2
+      title: Run unattended-upgrade immediately in the background and return a runId.
+        Poll GET status (lastRun) for the outcome, the same shape
+        updatePanel/getUpdateStatus use.
+      url: '#run-unattended-upgrade-immediately-in-the-background-and-return-a-runid-poll-get-status-lastrun-for-the-outcome-the-same-shape-updatepanelgetupdatestatus-use'
+    - depth: 2
+      title: Refresh the default GeoIP / GeoSite data files. Use the /:fileName
+        variant to update one file.
+      url: '#refresh-the-default-geoip--geosite-data-files-use-the-filename-variant-to-update-one-file'
     - depth: 2
       title: Refresh a single Geo file by filename (e.g. geoip.dat, geosite.dat).
       url: '#refresh-a-single-geo-file-by-filename-eg-geoipdat-geositedat'
@@ -170,9 +202,16 @@ _openapi:
       title: Probe/discover REALITY targets and return each verdict ranked by
         feasibility then latency. Each comma-separated token may be a domain
         (validated with SNI), a bare IP, or a CIDR range (discovered without SNI
-        by reading the certificate domain). When empty, a built-in seed list is
-        probed.
-      url: '#probediscover-reality-targets-and-return-each-verdict-ranked-by-feasibility-then-latency-each-comma-separated-token-may-be-a-domain-validated-with-sni-a-bare-ip-or-a-cidr-range-discovered-without-sni-by-reading-the-certificate-domain-when-empty-a-built-in-seed-list-is-probed'
+        by reading the certificate domain). When empty, the
+        realityScanCandidates setting is probed (the built-in seed list if that
+        setting is empty).
+      url: '#probediscover-reality-targets-and-return-each-verdict-ranked-by-feasibility-then-latency-each-comma-separated-token-may-be-a-domain-validated-with-sni-a-bare-ip-or-a-cidr-range-discovered-without-sni-by-reading-the-certificate-domain-when-empty-the-realityscancandidates-setting-is-probed-the-built-in-seed-list-if-that-setting-is-empty'
+    - depth: 2
+      title: Send a real QUICv1 Initial ClientHello to host:443 and turn the server's
+        real Initial reply into an AmneziaWG CPS chain, ready to drop into an
+        inbound's I1-I5 field. Fails if the host does not respond on UDP/443
+        within a few seconds.
+      url: '#send-a-real-quicv1-initial-clienthello-to-host443-and-turn-the-servers-real-initial-reply-into-an-amneziawg-cps-chain-ready-to-drop-into-an-inbounds-i1-i5-field-fails-if-the-host-does-not-respond-on-udp443-within-a-few-seconds'
     - depth: 2
       title: Fetch the fully aggregated inbound_client_ips database table. Used by
         nodes to sync recently active IPs across the cluster.
@@ -248,12 +287,10 @@ _openapi:
         id: read-only-summaries-guid-parentguid-name-address-status-versions-of-the-nodes-this-panel-manages-a-parent-panel-calls-it-on-a-node-via-the-node-api-token-to-surface-transitive-sub-nodes-in-a-chained-topology-counts-are-computed-by-the-parent-not-returned-here
       - content: Generate a new X25519 keypair for Reality.
         id: generate-a-new-x25519-keypair-for-reality
-      - content: Generate a new ML-DSA-65 keypair (post-quantum signature). Returns
-          {privateKey, publicKey, seed}.
-        id: generate-a-new-ml-dsa-65-keypair-post-quantum-signature-returns-privatekey-publickey-seed
-      - content: Generate a new ML-KEM-768 keypair (post-quantum KEM). Returns
-          {clientKey, serverKey}.
-        id: generate-a-new-ml-kem-768-keypair-post-quantum-kem-returns-clientkey-serverkey
+      - content: Generate a new ML-DSA-65 keypair. Returns {seed, verify}.
+        id: generate-a-new-ml-dsa-65-keypair-returns-seed-verify
+      - content: Generate a new ML-KEM-768 keypair. Returns {seed, client}.
+        id: generate-a-new-ml-kem-768-keypair-returns-seed-client
       - content: Generate VLESS encryption auth options. Returns an auths array each
           with id, label, encryption, and decryption fields.
         id: generate-vless-encryption-auth-options-returns-an-auths-array-each-with-id-label-encryption-and-decryption-fields
@@ -262,6 +299,16 @@ _openapi:
       - content: Reload Xray with the current config. Typically required after
           structural inbound or routing changes.
         id: reload-xray-with-the-current-config-typically-required-after-structural-inbound-or-routing-changes
+      - content: Same reload as POST restartXrayService, but responds before the restart
+          runs and reports the outcome through GET getRestartStatus. Used by the
+          panel’s own dashboard; other callers should keep using
+          restartXrayService.
+        id: same-reload-as-post-restartxrayservice-but-responds-before-the-restart-runs-and-reports-the-outcome-through-get-getrestartstatus-used-by-the-panels-own-dashboard-other-callers-should-keep-using-restartxrayservice
+      - content: Report the outcome of the most recently started dashboard restart (see
+          POST restartXrayServiceAsync). Compare the returned runId against the
+          one restartXrayServiceAsync returned to tell this run apart from a
+          stale result.
+        id: report-the-outcome-of-the-most-recently-started-dashboard-restart-see-post-restartxrayserviceasync-compare-the-returned-runid-against-the-one-restartxrayserviceasync-returned-to-tell-this-run-apart-from-a-stale-result
       - content: Download and install the specified Xray version. Pass "latest" for the
           newest release.
         id: download-and-install-the-specified-xray-version-pass-latest-for-the-newest-release
@@ -271,9 +318,26 @@ _openapi:
       - content: Toggle the panel update channel between stable and the rolling
           per-commit dev release. Only effective on dev builds.
         id: toggle-the-panel-update-channel-between-stable-and-the-rolling-per-commit-dev-release-only-effective-on-dev-builds
-      - content: Refresh the default GeoIP / GeoSite data files. Body can include a
-          fileName, or use the /:fileName variant.
-        id: refresh-the-default-geoip--geosite-data-files-body-can-include-a-filename-or-use-the-filename-variant
+      - content: Report the host’s actual unattended-upgrades configuration (read from
+          /etc/apt/apt.conf.d/ directly, never a cached flag) plus the outcome
+          of the most recent runNow.
+        id: report-the-hosts-actual-unattended-upgrades-configuration-read-from-etcaptaptconfd-directly-never-a-cached-flag-plus-the-outcome-of-the-most-recent-runnow
+      - content: Install the unattended-upgrades OS package via apt-get if it is not
+          already present. Does not change any setting -- see configure.
+        id: install-the-unattended-upgrades-os-package-via-apt-get-if-it-is-not-already-present-does-not-change-any-setting----see-configure
+      - content: Write this panel’s own apt.conf.d drop-in (update scope, auto-reboot)
+          and turn the periodic timer on.
+        id: write-this-panels-own-aptconfd-drop-in-update-scope-auto-reboot-and-turn-the-periodic-timer-on
+      - content: Turn off the periodic timer and remove this panel’s own drop-in. Does
+          not remove the unattended-upgrades package itself.
+        id: turn-off-the-periodic-timer-and-remove-this-panels-own-drop-in-does-not-remove-the-unattended-upgrades-package-itself
+      - content: Run unattended-upgrade immediately in the background and return a
+          runId. Poll GET status (lastRun) for the outcome, the same shape
+          updatePanel/getUpdateStatus use.
+        id: run-unattended-upgrade-immediately-in-the-background-and-return-a-runid-poll-get-status-lastrun-for-the-outcome-the-same-shape-updatepanelgetupdatestatus-use
+      - content: Refresh the default GeoIP / GeoSite data files. Use the /:fileName
+          variant to update one file.
+        id: refresh-the-default-geoip--geosite-data-files-use-the-filename-variant-to-update-one-file
       - content: Refresh a single Geo file by filename (e.g. geoip.dat, geosite.dat).
         id: refresh-a-single-geo-file-by-filename-eg-geoipdat-geositedat
       - content: Return the last N lines of the panel’s own log.
@@ -308,9 +372,15 @@ _openapi:
       - content: Probe/discover REALITY targets and return each verdict ranked by
           feasibility then latency. Each comma-separated token may be a domain
           (validated with SNI), a bare IP, or a CIDR range (discovered without
-          SNI by reading the certificate domain). When empty, a built-in seed
-          list is probed.
-        id: probediscover-reality-targets-and-return-each-verdict-ranked-by-feasibility-then-latency-each-comma-separated-token-may-be-a-domain-validated-with-sni-a-bare-ip-or-a-cidr-range-discovered-without-sni-by-reading-the-certificate-domain-when-empty-a-built-in-seed-list-is-probed
+          SNI by reading the certificate domain). When empty, the
+          realityScanCandidates setting is probed (the built-in seed list if
+          that setting is empty).
+        id: probediscover-reality-targets-and-return-each-verdict-ranked-by-feasibility-then-latency-each-comma-separated-token-may-be-a-domain-validated-with-sni-a-bare-ip-or-a-cidr-range-discovered-without-sni-by-reading-the-certificate-domain-when-empty-the-realityscancandidates-setting-is-probed-the-built-in-seed-list-if-that-setting-is-empty
+      - content: Send a real QUICv1 Initial ClientHello to host:443 and turn the
+          server's real Initial reply into an AmneziaWG CPS chain, ready to drop
+          into an inbound's I1-I5 field. Fails if the host does not respond on
+          UDP/443 within a few seconds.
+        id: send-a-real-quicv1-initial-clienthello-to-host443-and-turn-the-servers-real-initial-reply-into-an-amneziawg-cps-chain-ready-to-drop-into-an-inbounds-i1-i5-field-fails-if-the-host-does-not-respond-on-udp443-within-a-few-seconds
       - content: Fetch the fully aggregated inbound_client_ips database table. Used by
           nodes to sync recently active IPs across the cluster.
         id: fetch-the-fully-aggregated-inbound_client_ips-database-table-used-by-nodes-to-sync-recently-active-ips-across-the-cluster
@@ -329,7 +399,7 @@ export default function Layout(props) {
   return (
     <>
       {props.children}
-      <Comp document="./public/openapi.json" webhooks={[]} operations={[{"path":"/panel/api/openapi.json","method":"get"},{"path":"/panel/api/server/status","method":"get"},{"path":"/panel/api/server/fail2banStatus","method":"get"},{"path":"/panel/api/server/cpuHistory/{bucket}","method":"get"},{"path":"/panel/api/server/history/{metric}/{bucket}","method":"get"},{"path":"/panel/api/server/xrayMetricsState","method":"get"},{"path":"/panel/api/server/xrayMetricsHistory/{metric}/{bucket}","method":"get"},{"path":"/panel/api/server/xrayObservatory","method":"get"},{"path":"/panel/api/server/xrayObservatoryHistory/{tag}/{bucket}","method":"get"},{"path":"/panel/api/server/getXrayVersion","method":"get"},{"path":"/panel/api/server/getPanelUpdateInfo","method":"get"},{"path":"/panel/api/server/getUpdateStatus","method":"get"},{"path":"/panel/api/server/getConfigJson","method":"get"},{"path":"/panel/api/server/getDb","method":"get"},{"path":"/panel/api/server/getMigration","method":"get"},{"path":"/panel/api/server/getNewUUID","method":"get"},{"path":"/panel/api/server/getWebCertFiles","method":"get"},{"path":"/panel/api/server/descendants","method":"get"},{"path":"/panel/api/server/getNewX25519Cert","method":"get"},{"path":"/panel/api/server/getNewmldsa65","method":"get"},{"path":"/panel/api/server/getNewmlkem768","method":"get"},{"path":"/panel/api/server/getNewVlessEnc","method":"get"},{"path":"/panel/api/server/stopXrayService","method":"post"},{"path":"/panel/api/server/restartXrayService","method":"post"},{"path":"/panel/api/server/installXray/{version}","method":"post"},{"path":"/panel/api/server/updatePanel","method":"post"},{"path":"/panel/api/server/setUpdateChannel","method":"post"},{"path":"/panel/api/server/updateGeofile","method":"post"},{"path":"/panel/api/server/updateGeofile/{fileName}","method":"post"},{"path":"/panel/api/server/logs/{count}","method":"post"},{"path":"/panel/api/server/xraylogs/{count}","method":"post"},{"path":"/panel/api/server/amneziawglogs/{count}","method":"post"},{"path":"/panel/api/server/importDB","method":"post"},{"path":"/panel/api/server/getNewEchCert","method":"post"},{"path":"/panel/api/server/getCertHash","method":"post"},{"path":"/panel/api/server/getRemoteCertHash","method":"post"},{"path":"/panel/api/server/scanRealityTarget","method":"post"},{"path":"/panel/api/server/scanRealityTargets","method":"post"},{"path":"/panel/api/server/clientIps","method":"get"},{"path":"/panel/api/server/clientIps","method":"post"}]} showTitle />
+      <Comp document="./public/openapi.json" webhooks={[]} operations={[{"path":"/panel/api/openapi.json","method":"get"},{"path":"/panel/api/server/status","method":"get"},{"path":"/panel/api/server/fail2banStatus","method":"get"},{"path":"/panel/api/server/cpuHistory/{bucket}","method":"get"},{"path":"/panel/api/server/history/{metric}/{bucket}","method":"get"},{"path":"/panel/api/server/xrayMetricsState","method":"get"},{"path":"/panel/api/server/xrayMetricsHistory/{metric}/{bucket}","method":"get"},{"path":"/panel/api/server/xrayObservatory","method":"get"},{"path":"/panel/api/server/xrayObservatoryHistory/{tag}/{bucket}","method":"get"},{"path":"/panel/api/server/getXrayVersion","method":"get"},{"path":"/panel/api/server/getPanelUpdateInfo","method":"get"},{"path":"/panel/api/server/getUpdateStatus","method":"get"},{"path":"/panel/api/server/getConfigJson","method":"get"},{"path":"/panel/api/server/getDb","method":"get"},{"path":"/panel/api/server/getMigration","method":"get"},{"path":"/panel/api/server/getNewUUID","method":"get"},{"path":"/panel/api/server/getWebCertFiles","method":"get"},{"path":"/panel/api/server/descendants","method":"get"},{"path":"/panel/api/server/getNewX25519Cert","method":"get"},{"path":"/panel/api/server/getNewmldsa65","method":"get"},{"path":"/panel/api/server/getNewmlkem768","method":"get"},{"path":"/panel/api/server/getNewVlessEnc","method":"get"},{"path":"/panel/api/server/stopXrayService","method":"post"},{"path":"/panel/api/server/restartXrayService","method":"post"},{"path":"/panel/api/server/restartXrayServiceAsync","method":"post"},{"path":"/panel/api/server/getRestartStatus","method":"get"},{"path":"/panel/api/server/installXray/{version}","method":"post"},{"path":"/panel/api/server/updatePanel","method":"post"},{"path":"/panel/api/server/setUpdateChannel","method":"post"},{"path":"/panel/api/server/unattendedUpgrades/status","method":"get"},{"path":"/panel/api/server/unattendedUpgrades/install","method":"post"},{"path":"/panel/api/server/unattendedUpgrades/configure","method":"post"},{"path":"/panel/api/server/unattendedUpgrades/disable","method":"post"},{"path":"/panel/api/server/unattendedUpgrades/runNow","method":"post"},{"path":"/panel/api/server/updateGeofile","method":"post"},{"path":"/panel/api/server/updateGeofile/{fileName}","method":"post"},{"path":"/panel/api/server/logs/{count}","method":"post"},{"path":"/panel/api/server/xraylogs/{count}","method":"post"},{"path":"/panel/api/server/amneziawglogs/{count}","method":"post"},{"path":"/panel/api/server/importDB","method":"post"},{"path":"/panel/api/server/getNewEchCert","method":"post"},{"path":"/panel/api/server/getCertHash","method":"post"},{"path":"/panel/api/server/getRemoteCertHash","method":"post"},{"path":"/panel/api/server/scanRealityTarget","method":"post"},{"path":"/panel/api/server/scanRealityTargets","method":"post"},{"path":"/panel/api/server/awgQuicCapture","method":"post"},{"path":"/panel/api/server/clientIps","method":"get"},{"path":"/panel/api/server/clientIps","method":"post"}]} showTitle />
     </>
   );
 }

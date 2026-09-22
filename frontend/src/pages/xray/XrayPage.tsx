@@ -158,19 +158,6 @@ export default function XrayPage() {
       if (idx >= 0) tt.outbounds.splice(idx, 1);
     });
   }
-  function onRemoveOutboundByIndex(index: number) {
-    mutate((tt) => {
-      if (tt.outbounds && index >= 0) tt.outbounds.splice(index, 1);
-    });
-  }
-  function onRemoveRoutingRules(payload: { prefix: string }) {
-    mutate((tt) => {
-      const rules = tt.routing?.rules;
-      if (!Array.isArray(rules)) return;
-      tt.routing!.rules = rules.filter((r) => !r?.outboundTag?.startsWith?.(payload.prefix));
-    });
-  }
-
   const advancedText = useMemo(() => {
     if (advSettings === 'xraySetting') return xraySetting;
     const tpl = templateSettings;
@@ -414,8 +401,6 @@ export default function XrayPage() {
           onClose={() => setNordOpen(false)}
           onAddOutbound={onAddOutbound}
           onResetOutbound={onResetOutbound}
-          onRemoveOutbound={onRemoveOutboundByIndex}
-          onRemoveRoutingRules={onRemoveRoutingRules}
         />
         <PiaModal
           open={piaOpen}

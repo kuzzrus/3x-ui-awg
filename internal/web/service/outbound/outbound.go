@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -161,7 +162,7 @@ func (s *OutboundService) testOutboundTCP(outboundJSON string) (*TestOutboundRes
 	}
 	tag, _ := ob["tag"].(string)
 	protocol, _ := ob["protocol"].(string)
-	if protocol == "blackhole" || protocol == "freedom" || tag == "blocked" {
+	if equalsAnyFold(protocol, "blackhole", "freedom") || tag == "blocked" {
 		return &TestOutboundResult{Tag: tag, Mode: "tcp", Success: false, Error: "Outbound has no testable endpoint"}, nil
 	}
 
@@ -226,11 +227,23 @@ func probeTCPEndpoint(endpoint string, timeout time.Duration) TestEndpointResult
 // dial neither proves reachability nor measures latency. Such outbounds
 // must go through the real xray handshake probe instead.
 func outboundTransportIsUDP(ob map[string]any) bool {
-	if protocol, _ := ob["protocol"].(string); protocol == "hysteria" || protocol == "wireguard" {
+	if protocol, _ := ob["protocol"].(string); equalsAnyFold(protocol, "hysteria", "wireguard", "amneziawg") {
 		return true
 	}
 	if stream, ok := ob["streamSettings"].(map[string]any); ok {
-		if n, _ := stream["network"].(string); n == "hysteria" || n == "kcp" || n == "quic" {
+		// The core resolves "kcp" and "mkcp" to the same mKCP transport.
+		if n, _ := stream["network"].(string); equalsAnyFold(n, "hysteria", "kcp", "mkcp", "quic") {
+			return true
+		}
+	}
+	return false
+}
+
+// equalsAnyFold mirrors the core, which lowercases a protocol id and a
+// transport name before it resolves either of them.
+func equalsAnyFold(value string, want ...string) bool {
+	for _, w := range want {
+		if strings.EqualFold(value, w) {
 			return true
 		}
 	}
@@ -239,6 +252,7 @@ func outboundTransportIsUDP(ob map[string]any) bool {
 
 func extractOutboundEndpoints(ob map[string]any) []string {
 	protocol, _ := ob["protocol"].(string)
+	protocol = strings.ToLower(protocol)
 	settings, _ := ob["settings"].(map[string]any)
 	if settings == nil {
 		return nil
@@ -262,7 +276,16 @@ func extractOutboundEndpoints(ob map[string]any) []string {
 			}
 		}
 	case "vless":
-		addServer(settings["address"], settings["port"])
+		if vnext, ok := settings["vnext"].([]any); ok {
+			for _, v := range vnext {
+				if vm, ok := v.(map[string]any); ok {
+					addServer(vm["address"], vm["port"])
+				}
+			}
+		}
+		if len(out) == 0 {
+			addServer(settings["address"], settings["port"])
+		}
 	case "hysteria":
 		addServer(settings["address"], settings["port"])
 	case "trojan", "shadowsocks", "http", "socks":

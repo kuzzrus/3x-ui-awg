@@ -159,9 +159,7 @@ func (s *ClientService) ImportClients(inboundSvc *InboundService, items []Client
 				continue
 			}
 		}
-		if !client.Enable {
-			client.Enable = true
-		}
+		// Preserve exported enable so a disabled orphan stays disabled (#6478).
 		now := time.Now().UnixMilli()
 		if client.CreatedAt == 0 {
 			client.CreatedAt = now
@@ -173,6 +171,13 @@ func (s *ClientService) ImportClients(inboundSvc *InboundService, items []Client
 		if err := db.Create(rec).Error; err != nil {
 			skip(email, err.Error())
 			continue
+		}
+		// gorm default:true drops enable=false on Create — restate (#6478).
+		if !client.Enable {
+			if err := db.Model(&model.ClientRecord{}).Where("id = ?", rec.Id).
+				UpdateColumn("enable", false).Error; err != nil {
+				return result, needRestart, err
+			}
 		}
 		result.Created++
 	}

@@ -49,6 +49,7 @@ const JSON_HEADERS = { headers: { 'Content-Type': 'application/json' } } as cons
 
 interface SubSettings {
   enable: boolean;
+  happLinkEnable: boolean;
   subURI: string;
   subJsonURI: string;
   subJsonEnable: boolean;
@@ -349,6 +350,7 @@ export function useClients(options: UseClientsOptions = {}) {
   const subSettings: SubSettings = useMemo(
     () => ({
       enable: !!defaults.subEnable,
+      happLinkEnable: defaults.happLinkEnable === true,
       subURI: (defaults.subURI as string) || '',
       subJsonURI: (defaults.subJsonURI as string) || '',
       subJsonEnable: !!defaults.subJsonEnable,
@@ -358,6 +360,7 @@ export function useClients(options: UseClientsOptions = {}) {
     }),
     [
       defaults.subEnable,
+      defaults.happLinkEnable,
       defaults.subURI,
       defaults.subJsonURI,
       defaults.subJsonEnable,
@@ -494,7 +497,9 @@ export function useClients(options: UseClientsOptions = {}) {
       emails: string[];
       addDays: number;
       addBytes: number;
-      flow: string;
+      flow?: string;
+      limitHwid?: number | null;
+      adTag?: string;
     }): Promise<Msg<BulkAdjustResult>> => {
       const raw = await HttpUtil.post('/panel/api/clients/bulkAdjust', payload, JSON_HEADERS);
       return parseMsg(raw, BulkAdjustResultSchema, 'clients/bulkAdjust');
@@ -663,9 +668,16 @@ export function useClients(options: UseClientsOptions = {}) {
     [bulkCreateMut],
   );
   const bulkAdjust = useCallback(
-    (emails: string[], addDays: number, addBytes: number, flow = '') => {
+    (
+      emails: string[],
+      addDays: number,
+      addBytes: number,
+      flow = '',
+      limitHwid?: number | null,
+      adTag?: string,
+    ) => {
       if (!Array.isArray(emails) || emails.length === 0) return Promise.resolve(null);
-      return bulkAdjustMut.mutateAsync({ emails, addDays, addBytes, flow });
+      return bulkAdjustMut.mutateAsync({ emails, addDays, addBytes, flow, limitHwid, adTag });
     },
     [bulkAdjustMut],
   );
@@ -788,6 +800,7 @@ export function useClients(options: UseClientsOptions = {}) {
         resetDay: Number(base.resetDay) || 0,
         resetMax: Number(base.resetMax) || 0,
         trafficReset: base.trafficReset || 'never',
+        trafficResetDay: Number(base.trafficResetDay) || 1,
         group: base.group || '',
         comment: base.comment || '',
         enable: !!enable,

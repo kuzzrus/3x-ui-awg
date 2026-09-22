@@ -14,17 +14,17 @@ describe('fitsInQrCode', () => {
     const conf = ['[Interface]', 'PrivateKey = k', ...Array.from({ length: 5 }, () => I_LINE)].join(
       '\n',
     );
-    expect(conf.length).toBeGreaterThan(2331);
+    expect(conf.length).toBeGreaterThan(2953);
     expect(fitsInQrCode(conf)).toBe(false);
   });
 
   it('counts UTF-8 bytes, not code points', () => {
-    expect(fitsInQrCode('я'.repeat(1200))).toBe(false);
-    expect(fitsInQrCode('a'.repeat(1200))).toBe(true);
+    expect(fitsInQrCode('я'.repeat(1500))).toBe(false);
+    expect(fitsInQrCode('a'.repeat(1500))).toBe(true);
   });
 
   it('is exact at the capacity boundary', () => {
-    expect(fitsInQrCode('a'.repeat(2331))).toBe(true);
-    expect(fitsInQrCode('a'.repeat(2332))).toBe(false);
+    expect(fitsInQrCode('a'.repeat(2953))).toBe(true);
+    expect(fitsInQrCode('a'.repeat(2954))).toBe(false);
   });
 });

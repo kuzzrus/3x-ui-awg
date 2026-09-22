@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentType, CSSProperties } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { Drawer, Layout, Menu } from 'antd';
+import { Drawer, Layout, Menu, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   ApiOutlined,
@@ -13,6 +13,7 @@ import {
   CodeOutlined,
   DashboardOutlined,
   DatabaseOutlined,
+  DiscordOutlined,
   ExportOutlined,
   GatewayOutlined,
   GithubOutlined,
@@ -29,6 +30,7 @@ import {
   PushpinOutlined,
   ReadOutlined,
   SafetyOutlined,
+  SearchOutlined,
   SettingOutlined,
   SunOutlined,
   SwapOutlined,
@@ -41,9 +43,13 @@ import { HttpUtil } from '@/utils';
 import { formatPanelVersion } from '@/lib/panel-version';
 import { pauseAnimationsUntilLeave, useTheme } from '@/hooks/useTheme';
 import { useAllSettings } from '@/api/queries/useAllSettings';
+import { useCommandPalette } from '@/components/command-palette/useCommandPalette';
 import './AppSidebar.css';
 
 const DONATE_URL = 'https://www.tbank.ru/cf/2qxNvGa3fSX';
+// The palette listens for Ctrl as well as Cmd, so the chip must not show a
+// Mac glyph to the Linux and Windows operators who are most of this panel's.
+const SHORTCUT_MODIFIER = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent) ? '⌘' : 'Ctrl';
 const DOCS_URL = 'https://docs.sanaei.dev/';
 const REPO_URL = 'https://github.com/kuzzrus/3x-ui-awg';
 const LOGOUT_KEY = '__logout__';
@@ -175,6 +181,7 @@ function saveSidebarPinned(pinned: boolean) {
 export default function AppSidebar() {
   const { t } = useTranslation();
   const { isDark, isUltra, toggleTheme, toggleUltra } = useTheme();
+  const { open: openCommandPalette } = useCommandPalette();
   const navigate = useNavigate();
   const { pathname, hash } = useLocation();
   const { allSetting } = useAllSettings();
@@ -252,6 +259,11 @@ export default function AppSidebar() {
         label: t('pages.settings.TGBotSettings'),
       },
       { key: '/settings#email', icon: <MailOutlined />, label: t('pages.settings.emailSettings') },
+      {
+        key: '/settings#discord',
+        icon: <DiscordOutlined />,
+        label: t('pages.settings.discordSettings'),
+      },
       {
         key: '/settings#subscription',
         icon: <CloudServerOutlined />,
@@ -398,6 +410,30 @@ export default function AppSidebar() {
             </div>
           )}
         </div>
+        <Tooltip
+          title={
+            railCollapsed ? t('commandPalette.title') || 'Command Palette (Ctrl + K)' : undefined
+          }
+          placement="right"
+        >
+          <button
+            type="button"
+            className={`sidebar-command-trigger${railCollapsed ? ' collapsed' : ''}`}
+            onClick={openCommandPalette}
+            aria-label={t('commandPalette.title') || 'Command Palette (Ctrl + K)'}
+          >
+            <span className="sidebar-command-left">
+              <SearchOutlined className="sidebar-command-icon" />
+              <span className="sidebar-command-text">
+                {t('commandPalette.search') || 'Search...'}
+              </span>
+            </span>
+            <span className="sidebar-command-kbd">
+              <span className="kbd-cmd">{SHORTCUT_MODIFIER}</span>
+              <span className="kbd-key">K</span>
+            </span>
+          </button>
+        </Tooltip>
         <Menu
           theme={currentTheme}
           mode="inline"
@@ -458,6 +494,25 @@ export default function AppSidebar() {
             </button>
           </div>
         </div>
+        <button
+          type="button"
+          className="sidebar-command-trigger"
+          onClick={() => {
+            setDrawerOpen(false);
+            openCommandPalette();
+          }}
+          aria-label={t('commandPalette.title') || 'Command Palette (Ctrl + K)'}
+          style={{ margin: '8px 12px 4px', width: 'calc(100% - 24px)' }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <SearchOutlined className="sidebar-command-icon" />
+            <span>{t('commandPalette.search') || 'Search...'}</span>
+          </span>
+          <span className="sidebar-command-kbd">
+            <span className="kbd-cmd">{SHORTCUT_MODIFIER}</span>
+            <span className="kbd-key">K</span>
+          </span>
+        </button>
         <Menu
           theme={currentTheme}
           mode="inline"

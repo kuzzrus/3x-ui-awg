@@ -9,9 +9,9 @@ _openapi:
   toc:
     - depth: 2
       title: Return the Xray config template (JSON string), available inbound tags,
-        client reverse tags, and the configured outbound test URL in one
-        response.
-      url: '#return-the-xray-config-template-json-string-available-inbound-tags-client-reverse-tags-and-the-configured-outbound-test-url-in-one-response'
+        client reverse tags, and the configured outbound test/speed-test URLs in
+        one response.
+      url: '#return-the-xray-config-template-json-string-available-inbound-tags-client-reverse-tags-and-the-configured-outbound-testspeed-test-urls-in-one-response'
     - depth: 2
       title: Return the built-in default Xray config shipped with the panel (identical
         to /panel/api/setting/getDefaultJsonConfig).
@@ -25,9 +25,9 @@ _openapi:
         for startup errors or runtime warnings.
       url: '#return-the-most-recent-xray-process-stdoutstderr-output-useful-to-check-for-startup-errors-or-runtime-warnings'
     - depth: 2
-      title: Save the Xray JSON config template and optionally the outbound test URL.
-        Both are sent as form fields.
-      url: '#save-the-xray-json-config-template-and-optionally-the-outbound-test-url-both-are-sent-as-form-fields'
+      title: Save the Xray JSON config template and optionally the outbound
+        test/speed-test URLs. All are sent as form fields.
+      url: '#save-the-xray-json-config-template-and-optionally-the-outbound-testspeed-test-urls-all-are-sent-as-form-fields'
     - depth: 2
       title: Manage Cloudflare Warp integration. The action parameter selects the
         operation.
@@ -36,9 +36,45 @@ _openapi:
       title: Manage NordVPN integration. The action parameter selects the operation.
       url: '#manage-nordvpn-integration-the-action-parameter-selects-the-operation'
     - depth: 2
+      title: Manage the panel-hosted Tor sidecar. The action parameter selects the
+        operation.
+      url: '#manage-the-panel-hosted-tor-sidecar-the-action-parameter-selects-the-operation'
+    - depth: 2
+      title: Manage the panel-hosted Psiphon sidecar. The action parameter selects the
+        operation.
+      url: '#manage-the-panel-hosted-psiphon-sidecar-the-action-parameter-selects-the-operation'
+    - depth: 2
+      title: Replace the admin-supplied psiphon.config. The panel does not and cannot
+        generate working Psiphon credentials -- this must come from the admin.
+      url: '#replace-the-admin-supplied-psiphonconfig-the-panel-does-not-and-cannot-generate-working-psiphon-credentials----this-must-come-from-the-admin'
+    - depth: 2
+      title: List ISO 3166-1 codes (states plus common territories) for the
+        egress-region picker (not a Psiphon-curated subset -- see the
+        psiphon/:action region action to actually apply and verify one).
+      url: '#list-iso-3166-1-codes-states-plus-common-territories-for-the-egress-region-picker-not-a-psiphon-curated-subset----see-the-psiphonaction-region-action-to-actually-apply-and-verify-one'
+    - depth: 2
+      title: Manage the panel-hosted WARP-via-wireproxy sidecar
+        (github.com/kuzzrus/WARP_WireProxy_Manager, vendored and pinned). The
+        action parameter selects the operation.
+      url: '#manage-the-panel-hosted-warp-via-wireproxy-sidecar-githubcomkuzzruswarp_wireproxy_manager-vendored-and-pinned-the-action-parameter-selects-the-operation'
+    - depth: 2
       title: Manage PIA WireGuard integration. The action parameter selects the
         operation.
       url: '#manage-pia-wireguard-integration-the-action-parameter-selects-the-operation'
+    - depth: 2
+      title: Manage the built-in reverse proxy that Xray's REALITY fallback target
+        points at. The action parameter selects the operation.
+      url: '#manage-the-built-in-reverse-proxy-that-xrays-reality-fallback-target-points-at-the-action-parameter-selects-the-operation'
+    - depth: 2
+      title: Replace the reverse proxy decoy with an uploaded static site. The zip
+        must contain an index.html, either at its root or inside a single
+        wrapping folder.
+      url: '#replace-the-reverse-proxy-decoy-with-an-uploaded-static-site-the-zip-must-contain-an-indexhtml-either-at-its-root-or-inside-a-single-wrapping-folder'
+    - depth: 2
+      title: Manage the AdGuard Home instance the reverse proxy can serve as its
+        decoy. Unlike the template decoys this is a real service, so the domain
+        answers with a working admin UI and DNS-over-HTTPS.
+      url: '#manage-the-adguard-home-instance-the-reverse-proxy-can-serve-as-its-decoy-unlike-the-template-decoys-this-is-a-real-service-so-the-domain-answers-with-a-working-admin-ui-and-dns-over-https'
     - depth: 2
       title: Reset traffic counters for a specific outbound by tag.
       url: '#reset-traffic-counters-for-a-specific-outbound-by-tag'
@@ -50,8 +86,9 @@ _openapi:
     - depth: 2
       title: Test a batch of outbounds (max 50) through one shared temp xray instance.
         Returns an array of results in input order, each with the outbound tag,
-        delay, HTTP status and a connect/TLS/TTFB timing breakdown.
-      url: '#test-a-batch-of-outbounds-max-50-through-one-shared-temp-xray-instance-returns-an-array-of-results-in-input-order-each-with-the-outbound-tag-delay-http-status-and-a-connecttlsttfb-timing-breakdown'
+        delay, HTTP status, a connect/TLS/TTFB timing breakdown, or (mode
+        "speed") download/upload Mbit/s.
+      url: '#test-a-batch-of-outbounds-max-50-through-one-shared-temp-xray-instance-returns-an-array-of-results-in-input-order-each-with-the-outbound-tag-delay-http-status-a-connecttlsttfb-timing-breakdown-or-mode-speed-downloadupload-mbits'
     - depth: 2
       title: 'Live state of routing balancers in the running core
         (RoutingService.GetBalancerInfo): current override and the targets the
@@ -120,9 +157,9 @@ _openapi:
   structuredData:
     headings:
       - content: Return the Xray config template (JSON string), available inbound tags,
-          client reverse tags, and the configured outbound test URL in one
-          response.
-        id: return-the-xray-config-template-json-string-available-inbound-tags-client-reverse-tags-and-the-configured-outbound-test-url-in-one-response
+          client reverse tags, and the configured outbound test/speed-test URLs
+          in one response.
+        id: return-the-xray-config-template-json-string-available-inbound-tags-client-reverse-tags-and-the-configured-outbound-testspeed-test-urls-in-one-response
       - content: Return the built-in default Xray config shipped with the panel
           (identical to /panel/api/setting/getDefaultJsonConfig).
         id: return-the-built-in-default-xray-config-shipped-with-the-panel-identical-to-panelapisettinggetdefaultjsonconfig
@@ -132,17 +169,46 @@ _openapi:
       - content: Return the most recent Xray process stdout/stderr output. Useful to
           check for startup errors or runtime warnings.
         id: return-the-most-recent-xray-process-stdoutstderr-output-useful-to-check-for-startup-errors-or-runtime-warnings
-      - content: Save the Xray JSON config template and optionally the outbound test
-          URL. Both are sent as form fields.
-        id: save-the-xray-json-config-template-and-optionally-the-outbound-test-url-both-are-sent-as-form-fields
+      - content: Save the Xray JSON config template and optionally the outbound
+          test/speed-test URLs. All are sent as form fields.
+        id: save-the-xray-json-config-template-and-optionally-the-outbound-testspeed-test-urls-all-are-sent-as-form-fields
       - content: Manage Cloudflare Warp integration. The action parameter selects the
           operation.
         id: manage-cloudflare-warp-integration-the-action-parameter-selects-the-operation
       - content: Manage NordVPN integration. The action parameter selects the operation.
         id: manage-nordvpn-integration-the-action-parameter-selects-the-operation
+      - content: Manage the panel-hosted Tor sidecar. The action parameter selects the
+          operation.
+        id: manage-the-panel-hosted-tor-sidecar-the-action-parameter-selects-the-operation
+      - content: Manage the panel-hosted Psiphon sidecar. The action parameter selects
+          the operation.
+        id: manage-the-panel-hosted-psiphon-sidecar-the-action-parameter-selects-the-operation
+      - content: Replace the admin-supplied psiphon.config. The panel does not and
+          cannot generate working Psiphon credentials -- this must come from the
+          admin.
+        id: replace-the-admin-supplied-psiphonconfig-the-panel-does-not-and-cannot-generate-working-psiphon-credentials----this-must-come-from-the-admin
+      - content: List ISO 3166-1 codes (states plus common territories) for the
+          egress-region picker (not a Psiphon-curated subset -- see the
+          psiphon/:action region action to actually apply and verify one).
+        id: list-iso-3166-1-codes-states-plus-common-territories-for-the-egress-region-picker-not-a-psiphon-curated-subset----see-the-psiphonaction-region-action-to-actually-apply-and-verify-one
+      - content: Manage the panel-hosted WARP-via-wireproxy sidecar
+          (github.com/kuzzrus/WARP_WireProxy_Manager, vendored and pinned). The
+          action parameter selects the operation.
+        id: manage-the-panel-hosted-warp-via-wireproxy-sidecar-githubcomkuzzruswarp_wireproxy_manager-vendored-and-pinned-the-action-parameter-selects-the-operation
       - content: Manage PIA WireGuard integration. The action parameter selects the
           operation.
         id: manage-pia-wireguard-integration-the-action-parameter-selects-the-operation
+      - content: Manage the built-in reverse proxy that Xray's REALITY fallback target
+          points at. The action parameter selects the operation.
+        id: manage-the-built-in-reverse-proxy-that-xrays-reality-fallback-target-points-at-the-action-parameter-selects-the-operation
+      - content: Replace the reverse proxy decoy with an uploaded static site. The zip
+          must contain an index.html, either at its root or inside a single
+          wrapping folder.
+        id: replace-the-reverse-proxy-decoy-with-an-uploaded-static-site-the-zip-must-contain-an-indexhtml-either-at-its-root-or-inside-a-single-wrapping-folder
+      - content: Manage the AdGuard Home instance the reverse proxy can serve as its
+          decoy. Unlike the template decoys this is a real service, so the
+          domain answers with a working admin UI and DNS-over-HTTPS.
+        id: manage-the-adguard-home-instance-the-reverse-proxy-can-serve-as-its-decoy-unlike-the-template-decoys-this-is-a-real-service-so-the-domain-answers-with-a-working-admin-ui-and-dns-over-https
       - content: Reset traffic counters for a specific outbound by tag.
         id: reset-traffic-counters-for-a-specific-outbound-by-tag
       - content: Test an outbound configuration. Sends the outbound JSON (required),
@@ -151,9 +217,9 @@ _openapi:
         id: test-an-outbound-configuration-sends-the-outbound-json-required-optionally-all-outbounds-to-resolve-sockoptdialerproxy-dependencies-and-a-mode-flag
       - content: Test a batch of outbounds (max 50) through one shared temp xray
           instance. Returns an array of results in input order, each with the
-          outbound tag, delay, HTTP status and a connect/TLS/TTFB timing
-          breakdown.
-        id: test-a-batch-of-outbounds-max-50-through-one-shared-temp-xray-instance-returns-an-array-of-results-in-input-order-each-with-the-outbound-tag-delay-http-status-and-a-connecttlsttfb-timing-breakdown
+          outbound tag, delay, HTTP status, a connect/TLS/TTFB timing breakdown,
+          or (mode "speed") download/upload Mbit/s.
+        id: test-a-batch-of-outbounds-max-50-through-one-shared-temp-xray-instance-returns-an-array-of-results-in-input-order-each-with-the-outbound-tag-delay-http-status-a-connecttlsttfb-timing-breakdown-or-mode-speed-downloadupload-mbits
       - content: 'Live state of routing balancers in the running core
           (RoutingService.GetBalancerInfo): current override and the targets the
           strategy prefers. Returns a map keyed by balancer tag.'
@@ -217,7 +283,7 @@ export default function Layout(props) {
   return (
     <>
       {props.children}
-      <Comp document="./public/openapi.json" webhooks={[]} operations={[{"path":"/panel/api/xray/","method":"post"},{"path":"/panel/api/xray/getDefaultJsonConfig","method":"get"},{"path":"/panel/api/xray/getOutboundsTraffic","method":"get"},{"path":"/panel/api/xray/getXrayResult","method":"get"},{"path":"/panel/api/xray/update","method":"post"},{"path":"/panel/api/xray/warp/{action}","method":"post"},{"path":"/panel/api/xray/nord/{action}","method":"post"},{"path":"/panel/api/xray/pia/{action}","method":"post"},{"path":"/panel/api/xray/resetOutboundsTraffic","method":"post"},{"path":"/panel/api/xray/testOutbound","method":"post"},{"path":"/panel/api/xray/testOutbounds","method":"post"},{"path":"/panel/api/xray/balancerStatus","method":"post"},{"path":"/panel/api/xray/balancerOverride","method":"post"},{"path":"/panel/api/xray/routeTest","method":"post"},{"path":"/panel/api/xray/geodata/files","method":"get"},{"path":"/panel/api/xray/geodata/categories","method":"get"},{"path":"/panel/api/xray/geodata/entries","method":"get"},{"path":"/panel/api/xray/geodata/validate","method":"post"},{"path":"/panel/api/xray/outbound-subs","method":"get"},{"path":"/panel/api/xray/outbound-subs","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}","method":"delete"},{"path":"/panel/api/xray/outbound-subs/{id}/del","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}/refresh","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}/move","method":"post"},{"path":"/panel/api/xray/outbound-subs/parse","method":"post"}]} showTitle />
+      <Comp document="./public/openapi.json" webhooks={[]} operations={[{"path":"/panel/api/xray/","method":"post"},{"path":"/panel/api/xray/getDefaultJsonConfig","method":"get"},{"path":"/panel/api/xray/getOutboundsTraffic","method":"get"},{"path":"/panel/api/xray/getXrayResult","method":"get"},{"path":"/panel/api/xray/update","method":"post"},{"path":"/panel/api/xray/warp/{action}","method":"post"},{"path":"/panel/api/xray/nord/{action}","method":"post"},{"path":"/panel/api/xray/tor/{action}","method":"post"},{"path":"/panel/api/xray/psiphon/{action}","method":"post"},{"path":"/panel/api/xray/psiphon/config/upload","method":"post"},{"path":"/panel/api/xray/psiphon/regions","method":"get"},{"path":"/panel/api/xray/wireproxy/{action}","method":"post"},{"path":"/panel/api/xray/pia/{action}","method":"post"},{"path":"/panel/api/xray/frontproxy/{action}","method":"post"},{"path":"/panel/api/xray/frontproxy/decoy/upload","method":"post"},{"path":"/panel/api/xray/adguard/{action}","method":"post"},{"path":"/panel/api/xray/resetOutboundsTraffic","method":"post"},{"path":"/panel/api/xray/testOutbound","method":"post"},{"path":"/panel/api/xray/testOutbounds","method":"post"},{"path":"/panel/api/xray/balancerStatus","method":"post"},{"path":"/panel/api/xray/balancerOverride","method":"post"},{"path":"/panel/api/xray/routeTest","method":"post"},{"path":"/panel/api/xray/geodata/files","method":"get"},{"path":"/panel/api/xray/geodata/categories","method":"get"},{"path":"/panel/api/xray/geodata/entries","method":"get"},{"path":"/panel/api/xray/geodata/validate","method":"post"},{"path":"/panel/api/xray/outbound-subs","method":"get"},{"path":"/panel/api/xray/outbound-subs","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}","method":"delete"},{"path":"/panel/api/xray/outbound-subs/{id}/del","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}/refresh","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}/move","method":"post"},{"path":"/panel/api/xray/outbound-subs/parse","method":"post"}]} showTitle />
     </>
   );
 }

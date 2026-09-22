@@ -2,6 +2,16 @@
 export const EXAMPLES: Record<string, unknown> = {
   "AllSetting": {
     "datepicker": "",
+    "discordAdminIds": "",
+    "discordBotBackup": false,
+    "discordBotEnable": false,
+    "discordBotToken": "",
+    "discordChannelId": "",
+    "discordCpu": 0,
+    "discordEnabledEvents": "",
+    "discordLang": "",
+    "discordMemory": 0,
+    "discordRunTime": "",
     "expireDiff": 0,
     "externalTrafficInformEnable": false,
     "externalTrafficInformURI": "",
@@ -14,6 +24,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "frontProxyEnable": false,
     "frontProxyListen": "",
     "frontProxyPort": 1,
+    "happLinkEnable": false,
     "ipLimitAllowlist": "",
     "ldapAutoCreate": false,
     "ldapAutoDelete": false,
@@ -39,6 +50,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "outboundDownThreshold": 1,
     "pageSize": 0,
     "panelOutbound": "",
+    "realityScanCandidates": "",
     "remarkTemplate": "",
     "restartXrayOnClientDisable": false,
     "sessionMaxAge": 1,
@@ -55,6 +67,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "smtpTo": "",
     "smtpUsername": "",
     "subAnnounce": "",
+    "subCalendarExpireInclusive": false,
     "subCertFile": "",
     "subClashAutoDetect": false,
     "subClashEnable": false,
@@ -67,17 +80,44 @@ export const EXAMPLES: Record<string, unknown> = {
     "subEnable": false,
     "subEnableRouting": false,
     "subEncrypt": false,
+    "subExpiredTemplate": "",
+    "subHappAlwaysHwid": false,
+    "subHappAutoConnect": false,
+    "subHappAutoConnectType": "",
+    "subHappAutoDetect": false,
+    "subHappColorProfile": "",
+    "subHappExcludeApns": false,
+    "subHappExcludeRoutes": "",
+    "subHappFallbackUrl": "",
+    "subHappNewUrl": "",
+    "subHappNoLimit": false,
+    "subHappNotificationExpire": false,
+    "subHappPerAppList": "",
+    "subHappPerAppMode": "",
+    "subHappPingType": "",
+    "subHappProviderId": "",
+    "subHappSubExpire": false,
+    "subHappSubExpireButtonLink": "",
+    "subHappSubInfoButtonLink": "",
+    "subHappSubInfoButtonText": "",
+    "subHappSubInfoColor": "",
+    "subHappSubInfoText": "",
+    "subHappTunMode": "",
+    "subHappTunType": "",
     "subHideSettings": false,
     "subIncyEnableRouting": false,
     "subIncyRoutingRules": "",
     "subIncyRoutingSource": "",
+    "subInfoNodeEnable": false,
     "subJsonAlwaysArray": false,
     "subJsonAutoDetect": false,
+    "subJsonDns": "",
     "subJsonEnable": false,
     "subJsonFinalMask": "",
     "subJsonMux": "",
     "subJsonObservatory": "",
     "subJsonPath": "",
+    "subJsonRoutingRules": "",
     "subJsonRules": "",
     "subJsonURI": "",
     "subJsonUserAgentRegex": "",
@@ -85,6 +125,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "subListen": "",
     "subPath": "",
     "subPort": 1,
+    "subProfileMode": "",
     "subProfileUrl": "",
     "subRoutingRules": "",
     "subRoutingSource": "",
@@ -92,6 +133,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "subSupportUrl": "",
     "subThemeDir": "",
     "subTitle": "",
+    "subTrafficDepletedTemplate": "",
     "subURI": "",
     "subUpdates": 0,
     "tgBotAPIServer": "",
@@ -120,6 +162,16 @@ export const EXAMPLES: Record<string, unknown> = {
   },
   "AllSettingView": {
     "datepicker": "",
+    "discordAdminIds": "",
+    "discordBotBackup": false,
+    "discordBotEnable": false,
+    "discordBotToken": "",
+    "discordChannelId": "",
+    "discordCpu": 0,
+    "discordEnabledEvents": "",
+    "discordLang": "",
+    "discordMemory": 0,
+    "discordRunTime": "",
     "expireDiff": 0,
     "externalTrafficInformEnable": false,
     "externalTrafficInformURI": "",
@@ -132,7 +184,9 @@ export const EXAMPLES: Record<string, unknown> = {
     "frontProxyEnable": false,
     "frontProxyListen": "",
     "frontProxyPort": 1,
+    "happLinkEnable": false,
     "hasApiToken": false,
+    "hasDiscordBotToken": false,
     "hasLdapPassword": false,
     "hasNordSecret": false,
     "hasSmtpPassword": false,
@@ -164,6 +218,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "outboundDownThreshold": 1,
     "pageSize": 0,
     "panelOutbound": "",
+    "realityScanCandidates": "",
     "remarkTemplate": "",
     "restartXrayOnClientDisable": false,
     "sessionMaxAge": 1,
@@ -180,6 +235,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "smtpTo": "",
     "smtpUsername": "",
     "subAnnounce": "",
+    "subCalendarExpireInclusive": false,
     "subCertFile": "",
     "subClashAutoDetect": false,
     "subClashEnable": false,
@@ -192,17 +248,44 @@ export const EXAMPLES: Record<string, unknown> = {
     "subEnable": false,
     "subEnableRouting": false,
     "subEncrypt": false,
+    "subExpiredTemplate": "",
+    "subHappAlwaysHwid": false,
+    "subHappAutoConnect": false,
+    "subHappAutoConnectType": "",
+    "subHappAutoDetect": false,
+    "subHappColorProfile": "",
+    "subHappExcludeApns": false,
+    "subHappExcludeRoutes": "",
+    "subHappFallbackUrl": "",
+    "subHappNewUrl": "",
+    "subHappNoLimit": false,
+    "subHappNotificationExpire": false,
+    "subHappPerAppList": "",
+    "subHappPerAppMode": "",
+    "subHappPingType": "",
+    "subHappProviderId": "",
+    "subHappSubExpire": false,
+    "subHappSubExpireButtonLink": "",
+    "subHappSubInfoButtonLink": "",
+    "subHappSubInfoButtonText": "",
+    "subHappSubInfoColor": "",
+    "subHappSubInfoText": "",
+    "subHappTunMode": "",
+    "subHappTunType": "",
     "subHideSettings": false,
     "subIncyEnableRouting": false,
     "subIncyRoutingRules": "",
     "subIncyRoutingSource": "",
+    "subInfoNodeEnable": false,
     "subJsonAlwaysArray": false,
     "subJsonAutoDetect": false,
+    "subJsonDns": "",
     "subJsonEnable": false,
     "subJsonFinalMask": "",
     "subJsonMux": "",
     "subJsonObservatory": "",
     "subJsonPath": "",
+    "subJsonRoutingRules": "",
     "subJsonRules": "",
     "subJsonURI": "",
     "subJsonUserAgentRegex": "",
@@ -210,6 +293,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "subListen": "",
     "subPath": "",
     "subPort": 1,
+    "subProfileMode": "",
     "subProfileUrl": "",
     "subRoutingRules": "",
     "subRoutingSource": "",
@@ -217,6 +301,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "subSupportUrl": "",
     "subThemeDir": "",
     "subTitle": "",
+    "subTrafficDepletedTemplate": "",
     "subURI": "",
     "subUpdates": 0,
     "tgBotAPIServer": "",
@@ -324,6 +409,55 @@ export const EXAMPLES: Record<string, unknown> = {
     "flowOverride": "",
     "inboundId": 0
   },
+  "ClientPageResponse": {
+    "filtered": 47,
+    "groups": [
+      "staff",
+      "trial"
+    ],
+    "items": [
+      {
+        "comment": "Primary device",
+        "createdAt": 1735000000000,
+        "email": "alice@example.com",
+        "enable": true,
+        "expiryTime": 1735689600000,
+        "group": "staff",
+        "inboundIds": [
+          3,
+          5
+        ],
+        "limitHwid": 0,
+        "limitIp": 0,
+        "reset": 0,
+        "resetDay": 0,
+        "resetMax": 0,
+        "subId": "abcd1234",
+        "totalGB": 53687091200,
+        "traffic": null,
+        "updatedAt": 1735100000000
+      }
+    ],
+    "page": 1,
+    "pageSize": 25,
+    "summary": {
+      "active": 1850,
+      "deactive": [
+        "bob@example.com"
+      ],
+      "deactiveCount": 150,
+      "depleted": [],
+      "depletedCount": 0,
+      "expiring": [],
+      "expiringCount": 0,
+      "online": [
+        "alice@example.com"
+      ],
+      "onlineCount": 1,
+      "total": 2000
+    },
+    "total": 2000
+  },
   "ClientRecord": {
     "adTag": "",
     "allowedIPs": "",
@@ -363,6 +497,27 @@ export const EXAMPLES: Record<string, unknown> = {
   "ClientReverse": {
     "tag": ""
   },
+  "ClientSlim": {
+    "comment": "Primary device",
+    "createdAt": 1735000000000,
+    "email": "alice@example.com",
+    "enable": true,
+    "expiryTime": 1735689600000,
+    "group": "staff",
+    "inboundIds": [
+      3,
+      5
+    ],
+    "limitHwid": 0,
+    "limitIp": 0,
+    "reset": 0,
+    "resetDay": 0,
+    "resetMax": 0,
+    "subId": "abcd1234",
+    "totalGB": 53687091200,
+    "traffic": null,
+    "updatedAt": 1735100000000
+  },
   "ClientTraffic": {
     "down": 2097152,
     "email": "user1",
@@ -380,6 +535,22 @@ export const EXAMPLES: Record<string, unknown> = {
     "total": 10737418240,
     "up": 1048576,
     "uuid": "e18c9a96-71bf-48d4-933f-8b9a46d4290c"
+  },
+  "ClientsSummary": {
+    "active": 1850,
+    "deactive": [
+      "bob@example.com"
+    ],
+    "deactiveCount": 150,
+    "depleted": [],
+    "depletedCount": 0,
+    "expiring": [],
+    "expiringCount": 0,
+    "online": [
+      "alice@example.com"
+    ],
+    "onlineCount": 1,
+    "total": 2000
   },
   "FallbackParentInfo": {
     "masterId": 0,
@@ -432,6 +603,9 @@ export const EXAMPLES: Record<string, unknown> = {
     "file": "geosite.dat",
     "reason": "categoryMissing",
     "token": "geosite:blabla"
+  },
+  "HappLinkResult": {
+    "encryptedLink": "happ://crypt5/example"
   },
   "HistoryOfSeeders": {
     "id": 0,
@@ -530,6 +704,13 @@ export const EXAMPLES: Record<string, unknown> = {
     "verifyPeerCertByName": "",
     "vlessRoute": ""
   },
+  "HwidSlotStatus": {
+    "active": true,
+    "full": false,
+    "limit": 2,
+    "registered": 1,
+    "remaining": 1
+  },
   "Inbound": {
     "clientStats": [
       {
@@ -598,24 +779,54 @@ export const EXAMPLES: Record<string, unknown> = {
     "id": 1,
     "listen": "",
     "mtprotoDomain": "",
+    "network": "",
     "nodeAddress": "",
     "nodeId": null,
     "port": 443,
     "protocol": "vless",
     "remark": "VLESS-443",
+    "security": "",
     "shareAddr": "",
     "shareAddrStrategy": "",
     "ssMethod": "",
     "tag": "in-443-tcp",
     "tlsFlowCapable": true,
+    "tuicServer": null,
     "wgDns": "",
     "wgMtu": 0,
     "wgPublicKey": ""
+  },
+  "InboundTrafficSummary": {
+    "down": 2097152,
+    "enable": true,
+    "id": 1,
+    "total": 10737418240,
+    "up": 1048576
+  },
+  "LogEntry": {
+    "DateTime": "2025-01-01T12:00:00Z",
+    "Email": "alice@example.com",
+    "Event": 0,
+    "FromAddress": "192.0.2.10:54321",
+    "Inbound": "inbound-443",
+    "Outbound": "direct",
+    "ToAddress": "example.com:443"
+  },
+  "MLDSA65Response": {
+    "seed": "mldsa65-seed",
+    "verify": "mldsa65-verify"
+  },
+  "MLKEM768Response": {
+    "client": "mlkem768-client",
+    "seed": "mlkem768-seed"
   },
   "Msg": {
     "msg": "",
     "obj": null,
     "success": false
+  },
+  "NewUUIDResponse": {
+    "uuid": "550e8400-e29b-41d4-a716-446655440000"
   },
   "Node": {
     "activeCount": 23,
@@ -769,6 +980,7 @@ export const EXAMPLES: Record<string, unknown> = {
   },
   "RealityScanResult": {
     "alpn": "h2",
+    "certChainBytes": 3427,
     "certChainValid": true,
     "certIssuer": "Google Trust Services",
     "certSubject": "cloudflare.com",
@@ -849,10 +1061,38 @@ export const EXAMPLES: Record<string, unknown> = {
       1,
       3
     ],
+    "memberWeights": {},
     "remark": "auto-fastest",
     "sortOrder": 1,
     "strategy": "random",
     "updatedAt": 1710000000000
+  },
+  "Traffic": {
+    "Down": 2097152,
+    "IsInbound": true,
+    "IsOutbound": false,
+    "Tag": "inbound-443",
+    "Up": 1048576
+  },
+  "TuicClientSettings": {
+    "email": "",
+    "password": "",
+    "uuid": ""
+  },
+  "TuicServerSettings": {
+    "alpn": [
+      ""
+    ],
+    "authentication_timeout": 0,
+    "certificate": "",
+    "congestion_control": "",
+    "log_level": "",
+    "max_idle_time": 0,
+    "max_udp_relay_packet_size": 0,
+    "private_key": "",
+    "sni": "",
+    "udp_relay_mode": "",
+    "zero_rtt_handshake": false
   },
   "User": {
     "id": 0,

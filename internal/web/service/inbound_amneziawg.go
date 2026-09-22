@@ -150,11 +150,45 @@ func fillAmneziaWGServerKeys(server *amneziawg.ServerSettings) error {
 	return nil
 }
 
+// resolveAmneziaWGServerKeys settles the server keypair for a save. An omitted
+// key means "unchanged", never "mint a new one": rotating it silently
+// invalidates every client config already handed out.
+func resolveAmneziaWGServerKeys(server *amneziawg.ServerSettings, oldSettings string) error {
+	if server.PrivateKey == "" {
+		storedPriv, storedPub := storedAmneziaWGServerKeys(oldSettings)
+		if storedPriv == "" {
+			return fillAmneziaWGServerKeys(server)
+		}
+		server.PrivateKey, server.PublicKey = storedPriv, storedPub
+	}
+	if server.PublicKey == "" {
+		pub, err := wgutil.PublicKeyFromPrivate(server.PrivateKey)
+		if err != nil {
+			return fmt.Errorf("amneziawg: derive server public key: %w", err)
+		}
+		server.PublicKey = pub
+	}
+	return nil
+}
+
+// storedAmneziaWGServerKeys returns the keypair already saved for this inbound.
+// oldSettings is empty on a first save, and need not be valid AmneziaWG JSON.
+func storedAmneziaWGServerKeys(oldSettings string) (priv, pub string) {
+	if strings.TrimSpace(oldSettings) == "" {
+		return "", ""
+	}
+	var prev amneziawg.InboundSettings
+	if err := json.Unmarshal([]byte(oldSettings), &prev); err != nil || prev.Server == nil {
+		return "", ""
+	}
+	return prev.Server.PrivateKey, prev.Server.PublicKey
+}
+
 // normalizeAmneziaWGSettings ensures an AmneziaWG inbound's settings have a
 // valid server block, generating one (fresh obfuscation params + keypair) on
 // first save and validating a manually-edited one so a bad entry can't bring
 // the interface down on the next apply. A no-op for every other protocol.
-func (s *InboundService) normalizeAmneziaWGSettings(inbound *model.Inbound) error {
+func (s *InboundService) normalizeAmneziaWGSettings(inbound *model.Inbound, oldSettings string) error {
 	if inbound.Protocol != model.AmneziaWG {
 		return nil
 	}
@@ -184,10 +218,8 @@ func (s *InboundService) normalizeAmneziaWGSettings(inbound *model.Inbound) erro
 			return err
 		}
 		parsed.Server = server
-	} else if parsed.Server.PrivateKey == "" {
-		if err := fillAmneziaWGServerKeys(parsed.Server); err != nil {
-			return err
-		}
+	} else if err := resolveAmneziaWGServerKeys(parsed.Server, oldSettings); err != nil {
+		return err
 	}
 	if err := amneziawg.ValidateObfuscation(parsed.Server.Obfuscation()); err != nil {
 		return fmt.Errorf("amneziawg: %w", err)
@@ -274,9 +306,10 @@ func (s *InboundService) normalizeAmneziaWGSettings(inbound *model.Inbound) erro
 	if err != nil {
 		return err
 	}
-	for _, c := range parsed.Clients {
-		if hit := s.checkForwardedPortsConflict(portCtx, c.ForwardedPorts); hit != "" {
-			return fmt.Errorf("amneziawg: client %q forwardedPorts collides with %s", c.Email, hit)
+	for i := range parsed.Clients {
+		c := &parsed.Clients[i]
+		if err := s.amneziaWGForwardedPortsConflict(portCtx, c); err != nil {
+			return err
 		}
 		if err := amneziawg.ValidateConfigValue("email", c.Email); err != nil {
 			return fmt.Errorf("amneziawg: %w", err)
@@ -287,6 +320,19 @@ func (s *InboundService) normalizeAmneziaWGSettings(inbound *model.Inbound) erro
 		if err := amneziawg.ValidateConfigValue("preSharedKey", c.PreSharedKey); err != nil {
 			return fmt.Errorf("amneziawg: client %q: %w", c.Email, err)
 		}
+		// AllowedIPs lands verbatim in a rendered [Peer] block, so a newline here
+		// re-opens an [Interface] section whose PostUp runs as root once the
+		// downloaded config is applied (client app, or awg-quick directly).
+		normalized, err := normalizeWireguardAllowedIPs(c.AllowedIPs)
+		if err != nil {
+			return fmt.Errorf("amneziawg: client %q: %w", c.Email, err)
+		}
+		// An enabled peer with no address is skipped by InstanceFromInbound, and
+		// if it was the only one the whole inbound never starts, silently.
+		if c.Enable && len(normalized) == 0 {
+			return fmt.Errorf("amneziawg: client %q: allowedIPs is required", c.Email)
+		}
+		c.AllowedIPs = normalized
 	}
 
 	bs, err := json.MarshalIndent(parsed, "", "  ")
@@ -297,12 +343,8 @@ func (s *InboundService) normalizeAmneziaWGSettings(inbound *model.Inbound) erro
 	return nil
 }
 
-// portConflictContext caches the state checkForwardedPortsConflict needs —
-// the panel's own port and this host's enabled inbound ports — so validating
-// N clients in one save (normalizeAmneziaWGSettings, or a bulk client add)
-// costs one query total instead of N. Load it once with
-// loadPortConflictContext and pass it to every checkForwardedPortsConflict
-// call in that batch.
+// portConflictContext caches what checkForwardedPortsConflict needs — the panel's
+// own port and this host's enabled rows — so one save costs one query, not N.
 type portConflictContext struct {
 	webPort  int
 	inbounds []*model.Inbound
@@ -323,15 +365,37 @@ func (s *InboundService) loadPortConflictContext(db *gorm.DB) (portConflictConte
 	return ctx, err
 }
 
-// checkForwardedPortsConflict reports whether a client's ForwardedPorts spec
-// exceeds the cap, covers the panel's own web port, one of this host's own
-// enabled inbound listen ports, or an AmneziaWG inbound's own phantom SOCKS5
-// relay port (SOCKSPortForInbound -- never a real inbounds row, so the loop
-// below can't see it any other way). A collision on the SOCKS5 port would
-// let a port-forward listener race Xray's own relay for the bind and, if it
-// wins, take down that inbound's entire relay rather than just one forward.
-// Returns a human-readable description of the first collision found, or ""
-// when there is none.
+// amneziaWGForwardedPortsConflict renders one client's ForwardedPorts collision,
+// or nil: the single copy both the pre-Save pass and the post-Save re-run use.
+func (s *InboundService) amneziaWGForwardedPortsConflict(ctx portConflictContext, c *model.Client) error {
+	hit := s.checkForwardedPortsConflict(ctx, c.ForwardedPorts)
+	if hit == "" {
+		return nil
+	}
+	return fmt.Errorf("amneziawg: client %q forwardedPorts collides with %s", c.Email, hit)
+}
+
+// checkAmneziaWGForwardedPorts re-runs the guard over one row's stored clients:
+// on create it ran before Save, when the row's own ports were not in the context.
+func (s *InboundService) checkAmneziaWGForwardedPorts(db *gorm.DB, settings string) error {
+	var parsed amneziawg.InboundSettings
+	if err := json.Unmarshal([]byte(settings), &parsed); err != nil {
+		return nil
+	}
+	ctx, err := s.loadPortConflictContext(db)
+	if err != nil {
+		return err
+	}
+	for i := range parsed.Clients {
+		if err := s.amneziaWGForwardedPortsConflict(ctx, &parsed.Clients[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkForwardedPortsConflict names the panel, inbound or AmneziaWG relay port a
+// client's ForwardedPorts spec would collide with: a lost bind race kills the relay.
 func (s *InboundService) checkForwardedPortsConflict(ctx portConflictContext, forwardedPorts string) string {
 	if forwardedPorts == "" {
 		return ""

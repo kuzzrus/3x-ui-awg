@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { HttpUtil } from '@/utils';
 import { parseMsg } from '@/utils/zodValidate';
 import { DBInbound, coerceInboundJsonField } from '@/models/dbinbound';
+import type { DBInboundInit } from '@/models/dbinbound';
 import { Protocols } from '@/schemas/primitives';
 import { isSSMultiUser } from '@/lib/xray/protocol-capabilities';
 import { setDatepicker } from '@/hooks/useDatepicker';
@@ -63,6 +64,29 @@ interface ClientRollup {
   comments: Map<string, string>;
 }
 
+function sameStringArray(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((v, i) => v === b[i]);
+}
+
+// rollupClients builds fresh arrays/Map on every call, so two rollups with
+// identical content are never reference-equal -- this is what lets
+// rebuildClientCount tell "actually changed" apart from "recomputed to the
+// same thing" and skip a re-render for the latter.
+function rollupsEqual(a: ClientRollup, b: ClientRollup): boolean {
+  if (a.clients !== b.clients) return false;
+  if (!sameStringArray(a.active, b.active)) return false;
+  if (!sameStringArray(a.deactive, b.deactive)) return false;
+  if (!sameStringArray(a.depleted, b.depleted)) return false;
+  if (!sameStringArray(a.expiring, b.expiring)) return false;
+  if (!sameStringArray(a.online, b.online)) return false;
+  if (a.comments.size !== b.comments.size) return false;
+  for (const [email, comment] of a.comments) {
+    if (b.comments.get(email) !== comment) return false;
+  }
+  return true;
+}
+
 const TRACKED_PROTOCOLS: readonly string[] = [
   Protocols.VMESS,
   Protocols.VLESS,
@@ -72,6 +96,7 @@ const TRACKED_PROTOCOLS: readonly string[] = [
   Protocols.WIREGUARD,
   Protocols.MTPROTO,
   Protocols.AMNEZIAWG,
+  Protocols.TUIC,
 ];
 
 async function fetchSlimInbounds(): Promise<unknown[]> {
@@ -223,7 +248,6 @@ export function useInbounds() {
   dbInboundsRef.current = dbInbounds;
 
   const [clientCount, setClientCount] = useState<Record<number, ClientRollup>>({});
-  const [statsVersion, setStatsVersion] = useState(0);
 
   const [inboundSpeed, setInboundSpeed] = useState<Record<number, InboundSpeedEntry>>(() =>
     Date.now() - inboundSpeedCache.at < SPEED_CACHE_TTL_MS ? inboundSpeedCache.data : {},
@@ -362,18 +386,32 @@ export function useInbounds() {
   );
 
   const rebuildClientCount = useCallback(() => {
-    const counts: Record<number, ClientRollup> = {};
-    for (const dbInbound of dbInboundsRef.current) {
-      const protocol = dbInbound.protocol;
-      if (!TRACKED_PROTOCOLS.includes(protocol)) continue;
-      const settings = coerceInboundJsonField(dbInbound.settings) as {
-        method?: string;
-        clients?: Array<{ email?: string; enable?: boolean; comment?: string }>;
-      };
-      if (protocol === Protocols.SHADOWSOCKS && !isSSMultiUser({ protocol, settings })) continue;
-      counts[dbInbound.id] = rollupClients(dbInbound, { clients: settings.clients });
-    }
-    setClientCount(counts);
+    setClientCount((prev) => {
+      const counts: Record<number, ClientRollup> = {};
+      let changed = false;
+      for (const dbInbound of dbInboundsRef.current) {
+        const protocol = dbInbound.protocol;
+        if (!TRACKED_PROTOCOLS.includes(protocol)) continue;
+        const settings = coerceInboundJsonField(dbInbound.settings) as {
+          method?: string;
+          clients?: Array<{ email?: string; enable?: boolean; comment?: string }>;
+        };
+        if (protocol === Protocols.SHADOWSOCKS && !isSSMultiUser({ protocol, settings })) continue;
+        const rollup = rollupClients(dbInbound, { clients: settings.clients });
+        const existing = prev[dbInbound.id];
+        // Reuse the previous rollup reference when nothing about it actually
+        // moved, so a WS push that only confirms already-known state doesn't
+        // fan out into an unnecessary re-render of every row that reads it.
+        if (existing && rollupsEqual(existing, rollup)) {
+          counts[dbInbound.id] = existing;
+        } else {
+          counts[dbInbound.id] = rollup;
+          changed = true;
+        }
+      }
+      if (!changed && Object.keys(counts).length === Object.keys(prev).length) return prev;
+      return counts;
+    });
   }, [rollupClients]);
 
   // Seed dbInbounds + clientCount from the slim query. Runs on first fetch and
@@ -602,83 +640,110 @@ export function useInbounds() {
           enable?: boolean;
         }[];
       };
-      let touched = false;
-
-      if (Array.isArray(p.inbounds) && p.inbounds.length > 0) {
-        const byId = new Map<
-          number,
-          { id: number; up?: number; down?: number; total?: number; enable?: boolean }
-        >();
+      const byId = new Map<
+        number,
+        { id: number; up?: number; down?: number; total?: number; enable?: boolean }
+      >();
+      if (Array.isArray(p.inbounds)) {
         for (const row of p.inbounds) {
           if (row && row.id != null) byId.set(row.id, row);
         }
-        for (const ib of dbInboundsRef.current) {
-          const upd = byId.get((ib as unknown as { id: number }).id);
-          if (!upd) continue;
-          const ibRec = ib as unknown as {
-            up: number;
-            down: number;
-            total: number;
-            enable: boolean;
-          };
-          if (typeof upd.up === 'number') ibRec.up = upd.up;
-          if (typeof upd.down === 'number') ibRec.down = upd.down;
-          if (typeof upd.total === 'number') ibRec.total = upd.total;
-          if (typeof upd.enable === 'boolean') ibRec.enable = upd.enable;
-          touched = true;
-        }
       }
-
-      if (Array.isArray(p.clients) && p.clients.length > 0) {
-        const byEmail = new Map<
-          string,
-          {
-            email: string;
-            up?: number;
-            down?: number;
-            total?: number;
-            expiryTime?: number;
-            enable?: boolean;
-          }
-        >();
+      const byEmail = new Map<
+        string,
+        {
+          email: string;
+          up?: number;
+          down?: number;
+          total?: number;
+          expiryTime?: number;
+          enable?: boolean;
+        }
+      >();
+      if (Array.isArray(p.clients)) {
         for (const row of p.clients) {
           if (row && row.email) byEmail.set(row.email, row);
         }
-        for (const ib of dbInboundsRef.current) {
-          const stats = (
-            ib as unknown as {
-              clientStats: {
-                email: string;
-                up: number;
-                down: number;
-                total: number;
-                expiryTime: number;
-                enable: boolean;
-              }[];
-            }
-          ).clientStats;
-          if (!Array.isArray(stats)) continue;
-          for (let i = 0; i < stats.length; i++) {
-            const stat = stats[i];
-            const upd = byEmail.get(stat.email);
-            if (!upd) continue;
-            if (typeof upd.up === 'number') stat.up = upd.up;
-            if (typeof upd.down === 'number') stat.down = upd.down;
-            if (typeof upd.total === 'number') stat.total = upd.total;
-            if (typeof upd.expiryTime === 'number') stat.expiryTime = upd.expiryTime;
-            if (typeof upd.enable === 'boolean') stat.enable = upd.enable;
-            touched = true;
-          }
-        }
       }
+      if (byId.size === 0 && byEmail.size === 0) return;
+
+      // Rows carrying an update are rebuilt rather than patched in place: the
+      // derived clientCount only recomputes for a row whose identity changes,
+      // and a push that only re-confirms already-known values must not fan
+      // out into a re-render of every row that reads dbInbounds.
+      let touched = false;
+      const next = dbInboundsRef.current.map((ib) => {
+        const upd = byId.get((ib as unknown as { id: number }).id);
+        const stats = (
+          ib as unknown as {
+            clientStats?: {
+              email: string;
+              up: number;
+              down: number;
+              total: number;
+              expiryTime: number;
+              enable: boolean;
+            }[];
+          }
+        ).clientStats;
+        let statsTouched = false;
+        const nextStats =
+          stats && byEmail.size > 0
+            ? stats.map((stat) => {
+                const su = byEmail.get(stat.email);
+                if (!su) return stat;
+                const merged = {
+                  ...stat,
+                  up: typeof su.up === 'number' ? su.up : stat.up,
+                  down: typeof su.down === 'number' ? su.down : stat.down,
+                  total: typeof su.total === 'number' ? su.total : stat.total,
+                  expiryTime: typeof su.expiryTime === 'number' ? su.expiryTime : stat.expiryTime,
+                  enable: typeof su.enable === 'boolean' ? su.enable : stat.enable,
+                };
+                if (
+                  merged.up === stat.up &&
+                  merged.down === stat.down &&
+                  merged.total === stat.total &&
+                  merged.expiryTime === stat.expiryTime &&
+                  merged.enable === stat.enable
+                ) {
+                  return stat;
+                }
+                statsTouched = true;
+                return merged;
+              })
+            : null;
+        const ibRec = ib as unknown as {
+          up: number;
+          down: number;
+          total: number;
+          enable: boolean;
+        };
+        // Every push lists all inbounds' totals, so only a row whose numbers moved counts.
+        const inboundMoved =
+          !!upd &&
+          ((typeof upd.up === 'number' && upd.up !== ibRec.up) ||
+            (typeof upd.down === 'number' && upd.down !== ibRec.down) ||
+            (typeof upd.total === 'number' && upd.total !== ibRec.total) ||
+            (typeof upd.enable === 'boolean' && upd.enable !== ibRec.enable));
+        if (!inboundMoved && !statsTouched) return ib;
+        touched = true;
+        const row = new DBInbound(ib as DBInboundInit) as DBInboundInstance;
+        if (upd) {
+          if (typeof upd.up === 'number') row.up = upd.up;
+          if (typeof upd.down === 'number') row.down = upd.down;
+          if (typeof upd.total === 'number') row.total = upd.total;
+          if (typeof upd.enable === 'boolean') row.enable = upd.enable;
+        }
+        if (statsTouched && nextStats) {
+          (row as unknown as { clientStats: typeof nextStats }).clientStats = nextStats;
+        }
+        return row;
+      });
 
       if (touched) {
-        setStatsVersion((v) => v + 1);
-        setDbInbounds((prev) => {
-          const next = [...prev];
-          dbInboundsRef.current = next;
-          return next;
-        });
+        dbInboundsRef.current = next;
+        setDbInbounds(next);
         rebuildClientCount();
       }
     },
@@ -717,7 +782,6 @@ export function useInbounds() {
     onlineClients,
     lastOnlineMap,
     inboundSpeed: inboundSpeedOut,
-    statsVersion,
     totals,
     expireDiff,
     trafficDiff,

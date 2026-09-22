@@ -286,6 +286,10 @@ func TestPortForwardRoundTripTCPAndUDP(t *testing.T) {
 	}
 	clientDev := device.NewDevice(clientTun, awgconn.NewDefaultBind(), device.NewLogger(device.LogLevelSilent, ""))
 	defer clientDev.Close()
+	// clientDev.Close() closes the tun's packet channel without waiting for
+	// writers, so every goroutine writing into clientNet must be gone first.
+	var clientSvc sync.WaitGroup
+	defer clientSvc.Wait()
 
 	// wg tracks the TCP/UDP echo goroutines spawned below. Deferring
 	// Wait() here -- before their own defer Close() calls -- means LIFO
@@ -358,7 +362,8 @@ primed:
 			if err != nil {
 				return
 			}
-			go func() { io.Copy(c, c); c.Close() }()
+			clientSvc.Add(1)
+			go func() { defer clientSvc.Done(); io.Copy(c, c); c.Close() }()
 		}
 	}()
 

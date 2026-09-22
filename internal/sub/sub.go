@@ -150,6 +150,16 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		SubJsonRules = ""
 	}
 
+	SubJsonRoutingRules, err := s.settingService.GetSubJsonRoutingRules()
+	if err != nil {
+		SubJsonRoutingRules = ""
+	}
+
+	SubJsonDns, err := s.settingService.GetSubJsonDns()
+	if err != nil {
+		SubJsonDns = ""
+	}
+
 	SubJsonFinalMask, err := s.settingService.GetSubJsonFinalMask()
 	if err != nil {
 		SubJsonFinalMask = ""
@@ -183,6 +193,10 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	SubProfileUrl, err := s.settingService.GetSubProfileUrl()
 	if err != nil {
 		SubProfileUrl = ""
+	}
+	SubProfileMode, err := s.settingService.GetSubProfileMode()
+	if err != nil {
+		SubProfileMode = service.SubProfileModeNone
 	}
 
 	SubAnnounce, err := s.settingService.GetSubAnnounce()
@@ -224,6 +238,31 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	if err != nil {
 		SubIncyRoutingSource = RoscomVPNSourceCustom
 	}
+
+	happCfg := HappConfig{}
+	happCfg.AutoDetect, _ = s.settingService.GetSubHappAutoDetect()
+	happCfg.ProviderId, _ = s.settingService.GetSubHappProviderId()
+	happCfg.NewUrl, _ = s.settingService.GetSubHappNewUrl()
+	happCfg.FallbackUrl, _ = s.settingService.GetSubHappFallbackUrl()
+	happCfg.SubInfoColor, _ = s.settingService.GetSubHappSubInfoColor()
+	happCfg.SubInfoText, _ = s.settingService.GetSubHappSubInfoText()
+	happCfg.SubInfoButtonText, _ = s.settingService.GetSubHappSubInfoButtonText()
+	happCfg.SubInfoButtonLink, _ = s.settingService.GetSubHappSubInfoButtonLink()
+	happCfg.SubExpire, _ = s.settingService.GetSubHappSubExpire()
+	happCfg.SubExpireButtonLink, _ = s.settingService.GetSubHappSubExpireButtonLink()
+	happCfg.NotificationExpire, _ = s.settingService.GetSubHappNotificationExpire()
+	happCfg.NoLimit, _ = s.settingService.GetSubHappNoLimit()
+	happCfg.AlwaysHwid, _ = s.settingService.GetSubHappAlwaysHwid()
+	happCfg.TunMode, _ = s.settingService.GetSubHappTunMode()
+	happCfg.TunType, _ = s.settingService.GetSubHappTunType()
+	happCfg.ExcludeRoutes, _ = s.settingService.GetSubHappExcludeRoutes()
+	happCfg.ExcludeApns, _ = s.settingService.GetSubHappExcludeApns()
+	happCfg.ColorProfile, _ = s.settingService.GetSubHappColorProfile()
+	happCfg.PingType, _ = s.settingService.GetSubHappPingType()
+	happCfg.AutoConnect, _ = s.settingService.GetSubHappAutoConnect()
+	happCfg.AutoConnectType, _ = s.settingService.GetSubHappAutoConnectType()
+	happCfg.PerAppMode, _ = s.settingService.GetSubHappPerAppMode()
+	happCfg.PerAppList, _ = s.settingService.GetSubHappPerAppList()
 
 	// set per-request localizer from headers/cookies
 	engine.Use(locale.LocalizerMiddleware())
@@ -295,6 +334,8 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		WithSUBUpdateInterval(SubUpdates),
 		WithSUBJsonMux(SubJsonMux),
 		WithSUBJsonRules(SubJsonRules),
+		WithSUBJsonRoutingRules(SubJsonRoutingRules),
+		WithSUBJsonDns(SubJsonDns),
 		WithSUBJsonFinalMask(SubJsonFinalMask),
 		WithSUBJsonObservatory(SubJsonObservatory),
 		WithSUBClashEnableRouting(SubClashEnableRouting),
@@ -302,11 +343,13 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		WithSUBTitle(SubTitle),
 		WithSUBSupportURL(SubSupportUrl),
 		WithSUBProfileURL(SubProfileUrl),
+		WithSUBProfileMode(SubProfileMode),
 		WithSUBAnnounce(SubAnnounce),
 		WithSUBEnableRouting(SubEnableRouting),
 		WithSUBRoutingRules(SubRoutingRules),
 		WithSUBRoutingSource(SubRoutingSource),
 		WithSUBHideSettings(SubHideSettings),
+		WithSUBHappConfig(happCfg),
 		WithSUBIncyEnableRouting(SubIncyEnableRouting),
 		WithSUBIncyRoutingRules(SubIncyRoutingRules),
 		WithSUBIncyRoutingSource(SubIncyRoutingSource),

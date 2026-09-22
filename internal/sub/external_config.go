@@ -34,9 +34,8 @@ type expandedLink struct {
 	Name string
 }
 
-// getClientExternalLinksBySubId returns every external-link row attached to a
-// client that carries the given subId, in stable order. Stays inside
-// internal/sub + database + util/link — no dependency on the panel service layer.
+// getClientExternalLinksBySubId returns active rows with owner state attached.
+// Consumers keep inactive owners as metadata but omit their link values.
 func (s *SubService) getClientExternalLinksBySubId(subId string) ([]externalLinkEntry, error) {
 	db := database.GetDB()
 	var recs []model.ClientRecord
