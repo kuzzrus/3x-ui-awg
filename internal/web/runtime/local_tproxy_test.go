@@ -66,6 +66,25 @@ func TestUpdateTproxyInboundPropagatesHostnameError(t *testing.T) {
 	}
 }
 
+// An empty hostname must also surface as a real error, not start the relay
+// with public_hostname: "" while reporting success.
+func TestUpdateTproxyInboundRejectsEmptyHostname(t *testing.T) {
+	reloaded := false
+	l := NewLocal(LocalDeps{
+		APIPort:          func() int { return 0 },
+		TproxyDomain:     func() (string, error) { return "", nil },
+		ReloadFrontProxy: func() { reloaded = true },
+	})
+
+	ib := &model.Inbound{Id: 5, Protocol: model.Tproxy, Enable: true}
+	if err := l.UpdateInbound(context.Background(), ib, ib); err == nil {
+		t.Fatal("UpdateInbound must fail when the front proxy domain is empty")
+	}
+	if reloaded {
+		t.Error("ReloadFrontProxy must not run when the hostname is empty")
+	}
+}
+
 // AddUser/RemoveUser feed the native Xray API; tproxy has no registered
 // inbound there, so either reaching them must be a no-op, not a real call.
 func TestTproxyProtocolSkipsNativeXrayAPI(t *testing.T) {

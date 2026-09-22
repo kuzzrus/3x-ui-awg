@@ -178,6 +178,9 @@ func (l *Local) ensureTproxy(ib *model.Inbound) error {
 	if err != nil {
 		return err
 	}
+	if hostname == "" {
+		return errors.New("tproxy: front proxy domain is not configured")
+	}
 	defer l.reloadFrontProxy()
 	inst, ok := tproxy.InstanceFromInbound(ib)
 	if !ok {
