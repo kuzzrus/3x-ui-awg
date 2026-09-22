@@ -2,6 +2,7 @@ package tproxy
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"runtime"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 )
 
@@ -81,6 +83,36 @@ func (inst Instance) secretsFingerprint() string {
 	}
 	slices.Sort(pairs)
 	return strings.Join(pairs, "|")
+}
+
+// InstanceFromInbound derives a desired Instance from a tproxy inbound,
+// mirroring internal/mtproto's InstanceFromInbound. Secret format validation
+// happens downstream in ensureMTProxyLocked, not here.
+func InstanceFromInbound(ib *model.Inbound) (Instance, bool) {
+	if ib == nil || ib.Protocol != model.Tproxy {
+		return Instance{}, false
+	}
+	var parsed struct {
+		Clients []struct {
+			Email        string `json:"email"`
+			TproxySecret string `json:"tproxySecret"`
+			Enable       bool   `json:"enable"`
+		} `json:"clients"`
+	}
+	if err := json.Unmarshal([]byte(ib.Settings), &parsed); err != nil {
+		return Instance{}, false
+	}
+	clients := make([]ClientSecret, 0, len(parsed.Clients))
+	for _, c := range parsed.Clients {
+		if !c.Enable || c.TproxySecret == "" || c.Email == "" {
+			continue
+		}
+		clients = append(clients, ClientSecret{Name: c.Email, Secret: c.TproxySecret})
+	}
+	if len(clients) == 0 {
+		return Instance{}, false
+	}
+	return Instance{Id: ib.Id, Clients: clients}, true
 }
 
 // Ensure brings inst's MTProxy engine and the shared relay's profile set in

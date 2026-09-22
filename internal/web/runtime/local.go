@@ -12,6 +12,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/amneziawgnet"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/mtproto"
+	"github.com/mhsanaei/3x-ui/v3/internal/tproxy"
 	"github.com/mhsanaei/3x-ui/v3/internal/tuic"
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
@@ -22,6 +23,12 @@ type LocalDeps struct {
 	// ScheduleAmneziaWGRelayResync: SetNeedRestart plus a fast, rate-limited
 	// timer -- see XrayService.ScheduleAmneziaWGRelayResync. AmneziaWG-only.
 	ScheduleAmneziaWGRelayResync func()
+	// TproxyDomain is frontproxy's own public TLS domain -- tproxy's shared
+	// relay shares that single domain rather than getting its own.
+	TproxyDomain func() (string, error)
+	// ReloadFrontProxy refreshes the running reverse proxy's bridge-capability
+	// list after a tproxy client changes, so a revoked client stops routing.
+	ReloadFrontProxy func()
 }
 
 type Local struct {
@@ -42,6 +49,13 @@ func (l *Local) scheduleAmneziaWGRelayResync() {
 		l.deps.ScheduleAmneziaWGRelayResync()
 	} else if l.deps.SetNeedRestart != nil {
 		l.deps.SetNeedRestart()
+	}
+}
+
+// reloadFrontProxy is a no-op when the hook was not supplied (e.g. in tests).
+func (l *Local) reloadFrontProxy() {
+	if l.deps.ReloadFrontProxy != nil {
+		l.deps.ReloadFrontProxy()
 	}
 }
 
@@ -68,6 +82,9 @@ func (l *Local) AddInbound(_ context.Context, ib *model.Inbound) error {
 			return nil
 		}
 		return mtproto.GetManager().Ensure(inst)
+	}
+	if ib.Protocol == model.Tproxy {
+		return l.ensureTproxy(ib)
 	}
 	if ib.Protocol == model.AmneziaWG {
 		inst, ok := amneziawg.InstanceFromInbound(ib)
@@ -114,6 +131,10 @@ func (l *Local) DelInbound(_ context.Context, ib *model.Inbound) error {
 		mtproto.GetManager().Remove(ib.Id)
 		return nil
 	}
+	if ib.Protocol == model.Tproxy {
+		l.removeTproxy(ib.Id)
+		return nil
+	}
 	if ib.Protocol == model.AmneziaWG {
 		amneziawgnet.GetManager().Remove(ib.Id)
 		// This may have been the only inbound backing the relay -- schedule
@@ -134,6 +155,9 @@ func (l *Local) UpdateInbound(ctx context.Context, oldIb, newIb *model.Inbound) 
 	if oldIb.Protocol == model.MTProto || newIb.Protocol == model.MTProto {
 		return l.updateMtprotoInbound(ctx, oldIb, newIb)
 	}
+	if oldIb.Protocol == model.Tproxy || newIb.Protocol == model.Tproxy {
+		return l.updateTproxyInbound(ctx, oldIb, newIb)
+	}
 	if oldIb.Protocol == model.AmneziaWG || newIb.Protocol == model.AmneziaWG {
 		return l.updateAmneziaWGInbound(ctx, oldIb, newIb)
 	}
@@ -145,6 +169,51 @@ func (l *Local) UpdateInbound(ctx context.Context, oldIb, newIb *model.Inbound) 
 		return nil
 	}
 	return l.AddInbound(ctx, newIb)
+}
+
+// ensureTproxy applies ib and always reloads frontproxy afterward, even for
+// a no-op instance -- a client's last secret leaving must reach it too.
+func (l *Local) ensureTproxy(ib *model.Inbound) error {
+	hostname, err := l.deps.TproxyDomain()
+	if err != nil {
+		return err
+	}
+	defer l.reloadFrontProxy()
+	inst, ok := tproxy.InstanceFromInbound(ib)
+	if !ok {
+		tproxy.GetManager().Remove(hostname, ib.Id)
+		return nil
+	}
+	return tproxy.GetManager().Ensure(hostname, inst)
+}
+
+func (l *Local) removeTproxy(id int) {
+	hostname, err := l.deps.TproxyDomain()
+	if err != nil {
+		return
+	}
+	tproxy.GetManager().Remove(hostname, id)
+	l.reloadFrontProxy()
+}
+
+// updateTproxyInbound mirrors updateMtprotoInbound: skips Del+Add so
+// Ensure's own fingerprint check can keep the engine's live connections.
+func (l *Local) updateTproxyInbound(ctx context.Context, oldIb, newIb *model.Inbound) error {
+	if oldIb.Protocol == model.Tproxy && newIb.Protocol != model.Tproxy {
+		l.removeTproxy(oldIb.Id)
+		if !newIb.Enable {
+			return nil
+		}
+		return l.AddInbound(ctx, newIb)
+	}
+	if oldIb.Protocol != model.Tproxy {
+		_ = l.DelInbound(ctx, oldIb)
+	}
+	if !newIb.Enable {
+		l.removeTproxy(newIb.Id)
+		return nil
+	}
+	return l.ensureTproxy(newIb)
 }
 
 // updateMtprotoInbound applies an inbound update without the Del+Add sequence
@@ -252,7 +321,7 @@ func (l *Local) updateTuicInbound(ctx context.Context, oldIb, newIb *model.Inbou
 }
 
 func (l *Local) AddUser(_ context.Context, ib *model.Inbound, userMap map[string]any) error {
-	if ib.Protocol == model.MTProto || ib.Protocol == model.AmneziaWG || ib.Protocol == model.TUIC {
+	if ib.Protocol == model.MTProto || ib.Protocol == model.AmneziaWG || ib.Protocol == model.TUIC || ib.Protocol == model.Tproxy {
 		return nil
 	}
 	return l.withAPI(func(api *xray.XrayAPI) error {
@@ -261,7 +330,7 @@ func (l *Local) AddUser(_ context.Context, ib *model.Inbound, userMap map[string
 }
 
 func (l *Local) RemoveUser(_ context.Context, ib *model.Inbound, email string) error {
-	if ib.Protocol == model.MTProto || ib.Protocol == model.AmneziaWG || ib.Protocol == model.TUIC {
+	if ib.Protocol == model.MTProto || ib.Protocol == model.AmneziaWG || ib.Protocol == model.TUIC || ib.Protocol == model.Tproxy {
 		return nil
 	}
 	return l.withAPI(func(api *xray.XrayAPI) error {

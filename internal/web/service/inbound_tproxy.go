@@ -1,8 +1,11 @@
 package service
 
 import (
+	"context"
+
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
+	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/tproxy"
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
@@ -44,25 +47,47 @@ func (s *InboundService) DesiredTproxyInstances() ([]tproxy.Instance, error) {
 
 	instances := make([]tproxy.Instance, 0, len(inbounds))
 	for _, ib := range inbounds {
-		clients, cErr := s.GetClients(ib)
-		if cErr != nil {
+		inst, ok := tproxy.InstanceFromInbound(ib)
+		if !ok {
 			continue
 		}
-		off := disabled[ib.Id]
-		secrets := make([]tproxy.ClientSecret, 0, len(clients))
-		for _, c := range clients {
-			if !c.Enable || c.TproxySecret == "" || c.Email == "" {
-				continue
+		if off := disabled[ib.Id]; len(off) > 0 {
+			kept := make([]tproxy.ClientSecret, 0, len(inst.Clients))
+			for _, c := range inst.Clients {
+				if _, skip := off[c.Name]; !skip {
+					kept = append(kept, c)
+				}
 			}
-			if _, skip := off[c.Email]; skip {
-				continue
-			}
-			secrets = append(secrets, tproxy.ClientSecret{Name: c.Email, Secret: c.TproxySecret})
+			inst.Clients = kept
 		}
-		if len(secrets) == 0 {
+		if len(inst.Clients) == 0 {
 			continue
 		}
-		instances = append(instances, tproxy.Instance{Id: ib.Id, Clients: secrets})
+		instances = append(instances, inst)
 	}
 	return instances, nil
+}
+
+// applyLocalTproxy pushes a single local tproxy inbound's current client set
+// to its MTProxy engine right after a client edit commits. Mirrors
+// applyLocalMtproto exactly, including its no-op conditions and the
+// swallow-and-log-on-failure contract (the reconcile job is the backstop).
+func (s *InboundService) applyLocalTproxy(inboundId int) {
+	inbound, err := s.GetInbound(inboundId)
+	if err != nil || inbound == nil || inbound.Protocol != model.Tproxy || inbound.NodeID != nil {
+		return
+	}
+	rt, err := s.runtimeFor(inbound)
+	if err != nil {
+		return
+	}
+	payload := inbound
+	if inbound.Enable {
+		if built, bErr := s.buildInboundForLocalRuntime(database.GetDB(), inbound); bErr == nil {
+			payload = built
+		}
+	}
+	if err := rt.UpdateInbound(context.Background(), inbound, payload); err != nil {
+		logger.Debug("tproxy: immediate client apply failed for inbound", inboundId, ":", err)
+	}
 }
