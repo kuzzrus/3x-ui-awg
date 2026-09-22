@@ -286,6 +286,7 @@ func TestNormalizeAmneziaWGSettings_CanonicalizesClientAllowedIPs(t *testing.T) 
 }
 
 func TestGetAmneziaWGLogs_ClampsCountAndFiltersEvents(t *testing.T) {
+	setupConflictDB(t)
 	logger.InitLogger(logging.DEBUG)
 	logger.Info("amneziawg: started interface awg1 for inbound 1")
 	logger.Info("xray: unrelated line that must never show up here")
