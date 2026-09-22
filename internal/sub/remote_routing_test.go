@@ -462,8 +462,13 @@ func TestApplyCommonHeadersSendsExplicitOffForHapp(t *testing.T) {
 		return ctx, recorder
 	}
 
+	// These off values ride the same AutoDetect opt-in as every other Happ
+	// header (see ApplyCommonHeaders' happManaged) -- without it, a Happ
+	// client this admin never opted into managing would get them regardless.
+	happManaged := &SUBController{happConfig: HappConfig{AutoDetect: true}}
+
 	ctx, recorder := happContext()
-	(&SUBController{}).ApplyCommonHeaders(ctx, "", "12", "", "", "", "", false, "", "", false)
+	happManaged.ApplyCommonHeaders(ctx, "", "12", "", "", "", "", false, "", "", false)
 	if got := recorder.Header().Get("Routing-Enable"); got != "0" {
 		t.Errorf("Routing-Enable = %q, want \"0\" for a Happ client with routing off", got)
 	}
@@ -472,7 +477,7 @@ func TestApplyCommonHeadersSendsExplicitOffForHapp(t *testing.T) {
 	}
 
 	ctx, recorder = happContext()
-	(&SUBController{}).ApplyCommonHeaders(ctx, "", "12", "", "", "", "", false, "", "", true)
+	happManaged.ApplyCommonHeaders(ctx, "", "12", "", "", "", "", false, "", "", true)
 	if got := recorder.Header().Get("Hide-Settings"); got != "1" {
 		t.Errorf("Hide-Settings = %q, want \"1\" when explicitly enabled", got)
 	}
