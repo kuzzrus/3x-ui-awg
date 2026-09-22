@@ -431,7 +431,7 @@ jobs:
   # channel is unaffected.
   publish-dev:
     name: Publish rolling dev release
-    needs: [build]
+    needs: [build, build-windows]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
