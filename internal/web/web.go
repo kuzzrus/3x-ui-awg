@@ -597,6 +597,12 @@ func (s *Server) start(restartXray bool, startTgBot bool) (err error) {
 		APIPort:                      func() int { return s.xrayService.GetXrayAPIPort() },
 		SetNeedRestart:               func() { s.xrayService.SetToNeedRestart() },
 		ScheduleAmneziaWGRelayResync: func() { s.xrayService.ScheduleAmneziaWGRelayResync() },
+		TproxyDomain:                 func() (string, error) { return s.settingService.GetFrontProxyDomain() },
+		ReloadFrontProxy: func() {
+			if err := (&integration.FrontProxyService{}).Reload(); err != nil {
+				logger.Warning("tproxy: failed to reload front proxy:", err)
+			}
+		},
 	}))
 	runtime.GetManager().SetNodeEgressResolver(&s.settingService)
 	// Supply the master client certificate for nodes in mtls mode. Issued lazily
