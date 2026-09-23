@@ -39,6 +39,10 @@ type Manager struct {
 	mtproxies map[int]*managedMTProxy
 	server    *managedServer
 	swept     bool
+	// lastEgressFingerprint gates applyEgressRedirectsLocked the same way
+	// managedMTProxy.fingerprint/managedServer.fingerprint already gate
+	// their own nft/process calls -- see that method's doc comment.
+	lastEgressFingerprint string
 }
 
 var (
@@ -98,6 +102,8 @@ func InstanceFromInbound(ib *model.Inbound) (Instance, bool) {
 			TproxySecret string `json:"tproxySecret"`
 			Enable       bool   `json:"enable"`
 		} `json:"clients"`
+		RouteThroughXray bool `json:"routeThroughXray"`
+		RouteXrayPort    int  `json:"routeXrayPort"`
 	}
 	if err := json.Unmarshal([]byte(ib.Settings), &parsed); err != nil {
 		return Instance{}, false
@@ -112,7 +118,13 @@ func InstanceFromInbound(ib *model.Inbound) (Instance, bool) {
 	if len(clients) == 0 {
 		return Instance{}, false
 	}
-	return Instance{Id: ib.Id, Clients: clients, Tag: ib.Tag}, true
+	return Instance{
+		Id:               ib.Id,
+		Clients:          clients,
+		Tag:              ib.Tag,
+		RouteThroughXray: parsed.RouteThroughXray,
+		RouteXrayPort:    parsed.RouteXrayPort,
+	}, true
 }
 
 // Ensure brings inst's MTProxy engine and the shared relay's profile set in
@@ -129,6 +141,13 @@ func (m *Manager) Ensure(hostname string, inst Instance) error {
 		return err
 	}
 	serverStarted, _, err := m.recomputeSharedServerLocked(hostname)
+	// Independent of the two calls above and of their own error -- an
+	// egress-routing preference is not something a shared relay's own
+	// trouble should block from applying. See applyEgressRedirectsLocked's
+	// doc comment for why this runs here rather than inside either of them.
+	if egErr := m.applyEgressRedirectsLocked(); egErr != nil {
+		logger.Warningf("tproxy: egress routing: %v", egErr)
+	}
 	m.mu.Unlock()
 	if err != nil {
 		return err
@@ -200,7 +219,7 @@ func (m *Manager) ensureMTProxyLocked(inst Instance) (*childProcess, error) {
 	if cur, ok := m.mtproxies[inst.Id]; ok {
 		_ = cur.proc.Stop()
 	}
-	proc := newChildProcess(mtproxyBinaryPath(), args, fmt.Sprintf("127.0.0.1:%d", clientPort), fmt.Sprintf("mtproxy inbound %d", inst.Id), true)
+	proc := newChildProcess(mtproxyBinaryPath(), args, fmt.Sprintf("127.0.0.1:%d", clientPort), fmt.Sprintf("mtproxy inbound %d", inst.Id), mtproxyEgressGID(inst.Id))
 	if err := proc.Start(); err != nil {
 		return nil, err
 	}
@@ -315,7 +334,7 @@ func (m *Manager) recomputeSharedServerLocked(hostname string) (*childProcess, b
 	if m.server != nil {
 		_ = m.server.proc.Stop()
 	}
-	proc := newChildProcess(tproxyServerBinaryPath(), []string{"-config", serverConfigPath()}, listenAddr, "tproxy-server", false)
+	proc := newChildProcess(tproxyServerBinaryPath(), []string{"-config", serverConfigPath()}, listenAddr, "tproxy-server", 0)
 	if err := proc.Start(); err != nil {
 		return nil, false, err
 	}
@@ -350,6 +369,74 @@ func (m *Manager) mtproxyPortsSetLocked() []int {
 	return ports
 }
 
+// egressRedirectsLocked builds the current desired egress_redirect ruleset
+// from every instance with RouteThroughXray set, regardless of whether its
+// engine is currently running -- m.instances (not m.mtproxies) is the
+// source of truth here, same as mtproxyPortsSetLocked uses m.mtproxies for
+// its own concern. Each entry's GID is that specific inbound's own
+// mtproxyEgressGID, not a value shared across inbounds -- see that
+// function's doc comment (privdrop.go) for why a shared identifier can't
+// work here the way it does for mtproxyUser's UID half of the same
+// credential. No error return: unlike resolving mtproxyUser's UID/GID
+// (unprivilegedIDs, a real /etc/passwd lookup that can fail), this is a
+// pure function of an id already in hand.
+func (m *Manager) egressRedirectsLocked() []egressRedirect {
+	var redirects []egressRedirect
+	for _, inst := range m.instances {
+		if inst.RouteThroughXray && inst.RouteXrayPort > 0 {
+			redirects = append(redirects, egressRedirect{GID: mtproxyEgressGID(inst.Id), ToPort: inst.RouteXrayPort})
+		}
+	}
+	return redirects
+}
+
+// egressFingerprint is applyEgressRedirectsLocked's own change-detection
+// key, independent of managedMTProxy.fingerprint/managedServer.fingerprint
+// (those gate engine/relay restarts, an unrelated concern egress routing
+// must never trigger -- toggling routeThroughXray alone must not restart a
+// client-facing engine that hasn't otherwise changed).
+func egressFingerprint(redirects []egressRedirect) string {
+	sorted := append([]egressRedirect(nil), redirects...)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].GID != sorted[j].GID {
+			return sorted[i].GID < sorted[j].GID
+		}
+		return sorted[i].ToPort < sorted[j].ToPort
+	})
+	parts := make([]string, len(sorted))
+	for i, r := range sorted {
+		parts[i] = fmt.Sprintf("%d:%d", r.GID, r.ToPort)
+	}
+	return strings.Join(parts, ",")
+}
+
+// applyEgressRedirectsLocked reconciles the egress_redirect nftables chain
+// (firewall.go) against the current routeThroughXray state of every known
+// instance. Called once per Ensure/Reconcile pass -- not from inside
+// ensureMTProxyLocked/recomputeSharedServerLocked the way the block-list
+// side is, deliberately: both of those already skip their own nft call via
+// an engine/relay fingerprint that must stay scoped to secrets and process
+// state, not grow a third, unrelated concern. Skips the actual nft call
+// when nothing has changed since the last application (egressFingerprint
+// unchanged) -- an unconditional reapply on every 10s reconcile tick would
+// be wasteful, the same lesson TproxyJob's own changed-gated frontproxy
+// reload already encodes (see tproxy_job.go), even though unlike that bug
+// this couldn't corrupt unrelated state: egress_redirect is flushed and
+// rebuilt independently of local_backend (firewall.go's own doc comments),
+// so a redundant call here could only ever be wasteful, never incorrect.
+func (m *Manager) applyEgressRedirectsLocked() error {
+	redirects := m.egressRedirectsLocked()
+	fp := egressFingerprint(redirects)
+	if fp == m.lastEgressFingerprint {
+		return nil
+	}
+	if err := applyEgressRedirects(context.Background(), redirects); err != nil {
+		return err
+	}
+	m.lastEgressFingerprint = fp
+	return nil
+}
+
 func ensurePublicPlaceholder() error {
 	path := publicDirPath() + "/index.html"
 	if isRegularFile(path) {
@@ -365,6 +452,11 @@ func (m *Manager) Remove(hostname string, id int) {
 	m.removeMTProxyLocked(id)
 	delete(m.instances, id)
 	_, _, err := m.recomputeSharedServerLocked(hostname)
+	// A removed instance may have been the last (or only) one with
+	// routeThroughXray set -- see Ensure's identical call.
+	if egErr := m.applyEgressRedirectsLocked(); egErr != nil {
+		logger.Warningf("tproxy: egress routing: %v", egErr)
+	}
 	m.mu.Unlock()
 	if err != nil {
 		logger.Warningf("tproxy: remove inbound %d: relay recompute failed: %v", id, err)
@@ -416,6 +508,11 @@ func (m *Manager) Reconcile(hostname string, desired []Instance) (changed bool) 
 	}
 
 	serverProc, serverChanged, err := m.recomputeSharedServerLocked(hostname)
+	// See Ensure's identical call: independent of everything else in this
+	// pass, applied once per tick rather than once per instance.
+	if egErr := m.applyEgressRedirectsLocked(); egErr != nil {
+		logger.Warningf("tproxy: egress routing: %v", egErr)
+	}
 	m.mu.Unlock()
 	if err != nil {
 		logger.Warningf("tproxy: reconcile: shared relay recompute failed: %v", err)

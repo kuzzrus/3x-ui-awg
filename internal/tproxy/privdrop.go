@@ -51,6 +51,42 @@ func unprivilegedIDs() (uid, gid uint32, err error) {
 	return uint32(uid64), uint32(gid64), nil
 }
 
+// mtproxyEgressGIDBase is added to an inbound's own id to build that
+// engine's process GID -- see mtproxyEgressGID. Chosen far above any real
+// system uid/gid range (those never approach even six digits in practice on
+// any distro this fork targets) so it can never collide with a real group,
+// without needing one to actually exist in /etc/group: Linux's setgid(2)
+// accepts any numeric gid_t, real group database entry or not -- confirmed
+// empirically, not assumed.
+const mtproxyEgressGIDBase = 2_000_000_000
+
+// mtproxyEgressGID computes the per-inbound process GID every MTProxy
+// engine child runs under, instead of mtproxyUser's own shared group.
+//
+// The reason this exists at all: every engine child's UID is the same
+// (mtproxyUser, "nobody") regardless of inbound, since that identity only
+// ever needs to prove "I'm the sandboxed tproxy engine account" for file
+// ownership (chownForMTProxy) and dir()'s traversal bit -- neither cares
+// which inbound. But firewall.go's egress_redirect nftables rule has a
+// completely different job: distinguishing *one specific inbound's* own
+// engine process from every other one on the box, including every other
+// tproxy inbound's engine, so that enabling routeThroughXray on inbound A
+// can never redirect inbound B's traffic too. A shared UID-only match
+// (skuid) cannot express that distinction at all -- confirmed live, on a
+// real deployment, before this function existed: enabling routing on one
+// test inbound silently redirected an unrelated, non-routed inbound's own
+// engine as well, since nftables has no notion of "inbound" and can only
+// ever see the process's credentials. Giving every engine its own process
+// GID, independent of whether that inbound even uses routeThroughXray,
+// gives the nftables rule (meta skgid, not meta skuid) something genuinely
+// unique to match -- live-verified against a real redirect+SO_ORIGINAL_DST
+// setup: two children sharing one UID but carrying different GIDs (one
+// arbitrary and never present in /etc/group) redirected and left alone
+// respectively, exactly as their own individual GID dictated.
+func mtproxyEgressGID(inboundID int) uint32 {
+	return mtproxyEgressGIDBase + uint32(inboundID)
+}
+
 // chownForMTProxy gives mtproxyUser ownership of path, one of the two files
 // (proxy-secret, proxy-multi.conf) the engine child opens directly by name
 // after Start drops it to that same account. A no-op when not root: outside

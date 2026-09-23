@@ -151,6 +151,10 @@ func installFakeBinaries(t *testing.T) (pidFile string) {
 	applyFirewall = func(context.Context, []int) error { return nil }
 	t.Cleanup(func() { applyFirewall = origApply })
 
+	origApplyEgress := applyEgressRedirects
+	applyEgressRedirects = func(context.Context, []egressRedirect) error { return nil }
+	t.Cleanup(func() { applyEgressRedirects = origApplyEgress })
+
 	return pidFile
 }
 

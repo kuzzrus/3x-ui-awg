@@ -21,6 +21,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/mtproto"
+	"github.com/mhsanaei/3x-ui/v3/internal/tproxy"
 	"github.com/mhsanaei/3x-ui/v3/internal/tuic"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/common"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/netsafe"
@@ -1087,6 +1088,79 @@ func (s *InboundService) normalizeMtprotoXrayPort(inbound *model.Inbound, oldSet
 	return nil
 }
 
+// tproxyRoutesThroughXray mirrors mtprotoRoutesThroughXray.
+func tproxyRoutesThroughXray(inbound *model.Inbound) bool {
+	if inbound == nil || inbound.Protocol != model.Tproxy {
+		return false
+	}
+	var parsed struct {
+		RouteThroughXray bool `json:"routeThroughXray"`
+	}
+	if err := json.Unmarshal([]byte(inbound.Settings), &parsed); err != nil {
+		return false
+	}
+	return parsed.RouteThroughXray
+}
+
+// normalizeTproxyXrayPort is normalizeMtprotoXrayPort's sibling for tproxy
+// inbounds -- identical contract (stable, backend-owned port; strips both
+// keys when routing is off; refuses the save rather than persisting a
+// routed-but-portless inbound), differing only in which package's
+// FreeLocalPort allocates the port. See internal/web/service/xray.go's
+// injectTproxyEgress for the other half (config generation) and
+// internal/tproxy/manager.go's InstanceFromInbound for the third
+// (nftables egress redirect) -- all three read these same two keys
+// independently from the same stored settings.
+func (s *InboundService) normalizeTproxyXrayPort(inbound *model.Inbound, oldSettings string) error {
+	if inbound.Protocol != model.Tproxy {
+		return nil
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(inbound.Settings), &parsed); err != nil || parsed == nil {
+		return nil
+	}
+	routed, _ := parsed["routeThroughXray"].(bool)
+	if !routed {
+		_, hadPort := parsed["routeXrayPort"]
+		_, hadTag := parsed["outboundTag"]
+		if !hadPort && !hadTag {
+			return nil
+		}
+		delete(parsed, "routeXrayPort")
+		delete(parsed, "outboundTag")
+		if bs, err := json.MarshalIndent(parsed, "", "  "); err == nil {
+			inbound.Settings = string(bs)
+		} else {
+			logger.Warning("tproxy: failed to marshal settings after disabling routing:", err)
+		}
+		return nil
+	}
+
+	// Prefer the already-stored port (carried across edits), then any value the
+	// client sent, then allocate a fresh one.
+	port := parseRouteXrayPort(oldSettings)
+	if port <= 0 {
+		port = settingsRouteXrayPort(parsed)
+	}
+	if port <= 0 {
+		allocated, err := tproxy.FreeLocalPort()
+		if err != nil {
+			return common.NewError("tproxy: could not allocate an Xray egress port:", err)
+		}
+		port = allocated
+	}
+	if settingsRouteXrayPort(parsed) == port {
+		return nil
+	}
+	parsed["routeXrayPort"] = port
+	bs, err := json.MarshalIndent(parsed, "", "  ")
+	if err != nil {
+		return common.NewError("tproxy: could not persist the Xray egress port:", err)
+	}
+	inbound.Settings = string(bs)
+	return nil
+}
+
 // AddInbound creates a new inbound configuration.
 // It validates port uniqueness, client email uniqueness, and required fields,
 // then saves the inbound to the database and optionally adds it to the running Xray instance.
@@ -1110,6 +1184,9 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 	}
 	s.normalizeMtprotoSecret(inbound)
 	if err := s.normalizeMtprotoXrayPort(inbound, ""); err != nil {
+		return inbound, false, err
+	}
+	if err := s.normalizeTproxyXrayPort(inbound, ""); err != nil {
 		return inbound, false, err
 	}
 	if err := s.normalizeAmneziaWGSettings(inbound, ""); err != nil {
@@ -1758,7 +1835,11 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 	// inbound keeps a stable egress port (reusing the one already stored).
 	oldProtocol := oldInbound.Protocol
 	oldRoutedMtproto := mtprotoRoutesThroughXray(oldInbound)
+	oldRoutedTproxy := tproxyRoutesThroughXray(oldInbound)
 	if err := s.normalizeMtprotoXrayPort(inbound, oldInbound.Settings); err != nil {
+		return inbound, false, err
+	}
+	if err := s.normalizeTproxyXrayPort(inbound, oldInbound.Settings); err != nil {
 		return inbound, false, err
 	}
 
@@ -1990,6 +2071,10 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 		// the egress SOCKS bridge is added, moved, or dropped to match the new
 		// settings.
 		if mtprotoRoutesThroughXray(inbound) || oldRoutedMtproto {
+			needRestart = true
+		}
+		// Same reasoning for tproxy's own dokodemo-door bridge.
+		if tproxyRoutesThroughXray(inbound) || oldRoutedTproxy {
 			needRestart = true
 		}
 		return nil

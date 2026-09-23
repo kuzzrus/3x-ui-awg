@@ -440,6 +440,17 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 		injectMtprotoEgress(xrayConfig, inbound)
 	}
 
+	// Same opt-in shape as mtproto above, for tproxy inbounds -- see
+	// injectTproxyEgress's own doc comment for why the bridge mechanism
+	// itself (OS-level redirect, not a SOCKS dial-out) had to differ.
+	for i := range inbounds {
+		inbound := inbounds[i]
+		if inbound.Protocol != model.Tproxy || !inbound.Enable || inbound.NodeID != nil {
+			continue
+		}
+		injectTproxyEgress(xrayConfig, inbound)
+	}
+
 	// Every AmneziaWG inbound is embedded (internal/amneziawgnet: amneziawg-go
 	// over a gVisor netstack, no kernel module) and relays every peer's
 	// decapsulated traffic into its own loopback SOCKS5 inbound, always on —
@@ -751,6 +762,90 @@ func injectMtprotoEgress(cfg *xray.Config, inbound *model.Inbound) {
 		Port:     parsed.RouteXrayPort,
 		Protocol: "socks",
 		Settings: json_util.RawMessage(mtprotoEgressSocksSettings),
+		Tag:      tag,
+	})
+}
+
+// tproxyEgressDokodemoSettings is the loopback bridge injectTproxyEgress
+// creates, verified against the vendored xray-core's own JSON config schema
+// (infra/conf/dokodemo.go's DokodemoConfig), not guessed: address/port are
+// left unset since followRedirect makes dokodemo-door recover the real
+// destination via SO_ORIGINAL_DST instead of using them, and nothing but the
+// MTProxy engine's own nftables-redirected traffic (internal/tproxy's
+// firewall.go, matched by uid) can ever reach this loopback port.
+const tproxyEgressDokodemoSettings = `{"network":"tcp","followRedirect":true}`
+
+// injectTproxyEgress is injectMtprotoEgress's sibling for tproxy inbounds --
+// same settings shape (routeThroughXray/routeXrayPort/outboundTag), same
+// guard/routing-rule logic, but a different bridge protocol and a
+// fundamentally different reason it is needed at all: mtproto's mtg sidecar
+// can be told to dial out through a SOCKS5 proxy, so its bridge (above) is
+// exactly that proxy's own address. The real vendored MTProxy engine
+// (TelegramMessenger/MTProxy, what this fork's tproxy sidecar actually
+// supervises -- not mtg) has no such capability whatsoever, confirmed by
+// grepping its own source for any SOCKS/proxy-dial mechanism and finding
+// none. Routing its traffic through Xray therefore requires the engine's own
+// outbound connections to be transparently redirected at the OS level
+// (internal/tproxy/firewall.go's egress_redirect nftables chain, live-
+// verified against a real SO_ORIGINAL_DST recovery) into this dokodemo-door
+// bridge, which is what followRedirect is for -- the engine itself is never
+// told anything and has no idea this is happening.
+func injectTproxyEgress(cfg *xray.Config, inbound *model.Inbound) {
+	var parsed struct {
+		RouteThroughXray bool   `json:"routeThroughXray"`
+		RouteXrayPort    int    `json:"routeXrayPort"`
+		OutboundTag      string `json:"outboundTag"`
+	}
+	if err := json.Unmarshal([]byte(inbound.Settings), &parsed); err != nil {
+		return
+	}
+	if !parsed.RouteThroughXray || parsed.RouteXrayPort <= 0 || inbound.Tag == "" {
+		return
+	}
+	tag := inbound.Tag
+	for i := range cfg.InboundConfigs {
+		if cfg.InboundConfigs[i].Tag == tag {
+			logger.Warning("tproxy egress: inbound tag [", tag, "] already present in generated config, skipping bridge")
+			return
+		}
+	}
+
+	if parsed.OutboundTag != "" {
+		routing := map[string]any{}
+		if len(cfg.RouterConfig) > 0 {
+			if err := json.Unmarshal(cfg.RouterConfig, &routing); err != nil {
+				logger.Warning("tproxy egress: routing section is unparsable, skipping injection:", err)
+				return
+			}
+		}
+		if !routingTargetExists(routing, cfg.OutboundConfigs, parsed.OutboundTag) {
+			logger.Warning("tproxy egress: target tag [", parsed.OutboundTag, "] not found, skipping injection")
+			return
+		}
+		rules, _ := routing["rules"].([]any)
+		rule := map[string]any{
+			"type":       "field",
+			"inboundTag": []any{tag},
+		}
+		if routingTagIsBalancer(routing, parsed.OutboundTag) {
+			rule["balancerTag"] = parsed.OutboundTag
+		} else {
+			rule["outboundTag"] = parsed.OutboundTag
+		}
+		routing["rules"] = append([]any{rule}, rules...)
+		newRouting, err := json.Marshal(routing)
+		if err != nil {
+			logger.Warning("tproxy egress: failed to rebuild routing section, skipping injection:", err)
+			return
+		}
+		cfg.RouterConfig = json_util.RawMessage(newRouting)
+	}
+
+	cfg.InboundConfigs = append(cfg.InboundConfigs, xray.InboundConfig{
+		Listen:   json_util.RawMessage(`"127.0.0.1"`),
+		Port:     parsed.RouteXrayPort,
+		Protocol: "dokodemo-door",
+		Settings: json_util.RawMessage(tproxyEgressDokodemoSettings),
 		Tag:      tag,
 	})
 }

@@ -29,10 +29,21 @@ export type TproxyClient = z.infer<typeof TproxyClientSchema>;
 // tproxy (Telegram WEB proxy) inbound. Bridges a Telegram Desktop app's
 // WebView-carried MTProto traffic to a stock MTProxy engine through the
 // panel's front proxy, sharing port 443 with everything else -- served
-// entirely outside Xray, so it has no stream settings and no inbound-level
-// config knobs of its own. The engine's client/stats ports are allocated and
-// owned by the backend; the only per-inbound state is the client list.
+// entirely outside Xray, so it has no stream settings. The engine's
+// client/stats ports are allocated and owned by the backend, same as
+// routeXrayPort below; the only settings edited here are the client list
+// and the egress-routing toggle.
 export const TproxyInboundSettingsSchema = z.object({
   clients: z.array(TproxyClientSchema).default([]),
+  // The real MTProxy engine (unlike mtproto's mtg sidecar) has no proxy
+  // dial-out of its own -- when set, the panel transparently redirects its
+  // outbound connections at the OS level into a loopback Xray bridge
+  // instead, so the engine itself is never told anything. `outboundTag`
+  // optionally forces that traffic out a specific outbound/balancer.
+  // `routeXrayPort` is the bridge port; it is allocated and owned by the
+  // backend (never edited here).
+  routeThroughXray: z.boolean().optional(),
+  outboundTag: z.string().optional(),
+  routeXrayPort: z.number().int().min(0).max(65535).optional(),
 });
 export type TproxyInboundSettings = z.infer<typeof TproxyInboundSettingsSchema>;
