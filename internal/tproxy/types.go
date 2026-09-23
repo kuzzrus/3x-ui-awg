@@ -16,4 +16,9 @@ type ClientSecret struct {
 type Instance struct {
 	Id      int
 	Clients []ClientSecret
+	// Tag is the inbound's own DB tag, carried through only for the
+	// active-inbound online-status signal (RefreshLocalOnlineClients) --
+	// unlike mtproto's Instance.Tag, it is never used for Xray-routed
+	// traffic bucketing, since tproxy has no such bridge.
+	Tag string
 }

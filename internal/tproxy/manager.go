@@ -112,7 +112,7 @@ func InstanceFromInbound(ib *model.Inbound) (Instance, bool) {
 	if len(clients) == 0 {
 		return Instance{}, false
 	}
-	return Instance{Id: ib.Id, Clients: clients}, true
+	return Instance{Id: ib.Id, Clients: clients, Tag: ib.Tag}, true
 }
 
 // Ensure brings inst's MTProxy engine and the shared relay's profile set in
@@ -426,6 +426,36 @@ func (m *Manager) Reconcile(hostname string, desired []Instance) (changed bool) 
 		}
 	}
 	return changed
+}
+
+// CollectOnlineInbounds scrapes every running engine's /stats and returns the
+// Instance IDs of inbounds with at least one connection open right now.
+//
+// This is the ceiling of what the vendored MTProxy binary's own stats
+// surface supports (see tproxy-status.md gap 2): one engine serves every
+// client secret on an inbound, and the binary's stats are a process-wide
+// aggregate with no per-secret breakdown and no traffic-byte counter of any
+// kind -- so this reports "this inbound has a live connection", never which
+// client, and never any byte count. Callers must not treat the return value
+// as a set of online clients.
+func (m *Manager) CollectOnlineInbounds() []int {
+	m.mu.Lock()
+	type snap struct{ id, port int }
+	snaps := make([]snap, 0, len(m.mtproxies))
+	for id, mp := range m.mtproxies {
+		if mp.proc.IsRunning() {
+			snaps = append(snaps, snap{id, mp.statsPort})
+		}
+	}
+	m.mu.Unlock()
+
+	var online []int
+	for _, s := range snaps {
+		if n, ok := scrapeActiveConnections(s.port); ok && n > 0 {
+			online = append(online, s.id)
+		}
+	}
+	return online
 }
 
 // StopAll stops every managed process and drops the firewall table. Called on
