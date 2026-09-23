@@ -875,9 +875,11 @@ export interface GenTproxyLinkInput {
 // inbound's own resolved address/host override: tproxy has no Xray
 // listener, every client reaches the panel through the one configured
 // front-proxy domain (Settings -> Reverse Proxy), passed in directly here
-// rather than threaded through resolveAddr/externalProxy. As of the pinned
-// tproxy-server commit only Telegram Desktop implements the WEB proxy
-// carrier; a correctly-built link can still do nothing on other clients.
+// rather than threaded through resolveAddr/externalProxy. Telegram Desktop
+// is the primary WEB proxy carrier; Android (described upstream as an
+// experimental proof of concept) has been confirmed working in practice
+// too as of 2026-09-23 -- see internal/sub/service.go's genTproxyLink for
+// the full story. iOS remains unconfirmed.
 export function genTproxyLink(input: GenTproxyLinkInput): string {
   const { inbound, frontProxyDomain, clientSecret = '' } = input;
   if (inbound.protocol !== 'tproxy') return '';
