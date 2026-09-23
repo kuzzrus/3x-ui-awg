@@ -165,7 +165,7 @@ func (p *childProcess) Start() error {
 		if err != nil {
 			return fmt.Errorf("cannot start %s unprivileged: %w", p.logWriter.label, err)
 		}
-		cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: uid, Gid: gid}}
+		cmd.SysProcAttr = credentialSysProcAttr(uid, gid)
 		// cmd.Dir (dir()) must itself be traversable by that uid -- Go's
 		// exec applies Credential before chdir'ing into cmd.Dir, so a child
 		// this drops to mtproxyUser needs "x" there too, not just on the

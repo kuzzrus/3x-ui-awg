@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
-	"syscall"
 	"testing"
 )
 
@@ -174,16 +173,9 @@ func TestEnsureTelegramConfigFilesReadableByMTProxyUser(t *testing.T) {
 		t.Skipf("no %s account on this system: %v", mtproxyUser, err)
 	}
 	for _, path := range []string{proxySecretPath(), proxyMultiConfPath()} {
-		st, err := os.Stat(path)
-		if err != nil {
-			t.Fatalf("stat %s: %v", path, err)
-		}
-		sys, ok := st.Sys().(*syscall.Stat_t)
-		if !ok {
-			t.Fatalf("stat %s: not a syscall.Stat_t on this platform", path)
-		}
-		if sys.Uid != wantUID || sys.Gid != wantGID {
-			t.Errorf("%s owned by %d:%d, want %d:%d (%s)", path, sys.Uid, sys.Gid, wantUID, wantGID, mtproxyUser)
+		gotUID, gotGID := fileOwner(t, path)
+		if gotUID != wantUID || gotGID != wantGID {
+			t.Errorf("%s owned by %d:%d, want %d:%d (%s)", path, gotUID, gotGID, wantUID, wantGID, mtproxyUser)
 		}
 	}
 }
@@ -229,16 +221,9 @@ func TestEnsureTelegramConfigFilesFixesOwnershipOnPreExistingFiles(t *testing.T)
 	}
 
 	for _, path := range []string{proxySecretPath(), proxyMultiConfPath()} {
-		st, err := os.Stat(path)
-		if err != nil {
-			t.Fatalf("stat %s: %v", path, err)
-		}
-		sys, ok := st.Sys().(*syscall.Stat_t)
-		if !ok {
-			t.Fatalf("stat %s: not a syscall.Stat_t on this platform", path)
-		}
-		if sys.Uid != wantUID || sys.Gid != wantGID {
-			t.Errorf("pre-existing %s still owned by %d:%d after EnsureTelegramConfigFiles, want %d:%d (%s)", path, sys.Uid, sys.Gid, wantUID, wantGID, mtproxyUser)
+		gotUID, gotGID := fileOwner(t, path)
+		if gotUID != wantUID || gotGID != wantGID {
+			t.Errorf("pre-existing %s still owned by %d:%d after EnsureTelegramConfigFiles, want %d:%d (%s)", path, gotUID, gotGID, wantUID, wantGID, mtproxyUser)
 		}
 	}
 }
