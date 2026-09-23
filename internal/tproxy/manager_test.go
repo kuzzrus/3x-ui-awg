@@ -125,6 +125,16 @@ func installFakeBinaries(t *testing.T) (pidFile string) {
 		t.Fatalf("read test binary: %v", err)
 	}
 	pidFile = filepath.Join(binDir, "pids.txt")
+	// Pre-created here, not left to whichever child's O_CREATE wins: root and
+	// mtproxyUser both append, and root creating it first locks mtproxyUser out.
+	if f, err := os.OpenFile(pidFile, os.O_CREATE|os.O_WRONLY, 0o666); err != nil {
+		t.Fatalf("create %s: %v", pidFile, err)
+	} else {
+		f.Close()
+	}
+	if err := os.Chmod(pidFile, 0o666); err != nil {
+		t.Fatalf("chmod %s: %v", pidFile, err)
+	}
 	t.Setenv("XUI_BIN_FOLDER", binDir)
 	if err := os.MkdirAll(dir(), 0o700); err != nil {
 		t.Fatalf("create %s: %v", dir(), err)
