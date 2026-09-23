@@ -1089,11 +1089,13 @@ func (s *SubService) genMtprotoLink(inbound *model.Inbound, email string) string
 // configured front-proxy domain (the same hostname internal/tproxy's
 // Manager and internal/frontproxy already route on).
 //
-// As of the pinned tproxy-server commit, only Telegram Desktop actually
-// implements the WEB proxy carrier; Android is an experimental proof of
-// concept and iOS is unbuilt. A generated link may silently do nothing on
-// other clients -- not a bug in this function, a real client-support gap
-// upstream documents itself.
+// Per the pinned tproxy-server commit's own docs, Telegram Desktop is the
+// primary WEB proxy carrier implementation, Android is described as an
+// experimental proof of concept, and iOS is unbuilt -- but confirmed
+// 2026-09-23 (see PR #48) that Android does connect in practice once the
+// server side is actually correct: what looked like a client-support gap
+// during that investigation was a server-side frontproxy routing bug, not
+// a real client limitation. iOS remains unconfirmed either way.
 func (s *SubService) genTproxyLink(inbound *model.Inbound, email string) string {
 	if inbound.Protocol != model.Tproxy {
 		return ""
