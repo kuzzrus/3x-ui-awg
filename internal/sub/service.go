@@ -22,6 +22,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
+	"github.com/mhsanaei/3x-ui/v3/internal/tproxy"
 	"github.com/mhsanaei/3x-ui/v3/internal/tuic"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/common"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/random"
@@ -628,7 +629,7 @@ func (s *SubService) getInboundsBySubId(subId string) ([]*model.Inbound, error) 
 		JOIN client_inbounds ON client_inbounds.inbound_id = inbounds.id
 		JOIN clients ON clients.id = client_inbounds.client_id
 		WHERE
-			inbounds.protocol in ('vmess','vless','trojan','shadowsocks','hysteria','wireguard','amneziawg','mtproto','tuic')
+			inbounds.protocol in ('vmess','vless','trojan','shadowsocks','hysteria','wireguard','amneziawg','mtproto','tuic','tproxy')
 			AND clients.sub_id = ? AND inbounds.enable = ?
 	)`, subId, true).Order("sub_sort_index ASC").Order("id ASC").Find(&inbounds).Error
 	if err != nil {
@@ -777,6 +778,8 @@ func (s *SubService) GetLink(inbound *model.Inbound, email string) string {
 		return s.genHysteriaLink(inbound, email)
 	case "mtproto":
 		return s.genMtprotoLink(inbound, email)
+	case "tproxy":
+		return s.genTproxyLink(inbound, email)
 	case "wireguard":
 		return s.genWireguardLink(inbound, email)
 	case "amneziawg":
@@ -1074,6 +1077,43 @@ func (s *SubService) genMtprotoLink(inbound *model.Inbound, email string) string
 		}, ""))
 	}
 	return strings.Join(links, "\n")
+}
+
+// genTproxyLink builds a WEB proxy link per telegramdesktop/tproxy-server's
+// own README ("6. Configure a Telegram client"): exactly two parameters,
+// server (bare hostname, no scheme/port/path/query -- HTTPS and 443 are
+// fixed by the WEB proxy type itself) and secret. Unlike genMtprotoLink,
+// the server value is never the inbound's own listen address or an
+// externalProxy override -- tproxy has no Xray listener at all, every
+// client of every tproxy inbound reaches the panel through the one
+// configured front-proxy domain (the same hostname internal/tproxy's
+// Manager and internal/frontproxy already route on).
+//
+// As of the pinned tproxy-server commit, only Telegram Desktop actually
+// implements the WEB proxy carrier; Android is an experimental proof of
+// concept and iOS is unbuilt. A generated link may silently do nothing on
+// other clients -- not a bug in this function, a real client-support gap
+// upstream documents itself.
+func (s *SubService) genTproxyLink(inbound *model.Inbound, email string) string {
+	if inbound.Protocol != model.Tproxy {
+		return ""
+	}
+	resolved, ok := s.clientForLink(inbound, email)
+	if !ok || resolved.TproxySecret == "" {
+		return ""
+	}
+	secret, err := tproxy.ClientLinkSecret(resolved.TproxySecret)
+	if err != nil {
+		return ""
+	}
+	hostname, err := s.settingService.GetFrontProxyDomain()
+	if err != nil || hostname == "" {
+		return ""
+	}
+	return buildLinkWithParams("tg://webproxy", map[string]string{
+		"server": hostname,
+		"secret": secret,
+	}, "")
 }
 
 // Protocol link generators are intentionally ordered as:

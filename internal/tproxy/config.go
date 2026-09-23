@@ -135,6 +135,16 @@ func mtproxySecretArg(secret string) (string, error) {
 	return normalized, nil
 }
 
+// ClientLinkSecret is mtproxySecretArg under a public name: the canonical
+// 32-hex form a share link's secret= parameter must carry. A stored
+// dd-prefixed secret is valid (ValidTproxySecret accepts it) but does not
+// match what the server profile and MTProxy's own -S argument actually
+// enforce -- a link built from the raw, unstripped value would not
+// authenticate.
+func ClientLinkSecret(secret string) (string, error) {
+	return mtproxySecretArg(secret)
+}
+
 // mtproxyWorkers is passed to -M. 0 disables forking a slave worker process
 // entirely -- MTProxy's own source forks one per worker even at -M 1.
 const mtproxyWorkers = 0
