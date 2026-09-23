@@ -33,9 +33,11 @@ func freeLocalAddr() (string, error) {
 
 // serverConfig is the subset of tproxy-server's own Config this package ever
 // sets; every omitted field keeps tproxy-server's own Defaults() instead.
+// Its own decoder rejects unknown fields outright (DisallowUnknownFields),
+// so every field here must have a real counterpart in that Config struct --
+// there is no such thing as a harmlessly-extra field.
 type serverConfig struct {
 	PublicHostname string `json:"public_hostname"`
-	BasePath       string `json:"base_path"`
 	Listen         string `json:"listen"`
 	AdminListen    string `json:"admin_listen"`
 	PublicDir      string `json:"public_dir"`
@@ -49,7 +51,6 @@ type serverConfig struct {
 func renderServerConfig(hostname, listenAddr, adminAddr string) ([]byte, error) {
 	cfg := serverConfig{
 		PublicHostname: strings.ToLower(strings.TrimSpace(hostname)),
-		BasePath:       "",
 		Listen:         listenAddr,
 		AdminListen:    adminAddr,
 		PublicDir:      publicDirPath(),

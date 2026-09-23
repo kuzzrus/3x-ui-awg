@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -86,14 +87,16 @@ type childProcess struct {
 	logWriter       *procLogWriter
 	exitErr         error
 	intentionalStop atomic.Bool
+	dropPrivileges  bool // see privdrop.go -- true only for the MTProxy engine
 }
 
-func newChildProcess(binaryPath string, args []string, readyAddr, label string) *childProcess {
+func newChildProcess(binaryPath string, args []string, readyAddr, label string, dropPrivileges bool) *childProcess {
 	return &childProcess{
-		binaryPath: binaryPath,
-		args:       args,
-		readyAddr:  readyAddr,
-		logWriter:  &procLogWriter{label: label},
+		binaryPath:     binaryPath,
+		args:           args,
+		readyAddr:      readyAddr,
+		logWriter:      &procLogWriter{label: label},
+		dropPrivileges: dropPrivileges,
 	}
 }
 
@@ -135,10 +138,48 @@ func (p *childProcess) Start() error {
 	if p.IsRunning() {
 		return errors.New("already running")
 	}
-	cmd := exec.CommandContext(context.Background(), p.binaryPath, p.args...)
+	// tproxyServerBinaryPath/mtproxyBinaryPath already return an absolute
+	// path (paths.go), but resolve again defensively: once cmd.Dir below is
+	// set, any relative cmd.Path resolves against *that*, not the caller's
+	// cwd, so a future relative binaryPath here would silently look for the
+	// binary nested inside its own state directory instead of next to it --
+	// exactly the bug that shipped for every real deployment until this and
+	// dir()'s own absolute path were both fixed together.
+	binaryPath, err := filepath.Abs(p.binaryPath)
+	if err != nil {
+		return fmt.Errorf("resolve %s: %w", p.binaryPath, err)
+	}
+	cmd := exec.CommandContext(context.Background(), binaryPath, p.args...)
 	cmd.Dir = dir()
 	cmd.Stdout = p.logWriter
 	cmd.Stderr = p.logWriter
+	// privdrop.go: the MTProxy engine is static, so glibc's NSS (dlopen-based)
+	// can never satisfy the getpwnam its own change_user_group calls
+	// unconditionally whenever it sees euid 0 -- it crashes on every launch
+	// as root, regardless of arguments. Only skipping euid 0 in the first
+	// place avoids that call at all; running as root ourselves is otherwise
+	// required (tproxy-server and every other caller of Start), so this is
+	// applied per child, not process-wide.
+	if p.dropPrivileges && os.Geteuid() == 0 {
+		uid, gid, err := unprivilegedIDs()
+		if err != nil {
+			return fmt.Errorf("cannot start %s unprivileged: %w", p.logWriter.label, err)
+		}
+		cmd.SysProcAttr = credentialSysProcAttr(uid, gid)
+		// cmd.Dir (dir()) must itself be traversable by that uid -- Go's
+		// exec applies Credential before chdir'ing into cmd.Dir, so a child
+		// this drops to mtproxyUser needs "x" there too, not just on the
+		// files it opens by path. manager.go and telegramconfig.go already
+		// create/chmod dir() to dirPerm before *they* write into it, but
+		// neither is guaranteed to run before every caller of Start -- this
+		// makes Start correct on its own regardless of call order.
+		if err := os.MkdirAll(cmd.Dir, dirPerm); err != nil {
+			return fmt.Errorf("cannot create %s: %w", cmd.Dir, err)
+		}
+		if err := os.Chmod(cmd.Dir, dirPerm); err != nil {
+			return fmt.Errorf("cannot chmod %s for %s: %w", cmd.Dir, mtproxyUser, err)
+		}
+	}
 	done := make(chan struct{})
 	p.mu.Lock()
 	p.cmd = cmd

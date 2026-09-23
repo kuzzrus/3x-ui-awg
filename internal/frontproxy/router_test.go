@@ -163,3 +163,61 @@ func TestResolveTargetTproxyDisabledWhenNoTarget(t *testing.T) {
 		t.Errorf("got %v, want RouteDecoy when TproxyTarget is empty", got)
 	}
 }
+
+// Regression for a real production bug: only the bootstrap GET / carries a
+// ?bridge= query (PROTOCOL.md). Every request after it -- session creation,
+// uplink, downlink poll, the websocket upgrade -- authenticates with an
+// "Authorization: Bearer <token>" header instead, which resolveTarget's
+// query-only bridge check can never see. Unfixed, every one of these fell
+// through to RouteDecoy: a live capture showed the bootstrap page load fine
+// (its GET carries ?bridge=) while the browser's own immediately-following
+// POST /api/v1/session, carrying a fresh, genuinely valid bootstrap token,
+// got the decoy's 401 instead of tproxy-server's real session response --
+// verified by replaying the identical request straight at tproxy-server,
+// bypassing this router, and getting 200. No capability was ever verified
+// invalid; the request just never reached the relay that could check it.
+func TestResolveTargetRoutesTproxyAPIPathsWithoutBridgeQuery(t *testing.T) {
+	c := testConfigWithTproxy()
+	for _, path := range []string{
+		"/api/v1/session",
+		"/api/v1/up",
+		"/api/v1/down",
+		"/api/v1/ws",
+		"/api/v1/",
+		"/api/v1",
+	} {
+		if got := c.resolveTarget(path, ""); got != RouteTproxy {
+			t.Errorf("resolveTarget(%q, \"\") = %v, want RouteTproxy", path, got)
+		}
+	}
+}
+
+// Same paths must not activate when tproxy itself is disabled, matching
+// TestResolveTargetTproxyDisabledWhenNoTarget's bridge-query counterpart.
+func TestResolveTargetTproxyAPIPathsDisabledWhenNoTarget(t *testing.T) {
+	c := testConfig()
+	if got := c.resolveTarget("/api/v1/session", ""); got != RouteDecoy {
+		t.Errorf("got %v, want RouteDecoy when TproxyTarget is empty", got)
+	}
+}
+
+// A path that merely starts with the same letters must not match, mirroring
+// TestResolveTargetRejectsPrefixLookalikes for the other secret-ish routes.
+func TestResolveTargetRejectsTproxyAPIPrefixLookalikes(t *testing.T) {
+	c := testConfigWithTproxy()
+	for _, path := range []string{"/api/v1x", "/api/v10/session", "/api/v2/session", "/api-v1/session"} {
+		if got := c.resolveTarget(path, ""); got != RouteDecoy {
+			t.Errorf("resolveTarget(%q, \"\") = %v, want RouteDecoy", path, got)
+		}
+	}
+}
+
+// Known panel/sub paths still win even if one were ever configured to
+// overlap /api/v1 -- same priority guarantee as the bridge-query case.
+func TestResolveTargetPanelSubTakePriorityOverTproxyAPIPath(t *testing.T) {
+	c := testConfigWithTproxy()
+	c.PanelBasePath = "/api/v1/"
+	if got := c.resolveTarget("/api/v1/session", ""); got != RoutePanel {
+		t.Errorf("got %v, want RoutePanel when PanelBasePath itself is /api/v1/", got)
+	}
+}

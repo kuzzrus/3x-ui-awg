@@ -47,6 +47,19 @@ type Config struct {
 	TproxyTarget string
 }
 
+// tproxyAPIPrefix is tproxy-server's own bridge session API -- PROTOCOL.md's
+// /api/v1/session, /api/v1/up, /api/v1/down, /api/v1/ws, fixed by the
+// upstream wire protocol itself, not an admin-chosen secret like
+// PanelBasePath/SubPath. Only the bootstrap GET / carries ?bridge=; every
+// request after it authenticates with an "Authorization: Bearer <token>"
+// header instead, which the query-only matchesTproxyCapability check below
+// can never see. Safe to route unconditionally by path once tproxy is
+// enabled: tproxy-server itself rejects a missing or wrong bearer token by
+// falling back to its own public_dir/public_upstream camouflage (see
+// PROTOCOL.md's "Requests with no authentic secret follow the ordinary
+// public handler"), the same trust model RoutePanel/RouteSub already use.
+const tproxyAPIPrefix = "api/v1"
+
 // resolveTarget picks the destination for one request path and query. Sub is
 // checked before panel; tproxy last, right before the decoy fallback.
 func (c Config) resolveTarget(path, rawQuery string) Route {
@@ -56,7 +69,7 @@ func (c Config) resolveTarget(path, rawQuery string) Route {
 	if matchesPrefix(path, c.PanelBasePath) {
 		return RoutePanel
 	}
-	if c.TproxyTarget != "" && c.matchesTproxyCapability(rawQuery) {
+	if c.TproxyTarget != "" && (c.matchesTproxyCapability(rawQuery) || matchesPrefix(path, tproxyAPIPrefix)) {
 		return RouteTproxy
 	}
 	return RouteDecoy

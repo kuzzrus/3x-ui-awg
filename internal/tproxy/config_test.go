@@ -15,14 +15,13 @@ func TestRenderServerConfigOmitsLimitsAndTimeouts(t *testing.T) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	for _, absent := range []string{"limits", "timeouts", "enable_pprof", "public_upstream"} {
+	for _, absent := range []string{"limits", "timeouts", "enable_pprof", "public_upstream", "base_path"} {
 		if _, ok := raw[absent]; ok {
 			t.Errorf("config.json must omit %q so tproxy-server's own Defaults() apply, got it explicitly set", absent)
 		}
 	}
 	want := map[string]string{
 		"public_hostname": "proxy.example.com",
-		"base_path":       "",
 		"listen":          "127.0.0.1:8080",
 		"admin_listen":    "127.0.0.1:8081",
 		"static_routes":   "exact",
@@ -40,6 +39,44 @@ func TestRenderServerConfigOmitsLimitsAndTimeouts(t *testing.T) {
 	for _, key := range []string{"public_dir", "token_key_file", "profiles_file"} {
 		if s, ok := raw[key].(string); !ok || s == "" {
 			t.Errorf("%s must be a non-empty string, got %#v", key, raw[key])
+		}
+	}
+}
+
+// Regression for a real production bug: tproxy-server's own config decoder
+// calls DisallowUnknownFields, so a single field here with no counterpart in
+// its Config struct (internal/config/config.go in mhsanaei/tproxy-server,
+// pinned commit f7a6acc4d536a787d442fd7df3ba4ebfd728f406) breaks the shared
+// relay outright on every single deployment -- exactly what "base_path" did
+// (it was never a real field there) until it was removed from serverConfig.
+// This asserts against the real struct's exact json tag set rather than
+// re-listing individually-known-bad field names, so it also catches any
+// *future* field added here without real upstream support, not just this one.
+func TestRenderServerConfigOnlyUsesRealUpstreamFields(t *testing.T) {
+	data, err := renderServerConfig("proxy.example.com", "127.0.0.1:8080", "127.0.0.1:8081")
+	if err != nil {
+		t.Fatalf("renderServerConfig: %v", err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	realUpstreamFields := map[string]bool{
+		"public_hostname": true,
+		"listen":          true,
+		"admin_listen":    true,
+		"public_dir":      true,
+		"public_upstream": true,
+		"static_routes":   true,
+		"token_key_file":  true,
+		"profiles_file":   true,
+		"enable_pprof":    true,
+		"limits":          true,
+		"timeouts":        true,
+	}
+	for key := range raw {
+		if !realUpstreamFields[key] {
+			t.Errorf("config.json has key %q, which tproxy-server's own Config struct does not define -- its strict decoder (DisallowUnknownFields) will reject the whole file", key)
 		}
 	}
 }
