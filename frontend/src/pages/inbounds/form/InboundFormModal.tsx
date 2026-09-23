@@ -70,6 +70,7 @@ import {
   MixedFields,
   MtprotoFields,
   ShadowsocksFields,
+  TproxyFields,
   TuicFields,
   TunFields,
   TunnelFields,
@@ -1097,6 +1098,8 @@ export default function InboundFormModal({
 
       {protocol === Protocols.MTPROTO && <MtprotoFields />}
 
+      {protocol === Protocols.TPROXY && <TproxyFields />}
+
       {protocol === Protocols.SHADOWSOCKS && <ShadowsocksFields isSSWith2022={isSSWith2022} />}
 
       {protocol === Protocols.VLESS && (
@@ -1427,6 +1430,7 @@ export default function InboundFormModal({
                     Protocols.MTPROTO,
                     Protocols.AMNEZIAWG,
                     Protocols.TUIC,
+                    Protocols.TPROXY,
                   ] as string[]
                 ).includes(protocol) || isFallbackHost
                   ? [

@@ -87,16 +87,21 @@ type childProcess struct {
 	logWriter       *procLogWriter
 	exitErr         error
 	intentionalStop atomic.Bool
-	dropPrivileges  bool // see privdrop.go -- true only for the MTProxy engine
+	// dropToGID is 0 for a child that must stay root (tproxy-server), or
+	// mtproxyEgressGID(inbound id) for an MTProxy engine -- see privdrop.go's
+	// doc comment on that function for why the GID must be per-inbound
+	// rather than a single shared value the way the UID half of this
+	// credential is.
+	dropToGID uint32
 }
 
-func newChildProcess(binaryPath string, args []string, readyAddr, label string, dropPrivileges bool) *childProcess {
+func newChildProcess(binaryPath string, args []string, readyAddr, label string, dropToGID uint32) *childProcess {
 	return &childProcess{
-		binaryPath:     binaryPath,
-		args:           args,
-		readyAddr:      readyAddr,
-		logWriter:      &procLogWriter{label: label},
-		dropPrivileges: dropPrivileges,
+		binaryPath: binaryPath,
+		args:       args,
+		readyAddr:  readyAddr,
+		logWriter:  &procLogWriter{label: label},
+		dropToGID:  dropToGID,
 	}
 }
 
@@ -160,16 +165,18 @@ func (p *childProcess) Start() error {
 	// place avoids that call at all; running as root ourselves is otherwise
 	// required (tproxy-server and every other caller of Start), so this is
 	// applied per child, not process-wide.
-	if p.dropPrivileges && os.Geteuid() == 0 {
-		uid, gid, err := unprivilegedIDs()
+	if p.dropToGID != 0 && os.Geteuid() == 0 {
+		uid, _, err := unprivilegedIDs()
 		if err != nil {
 			return fmt.Errorf("cannot start %s unprivileged: %w", p.logWriter.label, err)
 		}
-		cmd.SysProcAttr = credentialSysProcAttr(uid, gid)
-		// cmd.Dir (dir()) must itself be traversable by that uid -- Go's
-		// exec applies Credential before chdir'ing into cmd.Dir, so a child
-		// this drops to mtproxyUser needs "x" there too, not just on the
-		// files it opens by path. manager.go and telegramconfig.go already
+		cmd.SysProcAttr = credentialSysProcAttr(uid, p.dropToGID)
+		// cmd.Dir (dir()) must itself be traversable once dropped -- Go's
+		// exec applies Credential before chdir'ing into cmd.Dir, and dirPerm
+		// grants that "x" bit to any non-owner account via its other-bit
+		// (neither mtproxyUser's uid nor any per-inbound dropToGID ever
+		// matches dir()'s own owner/group), not just on the files this
+		// child opens by path. manager.go and telegramconfig.go already
 		// create/chmod dir() to dirPerm before *they* write into it, but
 		// neither is guaranteed to run before every caller of Start -- this
 		// makes Start correct on its own regardless of call order.

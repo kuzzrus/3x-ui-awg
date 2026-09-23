@@ -561,6 +561,153 @@ func TestInjectMtprotoEgress_BadRoutingSkips(t *testing.T) {
 	}
 }
 
+func tproxyInbound(tag string, settings string) *model.Inbound {
+	return &model.Inbound{Tag: tag, Protocol: model.Tproxy, Enable: true, Settings: settings}
+}
+
+// Mirrors the TestInjectMtprotoEgress_* suite above almost exactly --
+// injectTproxyEgress shares its settings shape, guard, and routing-rule
+// logic, differing only in bridge protocol (dokodemo-door, not socks) and
+// why the bridge exists at all (see injectTproxyEgress's own doc comment).
+
+func TestInjectTproxyEgress_WithOutbound(t *testing.T) {
+	cfg := egressTestConfig()
+	injectTproxyEgress(cfg, tproxyInbound("tproxy-1",
+		`{"routeThroughXray":true,"routeXrayPort":50100,"outboundTag":"warp"}`))
+
+	if len(cfg.InboundConfigs) != 2 {
+		t.Fatalf("expected the bridge inbound to be appended, got %d", len(cfg.InboundConfigs))
+	}
+	ib := cfg.InboundConfigs[1]
+	if ib.Tag != "tproxy-1" || ib.Protocol != "dokodemo-door" || ib.Port != 50100 {
+		t.Fatalf("unexpected bridge inbound: %+v", ib)
+	}
+	if string(ib.Listen) != `"127.0.0.1"` {
+		t.Fatalf("bridge must listen on loopback, got %s", ib.Listen)
+	}
+	if !strings.Contains(string(ib.Settings), `"followRedirect":true`) {
+		t.Fatalf("bridge must set followRedirect so it recovers the real destination via SO_ORIGINAL_DST, got %s", ib.Settings)
+	}
+
+	var routing egressRouting
+	if err := json.Unmarshal(cfg.RouterConfig, &routing); err != nil {
+		t.Fatal(err)
+	}
+	if len(routing.Rules) != 2 {
+		t.Fatalf("expected the egress rule prepended to the existing rule, got %+v", routing.Rules)
+	}
+	first := routing.Rules[0]
+	if first.Type != "field" || first.OutboundTag != "warp" ||
+		len(first.InboundTag) != 1 || first.InboundTag[0] != "tproxy-1" {
+		t.Fatalf("egress rule must bind the inbound tag to the outbound, got %+v", first)
+	}
+}
+
+func TestInjectTproxyEgress_NoOutboundLeavesRouting(t *testing.T) {
+	cfg := egressTestConfig()
+	before := string(cfg.RouterConfig)
+	injectTproxyEgress(cfg, tproxyInbound("tproxy-1",
+		`{"routeThroughXray":true,"routeXrayPort":50101}`))
+
+	if len(cfg.InboundConfigs) != 2 || cfg.InboundConfigs[1].Port != 50101 {
+		t.Fatalf("bridge must still be appended without an outbound, got %+v", cfg.InboundConfigs)
+	}
+	if string(cfg.RouterConfig) != before {
+		t.Fatalf("no outbound means no rule change, got %s", cfg.RouterConfig)
+	}
+}
+
+func TestInjectTproxyEgress_BalancerTag(t *testing.T) {
+	cfg := egressTestConfig()
+	cfg.RouterConfig = json_util.RawMessage(`{"rules":[],"balancers":[{"tag":"lb","selector":["warp"]}]}`)
+	injectTproxyEgress(cfg, tproxyInbound("tproxy-1",
+		`{"routeThroughXray":true,"routeXrayPort":50102,"outboundTag":"lb"}`))
+
+	var routing struct {
+		Rules []struct {
+			OutboundTag string `json:"outboundTag"`
+			BalancerTag string `json:"balancerTag"`
+		} `json:"rules"`
+	}
+	if err := json.Unmarshal(cfg.RouterConfig, &routing); err != nil {
+		t.Fatal(err)
+	}
+	if len(routing.Rules) != 1 || routing.Rules[0].BalancerTag != "lb" || routing.Rules[0].OutboundTag != "" {
+		t.Fatalf("a balancer tag must target balancerTag, got %+v", routing.Rules)
+	}
+}
+
+func TestInjectTproxyEgress_Disabled(t *testing.T) {
+	// Not routed, and routed-but-portless, are both no-ops.
+	for _, settings := range []string{
+		`{"routeThroughXray":false,"routeXrayPort":50100}`,
+		`{"routeThroughXray":true}`,
+		`{"routeThroughXray":true,"routeXrayPort":0}`,
+	} {
+		cfg := egressTestConfig()
+		before := string(cfg.RouterConfig)
+		injectTproxyEgress(cfg, tproxyInbound("tproxy-1", settings))
+		if len(cfg.InboundConfigs) != 1 || string(cfg.RouterConfig) != before {
+			t.Fatalf("settings %s must be a no-op, got %d inbounds", settings, len(cfg.InboundConfigs))
+		}
+	}
+}
+
+func TestInjectTproxyEgress_TagCollisionSkips(t *testing.T) {
+	cfg := egressTestConfig()
+	cfg.InboundConfigs = append(cfg.InboundConfigs,
+		xray.InboundConfig{Port: 443, Protocol: "vless", Tag: "tproxy-1"})
+	before := string(cfg.RouterConfig)
+	injectTproxyEgress(cfg, tproxyInbound("tproxy-1",
+		`{"routeThroughXray":true,"routeXrayPort":50103,"outboundTag":"warp"}`))
+	if len(cfg.InboundConfigs) != 2 || string(cfg.RouterConfig) != before {
+		t.Fatal("a real inbound already owning the tag must make the bridge a no-op")
+	}
+}
+
+func TestInjectTproxyEgress_MissingTargetSkips(t *testing.T) {
+	cfg := egressTestConfig()
+	before := string(cfg.RouterConfig)
+	injectTproxyEgress(cfg, tproxyInbound("tproxy-1",
+		`{"routeThroughXray":true,"routeXrayPort":50104,"outboundTag":"removed-subscription-outbound"}`))
+
+	if len(cfg.InboundConfigs) != 1 {
+		t.Fatalf("a missing target must not expose the tproxy bridge, got %+v", cfg.InboundConfigs)
+	}
+	if string(cfg.RouterConfig) != before {
+		t.Fatalf("a missing target must leave routing untouched, got %s", cfg.RouterConfig)
+	}
+}
+
+func TestInjectTproxyEgress_BadOutboundsSkips(t *testing.T) {
+	cfg := egressTestConfig()
+	cfg.OutboundConfigs = json_util.RawMessage(`{not json`)
+	before := string(cfg.RouterConfig)
+	injectTproxyEgress(cfg, tproxyInbound("tproxy-1",
+		`{"routeThroughXray":true,"routeXrayPort":50105,"outboundTag":"direct"}`))
+
+	if len(cfg.InboundConfigs) != 1 {
+		t.Fatalf("unparsable outbounds must not expose the tproxy bridge, got %+v", cfg.InboundConfigs)
+	}
+	if string(cfg.RouterConfig) != before {
+		t.Fatalf("unparsable outbounds must leave routing untouched, got %s", cfg.RouterConfig)
+	}
+}
+
+func TestInjectTproxyEgress_BadRoutingSkips(t *testing.T) {
+	cfg := egressTestConfig()
+	cfg.RouterConfig = json_util.RawMessage(`{not json`)
+	injectTproxyEgress(cfg, tproxyInbound("tproxy-1",
+		`{"routeThroughXray":true,"routeXrayPort":50106,"outboundTag":"direct"}`))
+
+	if len(cfg.InboundConfigs) != 1 {
+		t.Fatalf("unparsable routing must not expose the tproxy bridge, got %+v", cfg.InboundConfigs)
+	}
+	if string(cfg.RouterConfig) != `{not json` {
+		t.Fatalf("unparsable routing must be left untouched, got %s", cfg.RouterConfig)
+	}
+}
+
 func amneziawgInbound(id int, tag string, clients []model.Client) *model.Inbound {
 	server := amneziawg.ServerSettings{SubnetIP: "10.8.1.0", SubnetCIDR: 24}
 	settings, _ := json.Marshal(amneziawg.InboundSettings{Server: &server, Clients: clients})

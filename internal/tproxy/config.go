@@ -21,6 +21,14 @@ func freeLocalPort() (int, error) {
 	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
+// FreeLocalPort is freeLocalPort under a public name, for
+// internal/web/service's normalizeTproxyXrayPort -- mirrors
+// internal/mtproto's identically-shaped exported FreeLocalPort, which its
+// own normalizeMtprotoXrayPort calls the same way.
+func FreeLocalPort() (int, error) {
+	return freeLocalPort()
+}
+
 // freeLocalAddr is freeLocalPort formatted as a "127.0.0.1:PORT" listen
 // address, the form tproxy-server's own config.json fields expect.
 func freeLocalAddr() (string, error) {
