@@ -32,8 +32,13 @@ const maxTelegramConfigBytes = 1 << 20
 // EnsureTelegramConfigFiles fetches whichever of Telegram's two MTProxy
 // provisioning files is missing; never overwrites one already on disk.
 func EnsureTelegramConfigFiles(ctx context.Context, client *http.Client) error {
-	if err := os.MkdirAll(dir(), 0o700); err != nil {
+	if err := os.MkdirAll(dir(), dirPerm); err != nil {
 		return fmt.Errorf("cannot create %s: %w", dir(), err)
+	}
+	// See manager.go's identical call: MkdirAll's mode only takes effect on
+	// creation, so an already-existing pre-dirPerm directory needs this too.
+	if err := os.Chmod(dir(), dirPerm); err != nil {
+		return fmt.Errorf("cannot chmod %s: %w", dir(), err)
 	}
 	if !isRegularFile(proxySecretPath()) {
 		secret, err := fetchProxySecret(ctx, client)
@@ -53,6 +58,18 @@ func EnsureTelegramConfigFiles(ctx context.Context, client *http.Client) error {
 			return err
 		}
 	}
+	// Unconditional, unlike the two fetches above: a file left over from
+	// before mtproxyUser existed in this codebase (any install upgrading
+	// into this fix) is already a regular file, so the "only write what's
+	// missing" branches above skip it -- but the engine that reads it now
+	// runs as mtproxyUser regardless of when the file was written, so
+	// ownership must be (re)asserted every call, not only on first fetch.
+	if err := chownForMTProxy(proxySecretPath()); err != nil {
+		return err
+	}
+	if err := chownForMTProxy(proxyMultiConfPath()); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -68,6 +85,9 @@ func RefreshTelegramConfig(ctx context.Context, client *http.Client) (changed bo
 		return false, nil
 	}
 	if err := writeFileAtomic(proxyMultiConfPath(), conf, 0o600); err != nil {
+		return false, err
+	}
+	if err := chownForMTProxy(proxyMultiConfPath()); err != nil {
 		return false, err
 	}
 	return true, nil

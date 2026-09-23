@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -140,5 +141,104 @@ func TestRefreshTelegramConfigReportsChange(t *testing.T) {
 	}
 	if !bytes.Equal(got, second) {
 		t.Error("RefreshTelegramConfig did not persist the new content")
+	}
+}
+
+// Regression for a real production bug, the other half of
+// TestStartDropsPrivilegesForDropPrivilegesChild in process_test.go: once
+// Start drops the MTProxy engine child to mtproxyUser (privdrop.go), that
+// account must actually be able to open the two files it reads by path --
+// proxy-secret and proxy-multi.conf, written here as root 0600 -- and reach
+// them through dir(), which used to be 0700 (root-only, no "x" for anyone
+// else, blocking traversal regardless of the files' own ownership).
+func TestEnsureTelegramConfigFilesReadableByMTProxyUser(t *testing.T) {
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+	telegramTestServers(t, bytes.Repeat([]byte{0x11}, proxySecretSize), validMultiConf())
+	if err := EnsureTelegramConfigFiles(t.Context(), http.DefaultClient); err != nil {
+		t.Fatalf("EnsureTelegramConfigFiles: %v", err)
+	}
+
+	info, err := os.Stat(dir())
+	if err != nil {
+		t.Fatalf("stat %s: %v", dir(), err)
+	}
+	if info.Mode().Perm()&0o001 == 0 {
+		t.Errorf("dir() is %o, want the other-execute bit set so a non-owner account can traverse it", info.Mode().Perm())
+	}
+
+	if os.Geteuid() != 0 {
+		t.Skip("chownForMTProxy is a no-op unless root; ownership itself is only meaningful there")
+	}
+	wantUID, wantGID, err := unprivilegedIDs()
+	if err != nil {
+		t.Skipf("no %s account on this system: %v", mtproxyUser, err)
+	}
+	for _, path := range []string{proxySecretPath(), proxyMultiConfPath()} {
+		st, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+		sys, ok := st.Sys().(*syscall.Stat_t)
+		if !ok {
+			t.Fatalf("stat %s: not a syscall.Stat_t on this platform", path)
+		}
+		if sys.Uid != wantUID || sys.Gid != wantGID {
+			t.Errorf("%s owned by %d:%d, want %d:%d (%s)", path, sys.Uid, sys.Gid, wantUID, wantGID, mtproxyUser)
+		}
+	}
+}
+
+// Regression for a real production bug found deploying the fix above: a box
+// that already had proxy-secret/proxy-multi.conf on disk from before
+// mtproxyUser existed in this codebase -- any real upgrade -- hits
+// isRegularFile true for both, so EnsureTelegramConfigFiles' "only fetch
+// what's missing" branches never run and, before this test, never chowned
+// either file either. The engine then failed with a legible but still wrong
+// "cannot re-read config file ...: Permission denied" on every restart,
+// forever, since nothing ever revisited a file it considered already
+// provisioned.
+func TestEnsureTelegramConfigFilesFixesOwnershipOnPreExistingFiles(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("chownForMTProxy is a no-op unless root; ownership itself is only meaningful there")
+	}
+	wantUID, wantGID, err := unprivilegedIDs()
+	if err != nil {
+		t.Skipf("no %s account on this system: %v", mtproxyUser, err)
+	}
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+
+	// Mirrors a pre-upgrade install: files present, root-owned, before this
+	// package ever called chownForMTProxy on anything.
+	if err := os.MkdirAll(dir(), 0o700); err != nil {
+		t.Fatalf("mkdir %s: %v", dir(), err)
+	}
+	if err := os.WriteFile(proxySecretPath(), bytes.Repeat([]byte{0x22}, proxySecretSize), 0o600); err != nil {
+		t.Fatalf("seed proxy-secret: %v", err)
+	}
+	if err := os.WriteFile(proxyMultiConfPath(), validMultiConf(), 0o600); err != nil {
+		t.Fatalf("seed proxy-multi.conf: %v", err)
+	}
+
+	// No telegramTestServers: neither URL should be hit, since both files
+	// already exist -- if EnsureTelegramConfigFiles regresses back to
+	// chowning only inside the fetch branches, this call would panic on a
+	// nil default transport hitting the real internet instead of silently
+	// passing, which is a deliberate tripwire, not an accident.
+	if err := EnsureTelegramConfigFiles(t.Context(), http.DefaultClient); err != nil {
+		t.Fatalf("EnsureTelegramConfigFiles: %v", err)
+	}
+
+	for _, path := range []string{proxySecretPath(), proxyMultiConfPath()} {
+		st, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+		sys, ok := st.Sys().(*syscall.Stat_t)
+		if !ok {
+			t.Fatalf("stat %s: not a syscall.Stat_t on this platform", path)
+		}
+		if sys.Uid != wantUID || sys.Gid != wantGID {
+			t.Errorf("pre-existing %s still owned by %d:%d after EnsureTelegramConfigFiles, want %d:%d (%s)", path, sys.Uid, sys.Gid, wantUID, wantGID, mtproxyUser)
+		}
 	}
 }

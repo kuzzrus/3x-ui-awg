@@ -200,7 +200,7 @@ func (m *Manager) ensureMTProxyLocked(inst Instance) (*childProcess, error) {
 	if cur, ok := m.mtproxies[inst.Id]; ok {
 		_ = cur.proc.Stop()
 	}
-	proc := newChildProcess(mtproxyBinaryPath(), args, fmt.Sprintf("127.0.0.1:%d", clientPort), fmt.Sprintf("mtproxy inbound %d", inst.Id))
+	proc := newChildProcess(mtproxyBinaryPath(), args, fmt.Sprintf("127.0.0.1:%d", clientPort), fmt.Sprintf("mtproxy inbound %d", inst.Id), true)
 	if err := proc.Start(); err != nil {
 		return nil, err
 	}
@@ -282,8 +282,15 @@ func (m *Manager) recomputeSharedServerLocked(hostname string) (*childProcess, b
 		}
 	}
 
-	if err := os.MkdirAll(dir(), 0o700); err != nil {
+	if err := os.MkdirAll(dir(), dirPerm); err != nil {
 		return nil, false, fmt.Errorf("tproxy: cannot create %s: %w", dir(), err)
+	}
+	// MkdirAll's mode only applies when it actually creates the directory --
+	// an upgrade from a version that predates dirPerm left it 0700, which
+	// would block mtproxyUser's own traversal despite chownForMTProxy having
+	// given it the files themselves.
+	if err := os.Chmod(dir(), dirPerm); err != nil {
+		return nil, false, fmt.Errorf("tproxy: cannot chmod %s: %w", dir(), err)
 	}
 	if err := os.MkdirAll(publicDirPath(), 0o755); err != nil {
 		return nil, false, fmt.Errorf("tproxy: cannot create %s: %w", publicDirPath(), err)
@@ -308,7 +315,7 @@ func (m *Manager) recomputeSharedServerLocked(hostname string) (*childProcess, b
 	if m.server != nil {
 		_ = m.server.proc.Stop()
 	}
-	proc := newChildProcess(tproxyServerBinaryPath(), []string{"-config", serverConfigPath()}, listenAddr, "tproxy-server")
+	proc := newChildProcess(tproxyServerBinaryPath(), []string{"-config", serverConfigPath()}, listenAddr, "tproxy-server", false)
 	if err := proc.Start(); err != nil {
 		return nil, false, err
 	}

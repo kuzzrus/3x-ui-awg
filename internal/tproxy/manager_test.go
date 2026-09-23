@@ -96,7 +96,26 @@ func installFakeBinaries(t *testing.T) (pidFile string) {
 	if err := checkPlatform(runtime.GOOS, runtime.GOARCH); err != nil {
 		t.Skip(err.Error())
 	}
-	binDir := t.TempDir()
+	// Not t.TempDir(): it nests the returned directory inside a per-test
+	// parent of its own (mode 0700) that a chmod on the returned leaf can't
+	// reach, and when this suite runs as root (as it does on the box this
+	// project verifies tproxy changes on), Start now drops the "mtproxy"
+	// child -- here, the fake child below -- to an unprivileged account
+	// (privdrop.go), which needs to both exec the fake binary here and
+	// create/append its pidfile directly inside binDir. os.MkdirTemp("", ..)
+	// creates one directory straight under os.TempDir() with no such hidden
+	// parent. A real install's equivalent (/usr/local/x-ui/bin) is already
+	// world-readable+traversable by every account on the box, so this only
+	// brings the fixture in line with that, not with anything this
+	// package's own production code relies on.
+	binDir, err := os.MkdirTemp("", "tproxy-fakebin-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(binDir) })
+	if err := os.Chmod(binDir, 0o777); err != nil {
+		t.Fatalf("chmod %s: %v", binDir, err)
+	}
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatalf("locate test binary: %v", err)
