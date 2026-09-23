@@ -350,6 +350,7 @@ export default function InboundsPage() {
         remark: projected.remark,
         hostOverride,
         fallbackHostname,
+        frontProxyDomain: subSettings.frontProxyDomain,
       };
       const content = genInboundLinks(genInput);
       const tabs: TextModalTab[] | undefined = projected.isWireguard
@@ -378,7 +379,15 @@ export default function InboundsPage() {
         tabs,
       });
     },
-    [checkFallback, hostOverrideFor, hosts, subSettings.publicHost, openText, t],
+    [
+      checkFallback,
+      hostOverrideFor,
+      hosts,
+      subSettings.publicHost,
+      subSettings.frontProxyDomain,
+      openText,
+      t,
+    ],
   );
 
   const exportInboundClipboard = useCallback(

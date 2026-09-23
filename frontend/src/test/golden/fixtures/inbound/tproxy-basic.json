@@ -1,0 +1,12 @@
+{
+  "protocol": "tproxy",
+  "settings": {
+    "clients": [
+      {
+        "email": "tproxy-user",
+        "tproxySecret": "0123456789abcdef0123456789abcdef",
+        "enable": true
+      }
+    ]
+  }
+}

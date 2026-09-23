@@ -200,6 +200,7 @@ export default function InboundInfoModal({
           client: (clientSet ?? {}) as Parameters<typeof genAllLinks>[0]['client'],
           hostOverride: nodeAddress,
           fallbackHostname,
+          frontProxyDomain: subSettings?.frontProxyDomain,
         }),
       );
       setWireguardConfigs([]);

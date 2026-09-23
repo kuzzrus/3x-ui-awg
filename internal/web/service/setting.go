@@ -2071,6 +2071,11 @@ func (s *SettingService) GetDefaultSettings(host string) (any, error) {
 		"subDomain":        func() (any, error) { return s.GetSubDomain() },
 		"devChannelEnable": func() (any, error) { return s.GetDevChannelEnable() },
 		"isDevBuild":       func() (any, error) { return config.IsDevBuild(), nil },
+		// tproxy's WEB proxy link has no per-inbound address to build from
+		// (see internal/sub's own genTproxyLink) -- every page that renders
+		// one needs this same panel-wide value, so it belongs in the shared
+		// cheap-defaults fetch rather than a page-specific settings call.
+		"frontProxyDomain": func() (any, error) { return s.GetFrontProxyDomain() },
 	}
 
 	result := make(map[string]any)

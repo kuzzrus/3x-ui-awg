@@ -43,6 +43,19 @@ describe('link-label parseLinkParts', () => {
     expect(parts && linkMetaText(parts)).toBe('mt-inbound:8443');
   });
 
+  // tg://webproxy (tproxy) shares mtproto's tg: scheme but is a distinct
+  // product -- must not inherit mtproto's "MTProto"/FakeTLS labelling, and
+  // carries no port (fixed 443 by the WEB proxy type itself).
+  it('labels a tproxy tg://webproxy link distinctly from mtproto, with no port or security', () => {
+    const parts = parseLinkParts(
+      'tg://webproxy?server=proxy.example.com&secret=0123456789abcdef0123456789abcdef',
+    );
+    expect(parts?.protocol).toBe('WEB Proxy');
+    expect(parts?.network).toBe('');
+    expect(parts?.security).toBe('');
+    expect(parts?.port).toBe('');
+  });
+
   // AmneziaWG's vpn:// links are base64url of a plain .conf text, not a
   // structured URL (see inbound-link.ts's genAmneziaWGLink) -- there's no
   // query string or #hash available, so the remark/port have to be read back

@@ -55,6 +55,7 @@ export const ClientRecordSchema = z
     forwardedPorts: z.string().optional(),
     secret: z.string().optional(),
     adTag: z.string().optional(),
+    tproxySecret: z.string().optional(),
     createdAt: z.number().optional(),
     updatedAt: z.number().optional(),
   })

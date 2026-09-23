@@ -766,7 +766,7 @@ export default function InboundFormModal({
     if (!open) return;
     if (!protocol) return;
     const current = getV('shareAddrStrategy') as InboundFormValues['shareAddrStrategy'] | undefined;
-    if (protocol === Protocols.MTPROTO) {
+    if (protocol === Protocols.MTPROTO || protocol === Protocols.TPROXY) {
       if (current !== 'listen') setV('shareAddrStrategy', 'listen');
       if (getV('shareAddr')) setV('shareAddr', '');
       return;
@@ -924,7 +924,7 @@ export default function InboundFormModal({
         <Input placeholder={t('pages.inbounds.monitorDesc')} />
       </FormField>
 
-      {protocol !== Protocols.MTPROTO && (
+      {protocol !== Protocols.MTPROTO && protocol !== Protocols.TPROXY && (
         <>
           <FormField
             name="shareAddrStrategy"

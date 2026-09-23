@@ -862,6 +862,33 @@ export function genMtprotoLink(input: GenMtprotoLinkInput): string {
   return url.toString();
 }
 
+export interface GenTproxyLinkInput {
+  inbound: Inbound;
+  frontProxyDomain: string;
+  clientSecret?: string;
+}
+
+// Builds a WEB proxy deep link per telegramdesktop/tproxy-server's own
+// README ("6. Configure a Telegram client"): tg://webproxy?server=<bare
+// hostname>&secret=<32-hex>. No port -- HTTPS and 443 are fixed by the WEB
+// proxy type itself. Unlike genMtprotoLink, the server value is never the
+// inbound's own resolved address/host override: tproxy has no Xray
+// listener, every client reaches the panel through the one configured
+// front-proxy domain (Settings -> Reverse Proxy), passed in directly here
+// rather than threaded through resolveAddr/externalProxy. As of the pinned
+// tproxy-server commit only Telegram Desktop implements the WEB proxy
+// carrier; a correctly-built link can still do nothing on other clients.
+export function genTproxyLink(input: GenTproxyLinkInput): string {
+  const { inbound, frontProxyDomain, clientSecret = '' } = input;
+  if (inbound.protocol !== 'tproxy') return '';
+  if (clientSecret.length === 0) return '';
+  if (frontProxyDomain.length === 0) return '';
+  const url = new URL('tg://webproxy');
+  url.searchParams.set('server', frontProxyDomain);
+  url.searchParams.set('secret', clientSecret);
+  return url.toString();
+}
+
 export interface GenTuicLinkInput {
   inbound: Inbound;
   address: string;
@@ -1395,6 +1422,7 @@ type ClientShape = {
   password?: string;
   auth?: string;
   secret?: string;
+  tproxySecret?: string;
   email?: string;
   subId?: string;
 };
@@ -1419,6 +1447,8 @@ export function getInboundClients(inbound: Inbound): ClientShape[] | null {
       return (inbound.settings.clients ?? []) as ClientShape[];
     case 'tuic':
       return (inbound.settings.clients ?? []) as ClientShape[];
+    case 'tproxy':
+      return (inbound.settings.clients ?? []) as ClientShape[];
     case 'shadowsocks': {
       const isMultiUser = inbound.settings.method !== '2022-blake3-chacha20-poly1305';
       return isMultiUser ? ((inbound.settings.clients ?? []) as ClientShape[]) : null;
@@ -1436,6 +1466,9 @@ export interface GenLinkInput {
   remark?: string;
   client: ClientShape;
   externalProxy?: ExternalProxyEntry | null;
+  // Only tproxy reads this -- see genTproxyLink. Every other protocol's
+  // server address comes from `address` above.
+  frontProxyDomain?: string;
 }
 
 // Per-protocol dispatcher matching the legacy `genLink` switch. Returns
@@ -1451,6 +1484,7 @@ export function genLink(input: GenLinkInput): string {
     remark = '',
     client,
     externalProxy = null,
+    frontProxyDomain = '',
   } = input;
   switch (inbound.protocol) {
     case 'vmess':
@@ -1510,6 +1544,8 @@ export function genLink(input: GenLinkInput): string {
       });
     case 'mtproto':
       return genMtprotoLink({ inbound, address, port, clientSecret: client.secret ?? '' });
+    case 'tproxy':
+      return genTproxyLink({ inbound, frontProxyDomain, clientSecret: client.tproxySecret ?? '' });
     case 'tuic':
       return genTuicLink({
         inbound,
@@ -1536,6 +1572,8 @@ export interface GenAllLinksInput {
   client: ClientShape;
   hostOverride?: string;
   fallbackHostname: string;
+  // Only tproxy reads this -- see genTproxyLink.
+  frontProxyDomain?: string;
 }
 
 // Fans out a single client's link per externalProxy entry, or just one link
@@ -1543,7 +1581,14 @@ export interface GenAllLinksInput {
 // remark plus the externalProxy remark, dash-joined (the configurable
 // subscription remark model was removed; subscription output uses the template).
 export function genAllLinks(input: GenAllLinksInput): GenAllLinksEntry[] {
-  const { inbound, remark = '', client, hostOverride = '', fallbackHostname } = input;
+  const {
+    inbound,
+    remark = '',
+    client,
+    hostOverride = '',
+    fallbackHostname,
+    frontProxyDomain = '',
+  } = input;
 
   const addr = resolveAddr(inbound, hostOverride, fallbackHostname);
   const port = inbound.port;
@@ -1557,7 +1602,15 @@ export function genAllLinks(input: GenAllLinksInput): GenAllLinksEntry[] {
     return [
       {
         remark: r,
-        link: genLink({ inbound, address: addr, port, forceTls: 'same', remark: r, client }),
+        link: genLink({
+          inbound,
+          address: addr,
+          port,
+          forceTls: 'same',
+          remark: r,
+          client,
+          frontProxyDomain,
+        }),
       },
     ];
   }
@@ -1583,6 +1636,8 @@ export interface GenInboundLinksInput {
   remark?: string;
   hostOverride?: string;
   fallbackHostname: string;
+  // Only tproxy reads this -- see genTproxyLink.
+  frontProxyDomain?: string;
 }
 
 // Top-level entrypoint that produces the full \r\n-joined block a user
@@ -1591,13 +1646,26 @@ export interface GenInboundLinksInput {
 // and emits per-peer .conf blocks for wireguard and amneziawg. Returns '' for the
 // other clientless protocols (http, mixed, tunnel).
 export function genInboundLinks(input: GenInboundLinksInput): string {
-  const { inbound, remark = '', hostOverride = '', fallbackHostname } = input;
+  const {
+    inbound,
+    remark = '',
+    hostOverride = '',
+    fallbackHostname,
+    frontProxyDomain = '',
+  } = input;
   const addr = resolveAddr(inbound, hostOverride, fallbackHostname);
   const clients = getInboundClients(inbound);
   if (clients) {
     const links: string[] = [];
     for (const client of clients) {
-      const entries = genAllLinks({ inbound, remark, client, hostOverride, fallbackHostname });
+      const entries = genAllLinks({
+        inbound,
+        remark,
+        client,
+        hostOverride,
+        fallbackHostname,
+        frontProxyDomain,
+      });
       for (const e of entries) links.push(e.link);
     }
     return links.join('\r\n');

@@ -947,6 +947,8 @@
       "mtprotoSecretHint": "The client's FakeTLS secret. Regenerate to rotate it.",
       "mtprotoAdTag": "Ad-tag (sponsored channel)",
       "mtprotoAdTagHint": "Optional 32-character hex tag from Telegram's proxy registration. When set, this client is routed through Telegram middle proxies and a sponsored channel appears at the top of their chat list.",
+      "tproxySecret": "MTProxy secret",
+      "tproxySecretHint": "The client's MTProxy secret, used in their tg://webproxy link. Regenerate to rotate it.",
       "reverseTag": "Reverse tag",
       "reverseTagPlaceholder": "Optional reverse tag",
       "telegramId": "Telegram user ID",
