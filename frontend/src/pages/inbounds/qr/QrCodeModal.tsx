@@ -149,6 +149,7 @@ export default function QrCodeModal({
           client: client ?? {},
           hostOverride: nodeAddress,
           fallbackHostname,
+          frontProxyDomain: subSettings?.frontProxyDomain,
         }),
       );
       setWireguardConfigs([]);

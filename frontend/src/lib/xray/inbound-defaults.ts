@@ -12,6 +12,7 @@ import type {
   ShadowsocksClient,
   ShadowsocksInboundSettings,
 } from '@/schemas/protocols/inbound/shadowsocks';
+import type { TproxyClient, TproxyInboundSettings } from '@/schemas/protocols/inbound/tproxy';
 import type { TrojanClient, TrojanInboundSettings } from '@/schemas/protocols/inbound/trojan';
 import type { TuicClient, TuicInboundSettings } from '@/schemas/protocols/inbound/tuic';
 import type { TunInboundSettings } from '@/schemas/protocols/inbound/tun';
@@ -260,6 +261,27 @@ export function createDefaultMtprotoClient(domain: string): Partial<MtprotoClien
   };
 }
 
+// generateTproxySecret is a fresh 32-hex-char MTProxy secret -- the format
+// ValidTproxySecret's primary branch accepts (a "dd"-prefixed 34-char form
+// is also valid but not what a new client should default to). Unlike
+// mtproto's secret, this carries no embedded domain: tproxy has one shared
+// front-proxy domain for the whole panel, not a per-client/per-inbound one.
+export function generateTproxySecret(): string {
+  return RandomUtil.randomSeq(32, { type: 'hex' });
+}
+
+export function createDefaultTproxyInboundSettings(): TproxyInboundSettings {
+  return {
+    clients: [],
+  };
+}
+
+export function createDefaultTproxyClient(): Partial<TproxyClient> {
+  return {
+    tproxySecret: generateTproxySecret(),
+  };
+}
+
 export function createDefaultTunnelInboundSettings(): TunnelInboundSettings {
   return {
     portMap: {},
@@ -403,7 +425,8 @@ export type AnyInboundSettings =
   | WireguardInboundSettings
   | MtprotoInboundSettings
   | AmneziawgInboundSettings
-  | TuicInboundSettings;
+  | TuicInboundSettings
+  | TproxyInboundSettings;
 
 export function createDefaultInboundSettings(protocol: string): AnyInboundSettings | null {
   switch (protocol) {
@@ -433,6 +456,8 @@ export function createDefaultInboundSettings(protocol: string): AnyInboundSettin
       return createDefaultAmneziawgInboundSettings();
     case 'tuic':
       return createDefaultTuicInboundSettings();
+    case 'tproxy':
+      return createDefaultTproxyInboundSettings();
     default:
       return null;
   }

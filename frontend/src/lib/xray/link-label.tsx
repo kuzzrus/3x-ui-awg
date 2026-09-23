@@ -26,6 +26,7 @@ const PROTOCOL_LABELS: Record<string, string> = {
   wireguard: 'WireGuard',
   wg: 'WireGuard',
   tg: 'MTProto',
+  'tg-webproxy': 'WEB Proxy',
   vpn: 'AmneziaWG',
   tuic: 'TUIC',
 };
@@ -39,6 +40,7 @@ const PROTOCOL_COLORS: Record<string, string> = {
   Hysteria2: 'magenta',
   WireGuard: 'cyan',
   MTProto: 'blue',
+  'WEB Proxy': 'geekblue',
   AmneziaWG: 'yellow',
   TUIC: 'orange',
 };
@@ -77,8 +79,16 @@ function fromBase64Url(value: string): string {
    into the body a client app imports, so there is nothing to strip here. */
 export function parseLinkParts(link: string): LinkParts | null {
   const trimmed = link.trim();
-  const scheme = /^([a-z0-9]+):\/\//i.exec(trimmed)?.[1]?.toLowerCase() ?? '';
-  if (!scheme) return null;
+  const schemeMatch = /^([a-z0-9]+):\/\/([a-z0-9]*)/i.exec(trimmed);
+  const rawScheme = schemeMatch?.[1]?.toLowerCase() ?? '';
+  if (!rawScheme) return null;
+  // tg://proxy (mtproto) and tg://webproxy (tproxy) share a scheme but are
+  // different products with different labels -- distinguish by authority,
+  // the one part of the URL a generic scheme-keyed lookup can't otherwise see.
+  const scheme =
+    rawScheme === 'tg' && schemeMatch?.[2]?.toLowerCase() === 'webproxy'
+      ? 'tg-webproxy'
+      : rawScheme;
   const protocol = PROTOCOL_LABELS[scheme] ?? scheme.charAt(0).toUpperCase() + scheme.slice(1);
   let network = '';
   let security = '';

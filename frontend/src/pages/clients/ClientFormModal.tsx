@@ -32,7 +32,7 @@ import { Controller, FormProvider, useForm, useWatch, useFieldArray } from 'reac
 
 import { HttpUtil, IntlUtil, RandomUtil, Wireguard } from '@/utils';
 import { formatInboundLabel } from '@/lib/inbounds/label';
-import { generateMtprotoSecret } from '@/lib/xray/inbound-defaults';
+import { generateMtprotoSecret, generateTproxySecret } from '@/lib/xray/inbound-defaults';
 import { normalizeClientIps, type ClientIpInfo } from '@/lib/clients/ip-log';
 import { resolveExternalLinkExpiry } from '@/lib/clients/external-link';
 import { useDatepicker } from '@/hooks/useDatepicker';
@@ -64,6 +64,7 @@ const MULTI_CLIENT_PROTOCOLS = new Set([
   'mtproto',
   'amneziawg',
   'tuic',
+  'tproxy',
 ]);
 
 const CLIENT_FORM_MODAL_Z_INDEX = 1000;
@@ -138,6 +139,7 @@ type Values = ClientFormValues & {
   wgKeepAlive: number;
   secret: string;
   adTag: string;
+  tproxySecret: string;
 };
 
 const EMPTY: Values = {
@@ -175,6 +177,7 @@ const EMPTY: Values = {
   wgKeepAlive: 25,
   secret: '',
   adTag: '',
+  tproxySecret: '',
 };
 
 function toExternalLinkRows(links: ExternalLink[] | undefined): ExternalLinkRow[] {
@@ -264,6 +267,7 @@ export default function ClientFormModal({
   const flow = useWatch({ control: methods.control, name: 'flow' });
   const reverseTag = useWatch({ control: methods.control, name: 'reverseTag' });
   const secret = useWatch({ control: methods.control, name: 'secret' });
+  const tproxySecret = useWatch({ control: methods.control, name: 'tproxySecret' });
   const email = useWatch({ control: methods.control, name: 'email' });
   const uuid = useWatch({ control: methods.control, name: 'uuid' });
   const trafficReset = useWatch({ control: methods.control, name: 'trafficReset' });
@@ -386,6 +390,7 @@ export default function ClientFormModal({
         wgKeepAlive: client.keepAlive ?? 0,
         secret: client.secret || '',
         adTag: client.adTag || '',
+        tproxySecret: client.tproxySecret || '',
       };
       if (et < 0) {
         seed.delayedStart = true;
@@ -444,6 +449,14 @@ export default function ClientFormModal({
     const ids = new Set<number>();
     for (const row of inbounds || []) {
       if (row && row.protocol === 'mtproto') ids.add(row.id);
+    }
+    return ids;
+  }, [inbounds]);
+
+  const tproxyIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const row of inbounds || []) {
+      if (row && row.protocol === 'tproxy') ids.add(row.id);
     }
     return ids;
   }, [inbounds]);
@@ -517,6 +530,11 @@ export default function ClientFormModal({
     [inboundIds, mtprotoIds],
   );
 
+  const showTproxy = useMemo(
+    () => (inboundIds || []).some((id) => tproxyIds.has(id)),
+    [inboundIds, tproxyIds],
+  );
+
   function regenerateWireguardKeys() {
     const kp = Wireguard.generateKeypair();
     methods.setValue('wgPrivateKey', kp.privateKey);
@@ -529,6 +547,10 @@ export default function ClientFormModal({
 
   function regenerateMtprotoSecret() {
     methods.setValue('secret', generateMtprotoSecret(mtprotoDomain));
+  }
+
+  function regenerateTproxySecret() {
+    methods.setValue('tproxySecret', generateTproxySecret());
   }
 
   useEffect(() => {
@@ -561,6 +583,12 @@ export default function ClientFormModal({
       methods.setValue('secret', generateMtprotoSecret(mtprotoDomain));
     }
   }, [showMtproto, secret, mtprotoDomain, methods]);
+
+  useEffect(() => {
+    if (showTproxy && !tproxySecret) {
+      methods.setValue('tproxySecret', generateTproxySecret());
+    }
+  }, [showTproxy, tproxySecret, methods]);
 
   const inboundOptions = useMemo(
     () =>
@@ -757,6 +785,10 @@ export default function ClientFormModal({
       }
       clientPayload.secret = values.secret;
       clientPayload.adTag = adTag;
+    }
+
+    if (showTproxy) {
+      clientPayload.tproxySecret = values.tproxySecret;
     }
 
     const externalLinks: ExternalLinkInput[] = values.externalLinks
@@ -1355,6 +1387,25 @@ export default function ClientFormModal({
                             <Input allowClear placeholder="0123456789abcdef0123456789abcdef" />
                           </FormField>
                         </>
+                      )}
+                      {showTproxy && (
+                        <Form.Item
+                          label={t('pages.clients.tproxySecret')}
+                          extra={t('pages.clients.tproxySecretHint')}
+                        >
+                          <Space.Compact style={{ display: 'flex' }}>
+                            <Input
+                              value={tproxySecret}
+                              style={{ flex: 1 }}
+                              onChange={(e) => methods.setValue('tproxySecret', e.target.value)}
+                            />
+                            <Button
+                              aria-label={t('regenerate')}
+                              icon={<ReloadOutlined />}
+                              onClick={regenerateTproxySecret}
+                            />
+                          </Space.Compact>
+                        </Form.Item>
                       )}
                     </>
                   ),

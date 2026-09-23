@@ -141,6 +141,28 @@ exports[`InboundSettingsSchema fixtures > parses shadowsocks-2022 byte-stably 1`
 }
 `;
 
+exports[`InboundSettingsSchema fixtures > parses tproxy-basic byte-stably 1`] = `
+{
+  "protocol": "tproxy",
+  "settings": {
+    "clients": [
+      {
+        "comment": "",
+        "email": "tproxy-user",
+        "enable": true,
+        "expiryTime": 0,
+        "limitIp": 0,
+        "reset": 0,
+        "subId": "",
+        "tgId": 0,
+        "totalGB": 0,
+        "tproxySecret": "0123456789abcdef0123456789abcdef",
+      },
+    ],
+  },
+}
+`;
+
 exports[`InboundSettingsSchema fixtures > parses trojan-basic byte-stably 1`] = `
 {
   "protocol": "trojan",

@@ -19,6 +19,7 @@ export const DefaultsPayloadSchema = z
     accessLogEnable: z.boolean().optional(),
     webDomain: z.string().optional(),
     subDomain: z.string().optional(),
+    frontProxyDomain: z.string().optional(),
   })
   .loose();
 

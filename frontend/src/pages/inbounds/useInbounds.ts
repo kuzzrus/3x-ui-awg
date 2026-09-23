@@ -32,6 +32,10 @@ export interface SubSettings {
   // link host when the panel is reached on a loopback address. Empty if neither
   // is set.
   publicHost: string;
+  // Configured front-proxy domain (Settings -> Reverse Proxy), the only
+  // "server" a tproxy WEB proxy link can use -- see genTproxyLink. Empty if
+  // never configured.
+  frontProxyDomain: string;
 }
 
 type DBInboundInstance = InstanceType<typeof DBInbound>;
@@ -97,6 +101,7 @@ const TRACKED_PROTOCOLS: readonly string[] = [
   Protocols.MTPROTO,
   Protocols.AMNEZIAWG,
   Protocols.TUIC,
+  Protocols.TPROXY,
 ];
 
 async function fetchSlimInbounds(): Promise<unknown[]> {
@@ -219,6 +224,7 @@ export function useInbounds() {
       subJsonURI: defaults.subJsonURI || '',
       subJsonEnable: !!defaults.subJsonEnable,
       publicHost: defaults.subDomain || defaults.webDomain || '',
+      frontProxyDomain: defaults.frontProxyDomain || '',
     }),
     [
       defaults.subEnable,
@@ -228,6 +234,7 @@ export function useInbounds() {
       defaults.subJsonEnable,
       defaults.subDomain,
       defaults.webDomain,
+      defaults.frontProxyDomain,
     ],
   );
 

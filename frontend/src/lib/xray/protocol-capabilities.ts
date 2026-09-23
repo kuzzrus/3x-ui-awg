@@ -75,12 +75,15 @@ export function canEnableStream(values: { protocol: string }): boolean {
   return STREAM_PROTOCOLS.includes(values.protocol);
 }
 
-// mtproto and amneziawg are served by an external process/interface, not
-// Xray, so the Xray sniffing block does not apply to either. Every other
-// inbound supports sniffing.
+// mtproto, amneziawg, tuic, and tproxy are served by an external
+// process/interface, not Xray, so the Xray sniffing block does not apply to
+// any of them. Every other inbound supports sniffing.
 export function canEnableSniffing(values: { protocol: string }): boolean {
   return (
-    values.protocol !== 'mtproto' && values.protocol !== 'amneziawg' && values.protocol !== 'tuic'
+    values.protocol !== 'mtproto' &&
+    values.protocol !== 'amneziawg' &&
+    values.protocol !== 'tuic' &&
+    values.protocol !== 'tproxy'
   );
 }
 
