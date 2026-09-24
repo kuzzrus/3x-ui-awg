@@ -97,14 +97,17 @@ export const AmneziawgServerSchema = z.object({
   ipv6Enabled: z.boolean().default(false),
   ipv6Subnet: z.string().default(''),
   ipv6ExternalInterface: z.string().default(''),
-  // Upper bounds match amneziawg-go's own UAPI parsers (device/uapi.go):
-  // jc/jmin/jmax are uint32, s1-s4 uint16. Wider values make IpcSet fail.
+  // jc/jmin/jmax upper bound matches amneziawg-go's own UAPI parser
+  // (device/uapi.go, uint32). s1/s2/s3 are capped at what the smallest
+  // receive buffer any real client uses (iOS, 1700 bytes) can hold once the
+  // fixed handshake message size (148/92/64) is added -- see the Go side's
+  // internal/amneziawg/params.go maxS1/maxS2/maxS3 for the full derivation.
   jc: clearedToDefault(z.number().int().min(0).max(4294967295).default(5)),
   jmin: clearedToDefault(z.number().int().min(0).max(4294967295).default(10)),
   jmax: clearedToDefault(z.number().int().min(0).max(4294967295).default(50)),
-  s1: clearedToDefault(z.number().int().min(0).max(65535).default(30)),
-  s2: clearedToDefault(z.number().int().min(0).max(65535).default(45)),
-  s3: clearedToDefault(z.number().int().min(0).max(64).default(10)),
+  s1: clearedToDefault(z.number().int().min(0).max(1552).default(30)),
+  s2: clearedToDefault(z.number().int().min(0).max(1608).default(45)),
+  s3: clearedToDefault(z.number().int().min(0).max(1636).default(10)),
   s4: clearedToDefault(z.number().int().min(0).max(32).default(5)),
   h1: z.string().default(''),
   h2: z.string().default(''),

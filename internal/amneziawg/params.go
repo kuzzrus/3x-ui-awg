@@ -36,6 +36,28 @@ const headerProtectionMinPadding = 12
 // (unlike H1-H4's uint32 width above).
 const cpaMaxValid int64 = 65535
 
+// maxS1/maxS2/maxS3 are the real ceiling for S1/S2/S3, not amneziawg-go's
+// uint16 UAPI width (65535) this file used to enforce. Handshake messages go
+// out as padding+size -- MessageInitiationSize=148, MessageResponseSize=92,
+// MessageCookieReplySize=64 (amneziawg-go's device/send.go,
+// device/noise-protocol.go) -- and the receiver reads every datagram into a
+// fixed [MaxMessageSize]byte buffer (device/pools.go, device/constants.go).
+// MaxMessageSize is MaxSegmentSize, which is NOT the same on every platform:
+// 65535 on Linux/Android, 2016 on Windows, and only 1700 on iOS
+// (device/queueconstants_{default,windows,ios}.go) -- iOS is the binding
+// constraint, since every client must be able to receive every message. A
+// value that saves fine under the old 65535 ceiling can silently be
+// unreceivable by an iOS peer. RandomTrailers doesn't change this: it only
+// tops a packet up to DefaultUdpWindow (500 bytes) in randomTrailer(), so it
+// never grows a message that's already past this ceiling. S3's old 0-64
+// ceiling had no engine basis at all -- real configs exceed it (Amnezia
+// Premium itself ships S3=1045, read off a live tunnel over UAPI).
+const (
+	maxS1 = 1700 - 148
+	maxS2 = 1700 - 92
+	maxS3 = 1700 - 64
+)
+
 // AwgVersion2/AwgVersion3 are the two meaningful values of ServerSettings'
 // AwgVersion field. AwgVersion2 is the default/zero-value ceiling covering
 // every obfuscation field this fork supported before HeaderProtectionKey/
@@ -89,7 +111,7 @@ func GenerateObfuscation20(preset string) Obfuscation20 {
 	// Floored at 12, not this file's usual 8/4: HeaderProtectionKey is always
 	// generated below, and ValidateHeaderProtection rejects it unless every
 	// S1-S4 is >= headerProtectionMinPadding.
-	o.S3 = randInt(12, 55) // cookie padding (max 64)
+	o.S3 = randInt(12, 55) // cookie padding
 	o.S4 = randInt(12, 27) // transport padding (max 32)
 
 	h := generateHValues()
@@ -188,8 +210,10 @@ func ValidateObfuscation(o Obfuscation20) error {
 	if o.Jmin > o.Jmax {
 		return fmt.Errorf("invalid Jmin/Jmax: %d must not exceed %d", o.Jmin, o.Jmax)
 	}
-	// amneziawg-go parses jc/jmin/jmax as uint32 and s1-s4 as uint16
-	// (device/uapi.go); a wider value makes IpcSet reject the whole device.
+	// jc/jmin/jmax: amneziawg-go's uint32 UAPI width (device/uapi.go), a wider
+	// value makes IpcSet reject the whole device. S1/S2/S3: the real ceiling
+	// is what an iOS peer's receive buffer can hold, not the UAPI's uint16
+	// width -- see maxS1/maxS2/maxS3's own doc comment.
 	for _, f := range []struct {
 		name string
 		v    int
@@ -198,8 +222,9 @@ func ValidateObfuscation(o Obfuscation20) error {
 		{"Jc", o.Jc, math.MaxUint32},
 		{"Jmin", o.Jmin, math.MaxUint32},
 		{"Jmax", o.Jmax, math.MaxUint32},
-		{"S1", o.S1, math.MaxUint16},
-		{"S2", o.S2, math.MaxUint16},
+		{"S1", o.S1, maxS1},
+		{"S2", o.S2, maxS2},
+		{"S3", o.S3, maxS3},
 	} {
 		if int64(f.v) < 0 || int64(f.v) > f.max {
 			return fmt.Errorf("invalid %s value %d (must be 0..%d)", f.name, f.v, f.max)
@@ -209,9 +234,6 @@ func ValidateObfuscation(o Obfuscation20) error {
 		if err := validateObfChain(spec); err != nil {
 			return fmt.Errorf("invalid I%d: %w", i+1, err)
 		}
-	}
-	if o.S3 < 0 || o.S3 > 64 {
-		return fmt.Errorf("invalid S3 value %d (must be 0..64)", o.S3)
 	}
 	if o.S4 < 0 || o.S4 > 32 {
 		return fmt.Errorf("invalid S4 value %d (must be 0..32)", o.S4)
@@ -223,6 +245,9 @@ func ValidateObfuscation(o Obfuscation20) error {
 		if err := validateHValue(h); err != nil {
 			return fmt.Errorf("invalid H%d: %w", i+1, err)
 		}
+	}
+	if err := validateHNoOverlap([4]string{o.H1, o.H2, o.H3, o.H4}); err != nil {
+		return err
 	}
 	return nil
 }
@@ -407,6 +432,34 @@ func validateRangeValue(v string, max int64) error {
 // "low-high" with 0 <= low <= high <= uint32 max.
 func validateHValue(v string) error {
 	return validateRangeValue(v, hMaxValid)
+}
+
+// validateHNoOverlap rejects H1-H4 ranges that overlap each other --
+// amneziawg-go's own UAPI ("headers must not overlap", device/uapi.go)
+// refuses the whole device for this, the same way it refuses one for a
+// malformed single value, so this must be caught here too, before save, not
+// left to surface as a device that never comes up. A blank Hn is never sent
+// to the engine, so it keeps its own default: WireGuard's own message type
+// n (1-4) -- generateHValues never produces a blank, but a hand-cleared
+// field is valid input, so a blank slot is checked here as exactly that
+// default, not skipped.
+func validateHNoOverlap(hs [4]string) error {
+	var lo, hi [4]int64
+	for i, h := range hs {
+		l, u, ok := parseUintRange(h)
+		if !ok {
+			l, u = int64(i+1), int64(i+1)
+		}
+		lo[i], hi[i] = l, u
+	}
+	for i := range 4 {
+		for j := i + 1; j < 4; j++ {
+			if lo[i] <= hi[j] && lo[j] <= hi[i] {
+				return fmt.Errorf("invalid H%d/H%d: %d-%d and %d-%d overlap", i+1, j+1, lo[i], hi[i], lo[j], hi[j])
+			}
+		}
+	}
+	return nil
 }
 
 // ValidateContentPaddingAddition rejects a malformed AmneziaWG 3.0
