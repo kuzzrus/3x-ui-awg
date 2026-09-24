@@ -2,7 +2,6 @@ package job
 
 import (
 	"context"
-	"net/http"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
@@ -57,8 +56,21 @@ func (j *TproxyJob) Run() {
 		// and proxy-multi.conf first land on disk. Without this call
 		// nothing in the tree ever provisions them, and every enabled
 		// inbound's engine refuses to start forever.
+		//
+		// NewProxiedHTTPClient, not http.DefaultClient: core.telegram.org is
+		// exactly the kind of destination a server on a filtered network
+		// can't reach directly -- confirmed live, a real deployment sat with
+		// every tick failing "cannot reach https://core.telegram.org/
+		// getProxySecret: context deadline exceeded" and never provisioned
+		// at all, the same class of destination this method already exists
+		// to route through the admin's configured panel egress outbound for
+		// (Discord webhooks, GitHub/update checks, WARP -- see setting.go).
+		// Falls back to a direct client automatically when no egress outbound
+		// is configured, so this is a no-op change everywhere that already
+		// worked.
+		client := j.settingService.NewProxiedHTTPClient(telegramConfigTimeout)
 		ctx, cancel := context.WithTimeout(context.Background(), telegramConfigTimeout)
-		err := tproxy.EnsureTelegramConfigFiles(ctx, http.DefaultClient)
+		err := tproxy.EnsureTelegramConfigFiles(ctx, client)
 		cancel()
 		if err != nil {
 			logger.Warning("tproxy job: provisioning Telegram config failed:", err)
