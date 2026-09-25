@@ -731,7 +731,7 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
       <SettingListItem
         paddings="small"
         title={t('pages.settings.frontProxy.pathRoutes.title') || 'Path routing'}
-        description={t('pages.settings.frontProxy.pathRoutes.description')}
+        description={t('pages.settings.frontProxy.pathRoutes.desc')}
       >
         <Space direction="vertical" size={8} style={{ width: '100%' }}>
           <FrontProxyPathRoutesCard

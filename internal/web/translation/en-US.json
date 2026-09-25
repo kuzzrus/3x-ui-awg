@@ -1458,7 +1458,7 @@
         "adGuardCredentialsToast": "AdGuard Home login and password changed",
         "pathRoutes": {
           "title": "Path routing",
-          "description": "Reach an XHTTP or WebSocket inbound's own address under a path on this domain, instead of hand-building an external nginx location block for it (a CDN origin, for example). Panel and subscription paths always win if a path happens to collide.",
+          "desc": "Reach an XHTTP or WebSocket inbound's own address under a path on this domain, instead of hand-building an external nginx location block for it (a CDN origin, for example). Panel and subscription paths always win if a path happens to collide.",
           "add": "Add route",
           "empty": "No path routes yet",
           "pickInbound": "Pick an XHTTP/WS inbound",
