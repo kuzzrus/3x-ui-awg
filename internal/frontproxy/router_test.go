@@ -221,3 +221,52 @@ func TestResolveTargetPanelSubTakePriorityOverTproxyAPIPath(t *testing.T) {
 		t.Errorf("got %v, want RoutePanel when PanelBasePath itself is /api/v1/", got)
 	}
 }
+
+// resolvePathTarget is a separate function from resolveTarget (newHandler
+// only calls it once resolveTarget has already fallen through to
+// RouteDecoy) -- these test it directly, the priority guarantee itself is
+// exercised end to end in manager_test.go's dispatch tests instead.
+func TestResolvePathTargetMatchesConfiguredPrefix(t *testing.T) {
+	c := Config{PathTargets: []PathTarget{{Path: "/xh-cdn-K7m4Qp9s", Port: 18082}}}
+	cases := []struct {
+		path     string
+		wantPort int
+		wantOk   bool
+	}{
+		{"/xh-cdn-K7m4Qp9s", 18082, true},
+		{"/xh-cdn-K7m4Qp9s/foo/bar", 18082, true},
+		{"/xh-cdn-K7m4Qp9sX", 0, false},
+		{"/other", 0, false},
+		{"/", 0, false},
+	}
+	for _, tc := range cases {
+		port, ok := c.resolvePathTarget(tc.path)
+		if port != tc.wantPort || ok != tc.wantOk {
+			t.Errorf("resolvePathTarget(%q) = (%d, %v), want (%d, %v)", tc.path, port, ok, tc.wantPort, tc.wantOk)
+		}
+	}
+}
+
+// First configured match wins, same convention as every other list this
+// package resolves in order (TproxyCapabilities' constant-time scan aside,
+// which is a different concern -- secrecy, not ordering).
+func TestResolvePathTargetFirstMatchWins(t *testing.T) {
+	c := Config{PathTargets: []PathTarget{
+		{Path: "/cdn", Port: 111},
+		{Path: "/cdn/specific", Port: 222},
+	}}
+	port, ok := c.resolvePathTarget("/cdn/specific/thing")
+	if !ok || port != 111 {
+		t.Errorf("resolvePathTarget = (%d, %v), want (111, true) -- the earlier, broader row should win", port, ok)
+	}
+}
+
+// An empty PathTargets list (the common case -- feature unused) must never
+// match anything, same invariant matchesPrefix already enforces for a blank
+// PanelBasePath/SubPath.
+func TestResolvePathTargetEmptyListNeverMatches(t *testing.T) {
+	c := Config{}
+	if _, ok := c.resolvePathTarget("/anything"); ok {
+		t.Error("resolvePathTarget matched with an empty PathTargets list")
+	}
+}

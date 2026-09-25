@@ -175,12 +175,27 @@ func (m *Manager) IsRunning() bool {
 }
 
 // newHandler dispatches each request to the panel, the subscription server,
-// the tproxy relay, or the decoy, per the routing config.
+// the tproxy relay, an admin-configured path target, or the decoy, per the
+// routing config.
 func newHandler(routing Config, decoy DecoyConfig) http.Handler {
 	panelProxy := newLoopbackProxy(routing.PanelPort, routing.UpstreamTLS)
 	subProxy := newLoopbackProxy(routing.SubPort, routing.UpstreamTLS)
 	tproxyProxy := newTproxyRelayProxy(routing.TproxyTarget)
 	decoyHandler := newDecoyHandler(decoy)
+	// Built once per port, not per request -- mirrors panelProxy/subProxy
+	// above. useTLS is always true here, never routing.UpstreamTLS: proven
+	// live (awg-test-vps PoC, 2026-09-25) that XHTTP's stream-one/stream-up
+	// modes hang indefinitely over a plaintext loopback hop (xray-core's own
+	// splithttp dialer forces HTTP/1.1 whenever TLS is absent, and those two
+	// modes need a real H2 bidirectional stream) -- every path-routed target
+	// must terminate on a TLS loopback listener, unconditionally, regardless
+	// of whether the panel/sub listeners happen to run plaintext today.
+	pathProxies := make(map[int]http.Handler, len(routing.PathTargets))
+	for _, t := range routing.PathTargets {
+		if _, ok := pathProxies[t.Port]; !ok {
+			pathProxies[t.Port] = newLoopbackProxy(t.Port, true)
+		}
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch routing.resolveTarget(r.URL.Path, r.URL.RawQuery) {
 		case RoutePanel:
@@ -190,6 +205,10 @@ func newHandler(routing Config, decoy DecoyConfig) http.Handler {
 		case RouteTproxy:
 			tproxyProxy.ServeHTTP(w, r)
 		default:
+			if port, ok := routing.resolvePathTarget(r.URL.Path); ok {
+				pathProxies[port].ServeHTTP(w, r)
+				return
+			}
 			decoyHandler.ServeHTTP(w, r)
 		}
 	})

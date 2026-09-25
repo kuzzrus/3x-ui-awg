@@ -32,6 +32,9 @@ import type { AllSetting } from '@/models/setting';
 import { onNumber } from '@/utils/onNumber';
 import { DefaultSettingTag, SettingListItem } from '@/components/ui';
 
+import FrontProxyPathRoutesCard from './FrontProxyPathRoutesCard';
+import { useFrontProxyPathRoutes } from './useFrontProxyPathRoutes';
+
 interface FrontProxyTabProps {
   allSetting: AllSetting;
   updateSetting: (patch: Partial<AllSetting>) => void;
@@ -72,6 +75,18 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
   const [adGuardLoading, setAdGuardLoading] = useState(false);
   const [credUser, setCredUser] = useState('');
   const [credPassword, setCredPassword] = useState('');
+  const [pathRoutesLoading, setPathRoutesLoading] = useState(false);
+  const {
+    routes: pathRoutes,
+    pathTargetOptions,
+    loadInboundOptions: loadPathTargetOptions,
+    loadRoutes: loadPathRoutes,
+    saveRoutes: savePathRoutes,
+    addRoute: addPathRoute,
+    updateRoute: updatePathRoute,
+    removeRoute: removePathRoute,
+    moveRoute: movePathRoute,
+  } = useFrontProxyPathRoutes();
 
   const fetchStatus = useCallback(async () => {
     const msg = await HttpUtil.post<FrontProxyStatus>('/panel/api/xray/frontproxy/status');
@@ -90,6 +105,26 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
   useEffect(() => {
     fetchAdGuard();
   }, [fetchAdGuard]);
+
+  useEffect(() => {
+    loadPathRoutes();
+    loadPathTargetOptions();
+  }, [loadPathRoutes, loadPathTargetOptions]);
+
+  async function applyPathRoutes() {
+    setPathRoutesLoading(true);
+    try {
+      const error = await savePathRoutes();
+      if (error === null) {
+        messageApi.success(t('pages.settings.frontProxy.pathRoutes.saved'));
+        await loadPathRoutes();
+      } else {
+        messageApi.error(error);
+      }
+    } finally {
+      setPathRoutesLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (adGuard?.user) setCredUser(adGuard.user);
@@ -692,6 +727,26 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
           </SettingListItem>
         </>
       )}
+
+      <SettingListItem
+        paddings="small"
+        title={t('pages.settings.frontProxy.pathRoutes.title') || 'Path routing'}
+        description={t('pages.settings.frontProxy.pathRoutes.description')}
+      >
+        <Space direction="vertical" size={8} style={{ width: '100%' }}>
+          <FrontProxyPathRoutesCard
+            routes={pathRoutes}
+            pathTargetOptions={pathTargetOptions}
+            addRoute={addPathRoute}
+            updateRoute={updatePathRoute}
+            removeRoute={removePathRoute}
+            moveRoute={movePathRoute}
+          />
+          <Button type="primary" loading={pathRoutesLoading} onClick={applyPathRoutes}>
+            {t('save')}
+          </Button>
+        </Space>
+      </SettingListItem>
     </>
   );
 }

@@ -1455,7 +1455,16 @@
         "adGuardPasswordPlaceholder": "New password",
         "adGuardApplyCredentials": "Change login",
         "adGuardCredentialsHint": "The password must be at least 8 characters. AdGuard Home is restarted so the new login takes effect, so DNS is unanswered for a couple of seconds.",
-        "adGuardCredentialsToast": "AdGuard Home login and password changed"
+        "adGuardCredentialsToast": "AdGuard Home login and password changed",
+        "pathRoutes": {
+          "title": "Path routing",
+          "description": "Reach an XHTTP or WebSocket inbound's own address under a path on this domain, instead of hand-building an external nginx location block for it (a CDN origin, for example). Panel and subscription paths always win if a path happens to collide.",
+          "add": "Add route",
+          "empty": "No path routes yet",
+          "pickInbound": "Pick an XHTTP/WS inbound",
+          "pathPlaceholder": "cdn-path",
+          "saved": "Path routes saved"
+        }
       },
       "subSettings": "Subscription",
       "subEnable": "Subscription Service",
@@ -1655,6 +1664,7 @@
         "getOutboundTrafficError": "Error getting traffic",
         "resetOutboundTrafficError": "Error resetting outbound traffic",
         "frontProxyDecoyUpload": "Could not install the decoy site",
+        "frontProxyPathRoutesSaved": "Path routes saved",
         "adGuard": "The AdGuard Home operation failed",
         "psiphonConfigUpload": "Could not save the Psiphon config"
       },

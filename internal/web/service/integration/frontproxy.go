@@ -17,6 +17,7 @@ import (
 type FrontProxyService struct {
 	service.SettingService
 	inboundService service.InboundService
+	pathService    service.FrontProxyPathService
 }
 
 // DecoyDir is where an uploaded decoy site lives, following the same
@@ -137,6 +138,7 @@ func (s *FrontProxyService) Options() (frontproxy.Options, error) {
 			UpstreamTLS:        s.upstreamServesTLS(),
 			TproxyCapabilities: tproxyCapabilities,
 			TproxyTarget:       tproxyTarget,
+			PathTargets:        s.pathTargets(),
 		},
 		Decoy: decoy,
 		TLS:   tlsSettings,
@@ -254,6 +256,18 @@ func (s *FrontProxyService) tproxyRouting(domain string) (capabilities []string,
 		return capabilities, ""
 	}
 	return capabilities, target
+}
+
+// pathTargets is best-effort for the same reason tproxyRouting is: an
+// unrelated DB hiccup on this feature must not also take down Panel/Sub/
+// decoy routing.
+func (s *FrontProxyService) pathTargets() []frontproxy.PathTarget {
+	targets, err := s.pathService.BuildTargets(nil)
+	if err != nil {
+		logger.Warningf("frontproxy: cannot read path routes: %v", err)
+		return nil
+	}
+	return targets
 }
 
 // Start brings the reverse proxy up and persists the choice so panel boot

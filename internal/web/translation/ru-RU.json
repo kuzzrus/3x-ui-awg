@@ -1333,7 +1333,16 @@
         "adGuardPasswordPlaceholder": "Новый пароль",
         "adGuardApplyCredentials": "Сменить вход",
         "adGuardCredentialsHint": "Пароль — минимум 8 символов. AdGuard Home будет перезапущен, чтобы новый вход вступил в силу: DNS не отвечает пару секунд.",
-        "adGuardCredentialsToast": "Логин и пароль AdGuard Home изменены"
+        "adGuardCredentialsToast": "Логин и пароль AdGuard Home изменены",
+        "pathRoutes": {
+          "title": "Маршрутизация по пути",
+          "description": "Сделать XHTTP- или WebSocket-инбаунд доступным по пути на этом домене — вместо ручной настройки внешнего nginx location (например, для origin CDN). Пути панели и подписки всегда в приоритете при совпадении.",
+          "add": "Добавить маршрут",
+          "empty": "Маршрутов пока нет",
+          "pickInbound": "Выберите XHTTP/WS-инбаунд",
+          "pathPlaceholder": "cdn-path",
+          "saved": "Маршруты сохранены"
+        }
       },
       "subSettings": "Подписка",
       "subEnable": "Включить подписку",
@@ -1533,6 +1542,7 @@
         "getOutboundTrafficError": "Ошибка получения трафика исходящего подключения",
         "resetOutboundTrafficError": "Ошибка сброса трафика исходящего подключения",
         "frontProxyDecoyUpload": "Не удалось установить сайт-заглушку",
+        "frontProxyPathRoutesSaved": "Маршруты сохранены",
         "adGuard": "Не удалось выполнить операцию с AdGuard Home",
         "psiphonConfigUpload": "Не удалось сохранить конфиг Psiphon"
       },
