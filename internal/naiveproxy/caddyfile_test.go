@@ -203,7 +203,7 @@ func TestRenderCaddyfileWrapsForwardProxyAndFileServerInRoute(t *testing.T) {
 	if route == -1 || forwardProxy == -1 || fileServer == -1 {
 		t.Fatalf("expected route{}, forward_proxy{} and file_server{} all present, got:\n%s", got)
 	}
-	if !(route < forwardProxy && forwardProxy < fileServer) {
+	if route >= forwardProxy || forwardProxy >= fileServer {
 		t.Errorf("expected route{ forward_proxy{...} file_server{...} } in that order, got:\n%s", got)
 	}
 }
