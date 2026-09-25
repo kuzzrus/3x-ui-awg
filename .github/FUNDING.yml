@@ -1,14 +1,9 @@
-# These are supported funding model platforms
-
-github: MHSanaei
-patreon: # Replace with a single Patreon username
-open_collective: # Replace with a single Open Collective username
-ko_fi: # Replace with a single Ko-fi username
-tidelift: # Replace with a single Tidelift platform-name/package-name e.g., npm/babel
-community_bridge: # Replace with a single Community Bridge project-name e.g., cloud-foundry
-liberapay: # Replace with a single Liberapay username
-issuehunt: # Replace with a single IssueHunt username
-lfx_crowdfunding: # Replace with a single LFX Crowdfunding project-name e.g., cloud-foundry
-polar: # Replace with a single Polar username
-buy_me_a_coffee: mhsanaei
-custom: https://donate.sanaei.dev/
+# The "Sponsor" button on this repository's page.
+#
+# This is a fork, and this file used to carry upstream's funding config
+# unchanged -- so the button collected sponsorships for the upstream
+# author while the README's own donate badge pointed at the fork's
+# maintainer. Credit for the original work stays where it belongs, in
+# the README's "Основа и благодарности" section; this file only decides
+# who the fork's own Sponsor button pays.
+custom: https://www.tbank.ru/cf/2qxNvGa3fSX
