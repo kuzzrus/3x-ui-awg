@@ -8,6 +8,14 @@ import (
 	"strings"
 )
 
+// probeResistanceLink is forward_proxy's required probe_resistance value --
+// confirmed live it's matched against Host, not SNI, so one value is fine.
+const probeResistanceLink = "np-cfg-check.internal"
+
+// decoyDirForID is the decoy dir renderCaddyfile's file_server points at,
+// kept deterministic so renderCaddyfile stays a pure function of Instance.
+func decoyDirForID(id int) string { return fmt.Sprintf("%s/decoy-%d", configDir(), id) }
+
 // renderCaddyfile builds the Caddyfile text for inst, and doubles as its
 // change fingerprint -- Manager compares this string, not a separate hash.
 func renderCaddyfile(inst Instance) (string, error) {
@@ -47,14 +55,22 @@ func renderCaddyfile(inst Instance) (string, error) {
 	fmt.Fprintf(&b, "https://:%s {\n", port)
 	b.WriteString("\tbind 127.0.0.1\n")
 	fmt.Fprintf(&b, "\ttls %s %s\n", caddyfileQuote(inst.CertFile), caddyfileQuote(inst.KeyFile))
-	b.WriteString("\tforward_proxy {\n")
+	// Required: forward_proxy's default order runs before file_server,
+	// which confirmed live never gets a turn at all without this route{}.
+	b.WriteString("\troute {\n")
+	b.WriteString("\t\tforward_proxy {\n")
 	for _, c := range clients {
-		fmt.Fprintf(&b, "\t\tbasic_auth %s %s\n", caddyfileQuote(c.Username), caddyfileQuote(c.Password))
+		fmt.Fprintf(&b, "\t\t\tbasic_auth %s %s\n", caddyfileQuote(c.Username), caddyfileQuote(c.Password))
 	}
-	b.WriteString("\t\thide_ip\n\t\thide_via\n")
+	b.WriteString("\t\t\thide_ip\n\t\t\thide_via\n")
 	if inst.RouteThroughXray {
-		fmt.Fprintf(&b, "\t\tupstream socks5://127.0.0.1:%s\n", strconv.Itoa(inst.XrayRoutePort))
+		fmt.Fprintf(&b, "\t\t\tupstream socks5://127.0.0.1:%s\n", strconv.Itoa(inst.XrayRoutePort))
 	}
+	// Required too: confirmed live this is what makes a non-matching
+	// request fall through to file_server below instead of a bare 407.
+	fmt.Fprintf(&b, "\t\t\tprobe_resistance %s\n", probeResistanceLink)
+	b.WriteString("\t\t}\n")
+	fmt.Fprintf(&b, "\t\tfile_server {\n\t\t\troot %s\n\t\t}\n", caddyfileQuote(decoyDirForID(inst.Id)))
 	b.WriteString("\t}\n}\n")
 	return b.String(), nil
 }

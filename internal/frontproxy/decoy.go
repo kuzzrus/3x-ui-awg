@@ -125,6 +125,12 @@ func newTemplateDecoy(name, seed string) http.Handler {
 	})
 }
 
+// RenderDecoyTemplate renders one embedded camouflage page for reuse by a
+// sidecar whose own traffic never reaches this package's own handler.
+func RenderDecoyTemplate(name, seed string) ([]byte, error) {
+	return renderDecoyTemplate(name, seed)
+}
+
 // renderDecoyTemplate loads an embedded page by name and renders it for this
 // install, rejecting any name that could reach outside the template set.
 func renderDecoyTemplate(name, seed string) ([]byte, error) {

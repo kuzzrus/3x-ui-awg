@@ -5,11 +5,30 @@ import (
 	"os"
 	"sync"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/frontproxy"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 )
 
 func configDir() string             { return Dir() }
 func configPathForID(id int) string { return fmt.Sprintf("%s/Caddyfile-%d", configDir(), id) }
+
+// writeDecoyContent renders and writes the page file_server serves. Never
+// errors, matching frontproxy's own decoy philosophy: log, don't block Start.
+func writeDecoyContent(inst Instance) {
+	dir := decoyDirForID(inst.Id)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		logger.Warningf("naiveproxy: inbound %d: cannot create decoy dir %s: %v", inst.Id, dir, err)
+		return
+	}
+	body, err := frontproxy.RenderDecoyTemplate(frontproxy.DefaultDecoyTemplate, inst.Domain)
+	if err != nil {
+		logger.Warningf("naiveproxy: inbound %d: cannot render decoy content: %v", inst.Id, err)
+		return
+	}
+	if err := os.WriteFile(dir+"/index.html", body, 0o600); err != nil {
+		logger.Warningf("naiveproxy: inbound %d: cannot write decoy content to %s: %v", inst.Id, dir, err)
+	}
+}
 
 // managed pairs a running process with the exact Caddyfile text it was
 // started from, so ensureLocked can tell "nothing changed" from "restart needed".
@@ -73,6 +92,9 @@ func (m *Manager) ensureLocked(inst Instance) (*Process, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Unconditional: the decoy dir is keyed by Id not Domain, so a
+	// domain-only change would never show up in fp if this were gated on it.
+	writeDecoyContent(inst)
 
 	if cur, ok := m.procs[inst.Id]; ok {
 		if cur.proc.IsRunning() && cur.fingerprint == fp {
@@ -124,6 +146,7 @@ func (m *Manager) removeLocked(id int) {
 	_ = cur.proc.Stop()
 	delete(m.procs, id)
 	_ = os.Remove(configPathForID(id))
+	_ = os.RemoveAll(decoyDirForID(id))
 	logger.Infof("naiveproxy: stopped caddy for inbound %d", id)
 }
 

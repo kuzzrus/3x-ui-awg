@@ -1,6 +1,7 @@
 package naiveproxy
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -174,6 +175,50 @@ func TestRenderCaddyfileQuotesClientCredentials(t *testing.T) {
 	want := `basic_auth "weird user" "p\"#\\w"`
 	if !strings.Contains(got, want) {
 		t.Errorf("expected a quoted, escaped basic_auth line %q, got:\n%s", want, got)
+	}
+}
+
+// Confirmed live: without probe_resistance, forward_proxy claims every
+// request reaching the site, proxy-shaped or not -- a bare 407 for anyone.
+func TestRenderCaddyfileEnablesProbeResistance(t *testing.T) {
+	got, err := renderCaddyfile(testInstance())
+	if err != nil {
+		t.Fatalf("renderCaddyfile: %v", err)
+	}
+	if !strings.Contains(got, "probe_resistance "+probeResistanceLink) {
+		t.Errorf("expected probe_resistance %s, got:\n%s", probeResistanceLink, got)
+	}
+}
+
+// forward_proxy's default order runs ahead of file_server -- confirmed live
+// that without an explicit route{}, file_server never gets a turn at all.
+func TestRenderCaddyfileWrapsForwardProxyAndFileServerInRoute(t *testing.T) {
+	got, err := renderCaddyfile(testInstance())
+	if err != nil {
+		t.Fatalf("renderCaddyfile: %v", err)
+	}
+	route := strings.Index(got, "route {")
+	forwardProxy := strings.Index(got, "forward_proxy {")
+	fileServer := strings.Index(got, "file_server {")
+	if route == -1 || forwardProxy == -1 || fileServer == -1 {
+		t.Fatalf("expected route{}, forward_proxy{} and file_server{} all present, got:\n%s", got)
+	}
+	if route >= forwardProxy || forwardProxy >= fileServer {
+		t.Errorf("expected route{ forward_proxy{...} file_server{...} } in that order, got:\n%s", got)
+	}
+}
+
+// file_server's root must match exactly where Manager's own
+// writeDecoyContent writes the camouflage page, or the two halves diverge.
+func TestRenderCaddyfileFileServerRootMatchesDecoyDir(t *testing.T) {
+	inst := testInstance()
+	got, err := renderCaddyfile(inst)
+	if err != nil {
+		t.Fatalf("renderCaddyfile: %v", err)
+	}
+	want := fmt.Sprintf("root %s", caddyfileQuote(decoyDirForID(inst.Id)))
+	if !strings.Contains(got, want) {
+		t.Errorf("expected %q, got:\n%s", want, got)
 	}
 }
 
