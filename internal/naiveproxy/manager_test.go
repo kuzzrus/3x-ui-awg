@@ -244,6 +244,73 @@ func TestEnsureNeverStartsAClientlessInstance(t *testing.T) {
 	}
 }
 
+// The decoy file must exist by the time Ensure returns, not eventually.
+func TestEnsureWritesDecoyContent(t *testing.T) {
+	installFakeCaddy(t)
+	m := newTestManager()
+	inst := testInst(t, 1, "alice")
+
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+	t.Cleanup(m.StopAll)
+
+	body, err := os.ReadFile(decoyDirForID(1) + "/index.html")
+	if err != nil {
+		t.Fatalf("decoy index.html: %v", err)
+	}
+	if len(body) == 0 {
+		t.Error("decoy index.html is empty")
+	}
+}
+
+// A domain-only change doesn't touch the fingerprint (decoy dir is keyed by
+// Id) -- confirms writeDecoyContent's placement ahead of that check matters.
+func TestEnsureRefreshesDecoyContentWhenOnlyDomainChanges(t *testing.T) {
+	installFakeCaddy(t)
+	m := newTestManager()
+	inst := testInst(t, 1, "alice")
+
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("first Ensure: %v", err)
+	}
+	t.Cleanup(m.StopAll)
+	first, err := os.ReadFile(decoyDirForID(1) + "/index.html")
+	if err != nil {
+		t.Fatalf("decoy index.html: %v", err)
+	}
+
+	inst.Domain = "a-completely-different-domain.example.test"
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("second Ensure: %v", err)
+	}
+	second, err := os.ReadFile(decoyDirForID(1) + "/index.html")
+	if err != nil {
+		t.Fatalf("decoy index.html after domain change: %v", err)
+	}
+	if string(first) == string(second) {
+		t.Error("decoy content unchanged after Domain changed -- seed not actually refreshed")
+	}
+}
+
+func TestRemoveDeletesDecoyContent(t *testing.T) {
+	installFakeCaddy(t)
+	m := newTestManager()
+	inst := testInst(t, 1, "alice")
+
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+	if _, err := os.Stat(decoyDirForID(1)); err != nil {
+		t.Fatalf("setup: decoy dir missing right after Ensure: %v", err)
+	}
+
+	m.Remove(1)
+	if _, err := os.Stat(decoyDirForID(1)); !os.IsNotExist(err) {
+		t.Errorf("decoy dir still exists after Remove: err = %v", err)
+	}
+}
+
 func TestRemoveStopsTheProcess(t *testing.T) {
 	installFakeCaddy(t)
 	m := newTestManager()
