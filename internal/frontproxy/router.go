@@ -45,6 +45,21 @@ type Config struct {
 	TproxyCapabilities []string
 	// TproxyTarget is the shared tproxy-server relay's loopback address.
 	TproxyTarget string
+	// PathTargets lets an admin-chosen XHTTP/WS inbound be reached under a
+	// path on this same public domain, instead of needing a hand-built
+	// external nginx location block (the CDN-fronting use case). Order
+	// matters: first prefix match wins, same convention as everything else
+	// in this file. Always loopback (127.0.0.1) -- like Panel/Sub, this is
+	// never a target off-box.
+	PathTargets []PathTarget
+}
+
+// PathTarget is one row of the admin-configured path routing list --
+// resolved (ChildId -> loopback port) before it ever reaches this package,
+// same division of responsibility as TproxyCapabilities/TproxyTarget above.
+type PathTarget struct {
+	Path string
+	Port int
 }
 
 // tproxyAPIPrefix is tproxy-server's own bridge session API -- PROTOCOL.md's
@@ -73,6 +88,20 @@ func (c Config) resolveTarget(path, rawQuery string) Route {
 		return RouteTproxy
 	}
 	return RouteDecoy
+}
+
+// resolvePathTarget checks the admin-configured path list -- called by
+// newHandler only once resolveTarget has already fallen through to
+// RouteDecoy, so a path route can never shadow Panel/Sub/Tproxy's own
+// (secret or protocol-mandated) paths, only the decoy that would otherwise
+// answer everything else.
+func (c Config) resolvePathTarget(path string) (int, bool) {
+	for _, t := range c.PathTargets {
+		if matchesPrefix(path, t.Path) {
+			return t.Port, true
+		}
+	}
+	return 0, false
 }
 
 // matchesTproxyCapability checks every candidate, not just up to the first

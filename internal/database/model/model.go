@@ -1101,6 +1101,21 @@ type InboundFallback struct {
 
 func (InboundFallback) TableName() string { return "inbound_fallbacks" }
 
+// FrontProxyPathRoute is one row of the panel-wide (not per-inbound --
+// there is exactly one public :443 listener) admin-configured list that lets
+// an XHTTP/WS inbound's own loopback address be reached under a chosen path
+// on the shared reverse-proxy domain, mirroring InboundFallback's shape but
+// without MasterId: unlike a REALITY fallback, this list isn't scoped to one
+// master inbound.
+type FrontProxyPathRoute struct {
+	Id        int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	ChildId   int    `json:"childId" gorm:"index;not null;column:child_id"`
+	Path      string `json:"path" gorm:"not null"`
+	SortOrder int    `json:"sortOrder" gorm:"default:0;column:sort_order"`
+}
+
+func (FrontProxyPathRoute) TableName() string { return "frontproxy_path_routes" }
+
 type Host struct {
 	Id                int      `json:"id" form:"id" gorm:"primaryKey;autoIncrement" example:"1"`
 	GroupId           string   `json:"groupId" form:"groupId" gorm:"column:group_id;index"`

@@ -2416,6 +2416,30 @@ export const sections: readonly Section[] = [
         body: 'multipart/form-data with a "site" file field',
       },
       {
+        method: 'GET',
+        path: '/panel/api/xray/frontproxy/pathRoutes',
+        summary:
+          "List the panel-wide path routes: each entry reaches one XHTTP/WS inbound's own loopback address under a path on the shared reverse-proxy domain, instead of a hand-built external nginx location block. Always resolved after the panel/subscription/tproxy paths, so those can never be shadowed.",
+        response:
+          '{\n  "success": true,\n  "obj": [\n    {\n      "id": 1,\n      "childId": 12,\n      "path": "cdn-path",\n      "sortOrder": 0\n    }\n  ]\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/xray/frontproxy/pathRoutes',
+        summary:
+          'Replace the entire panel-wide path-route list. Body is JSON. Reloads the running reverse proxy (does not touch or restart Xray).',
+        params: [
+          {
+            name: 'routes',
+            in: 'body (json)',
+            type: 'object[]',
+            desc: 'Array of {childId, path, sortOrder} entries. childId must be an enabled XHTTP or WS inbound listening on a loopback-reachable address; path must be non-empty, unique, and must not collide with the panel base path, subscription path, or the "api/v1" prefix.',
+          },
+        ],
+        body: '{\n  "routes": [\n    { "childId": 12, "path": "cdn-path", "sortOrder": 0 }\n  ]\n}',
+        response: '{\n  "success": true,\n  "msg": "Path routes saved"\n}',
+      },
+      {
         method: 'POST',
         path: '/panel/api/xray/adguard/:action',
         summary:

@@ -278,6 +278,81 @@ func TestReloadSwapsTheDecoyWithoutRestarting(t *testing.T) {
 	}
 }
 
+// A path-routed target is reached under its configured path, alongside
+// Panel/Sub/Tproxy and the decoy -- same dispatch shape as
+// TestHandlerDispatchesToEachUpstream, one more branch.
+func TestHandlerDispatchesToPathTarget(t *testing.T) {
+	// tlsUpstreamOn, not upstreamOn: path targets always dial TLS (see
+	// TestHandlerPathTargetAlwaysUsesTLS below for why), so a plaintext
+	// backend here would fail the handshake, not just be the wrong test.
+	cdnPort := tlsUpstreamOn(t, "CDN")
+	h := newHandler(Config{
+		PanelBasePath: "/secretpanel/",
+		PanelPort:     1,
+		PathTargets:   []PathTarget{{Path: "/xh-cdn-K7m4Qp9s", Port: cdnPort}},
+	}, DecoyConfig{Mode: DecoyTemplate, Template: "parked"})
+
+	cases := []struct {
+		path string
+		want string
+	}{
+		{"/xh-cdn-K7m4Qp9s/anything", "CDN"},
+		{"/other-path", "Здесь"},
+	}
+	for _, tc := range cases {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tc.path, nil))
+		if !strings.Contains(rec.Body.String(), tc.want) {
+			t.Errorf("%s -> %q, want it to contain %q", tc.path, rec.Body.String(), tc.want)
+		}
+	}
+}
+
+// The core safety guarantee this feature depends on: resolveTarget's own
+// Panel/Sub/Tproxy routes are checked before resolvePathTarget is ever
+// consulted (see newHandler's switch), so an admin-configured path route can
+// never shadow one of them -- even one deliberately set to collide, which
+// FrontProxyPathService.SetAll's own validation should reject before this
+// ever happens in production, but the dispatcher itself must not rely on
+// that validation always having run.
+func TestHandlerPanelWinsOverCollidingPathTarget(t *testing.T) {
+	panelPort := upstreamOn(t, "PANEL")
+	cdnPort := upstreamOn(t, "CDN")
+	h := newHandler(Config{
+		PanelBasePath: "/shared/",
+		PanelPort:     panelPort,
+		PathTargets:   []PathTarget{{Path: "/shared", Port: cdnPort}},
+	}, DecoyConfig{Mode: DecoyTemplate, Template: "parked"})
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/shared/inbounds", nil))
+	if !strings.Contains(rec.Body.String(), "PANEL") {
+		t.Errorf("got %q, want the panel to win over a colliding path target", rec.Body.String())
+	}
+}
+
+// XHTTP's stream-one/stream-up modes hang indefinitely over a plaintext
+// loopback hop (xray-core's own splithttp dialer forces HTTP/1.1 whenever
+// TLS is absent) -- confirmed live, 2026-09-25 PoC on awg-test-vps. Every
+// path-routed target must therefore dial its loopback backend over TLS,
+// unconditionally, regardless of Routing.UpstreamTLS (which only describes
+// the panel/sub listeners, an unrelated setting).
+func TestHandlerPathTargetAlwaysUsesTLS(t *testing.T) {
+	cdnPort := tlsUpstreamOn(t, "CDN")
+	h := newHandler(Config{
+		PanelBasePath: "/p/",
+		PanelPort:     1,
+		UpstreamTLS:   false,
+		PathTargets:   []PathTarget{{Path: "/cdn", Port: cdnPort}},
+	}, DecoyConfig{})
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/cdn/x", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "CDN") {
+		t.Errorf("status=%d body=%q, want 200 reaching the TLS-only upstream even though UpstreamTLS=false", rec.Code, rec.Body.String())
+	}
+}
+
 // Reload on a stopped manager must not resurrect it, or a settings save would
 // silently start a proxy the admin had turned off.
 func TestReloadOnStoppedManagerStaysStopped(t *testing.T) {

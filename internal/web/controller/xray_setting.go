@@ -33,6 +33,7 @@ type XraySettingController struct {
 	PsiphonService              integration.PsiphonService
 	WireproxyService            integration.WireproxyService
 	FrontProxyService           integration.FrontProxyService
+	FrontProxyPathService       service.FrontProxyPathService
 	AdGuardService              integration.AdGuardService
 	PiaService                  integration.PiaService
 	OutboundSubscriptionService service.OutboundSubscriptionService
@@ -62,6 +63,8 @@ func (a *XraySettingController) initRouter(g *gin.RouterGroup) {
 	g.POST("/wireproxy/:action", a.wireproxy)
 	g.POST("/frontproxy/:action", a.frontProxy)
 	g.POST("/frontproxy/decoy/upload", a.frontProxyDecoyUpload)
+	g.GET("/frontproxy/pathRoutes", a.getFrontProxyPathRoutes)
+	g.POST("/frontproxy/pathRoutes", a.setFrontProxyPathRoutes)
 	g.POST("/adguard/:action", a.adGuard)
 	g.POST("/pia/:action", a.pia)
 	g.POST("/update", a.updateSetting)
@@ -459,6 +462,51 @@ func (a *XraySettingController) frontProxyDecoyUpload(c *gin.Context) {
 		return
 	}
 	jsonObj(c, a.FrontProxyService.Status(), nil)
+}
+
+// getFrontProxyPathRoutes returns the panel-wide list of path-routed
+// XHTTP/WS inbounds -- mirrors InboundController.getFallbacks's shape, one
+// list for the whole reverse proxy instead of per master inbound.
+func (a *XraySettingController) getFrontProxyPathRoutes(c *gin.Context) {
+	rows, err := a.FrontProxyPathService.GetAll()
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "get"), err)
+		return
+	}
+	jsonObj(c, rows, nil)
+}
+
+// setFrontProxyPathRoutes atomically replaces the path-route list and
+// reloads the running reverse proxy (not RestartXray -- this feature never
+// touches Xray's own config, only frontproxy's own routing table).
+func (a *XraySettingController) setFrontProxyPathRoutes(c *gin.Context) {
+	type body struct {
+		Routes []service.FrontProxyPathInput `json:"routes"`
+	}
+	var b body
+	if err := c.ShouldBindJSON(&b); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	basePath, err := a.SettingService.GetBasePath()
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	subPath, err := a.SettingService.GetSubPath()
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	if err := a.FrontProxyPathService.SetAll(b.Routes, basePath, subPath); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	if err := a.FrontProxyService.Reload(); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	jsonMsg(c, I18nWeb(c, "pages.settings.toasts.frontProxyPathRoutesSaved"), nil)
 }
 
 func (a *XraySettingController) pia(c *gin.Context) {
