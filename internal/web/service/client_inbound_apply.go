@@ -599,6 +599,8 @@ func (s *ClientService) AddInboundClient(inboundSvc *InboundService, data *model
 			inboundSvc.applyLocalAmneziaWG(oldInbound.Id)
 		} else if oldInbound.Protocol == model.TUIC {
 			inboundSvc.applyLocalTuic(oldInbound.Id)
+		} else if oldInbound.Protocol == model.NaiveProxy {
+			inboundSvc.applyLocalNaiveProxy(oldInbound.Id)
 		} else {
 			for _, client := range clients {
 				if len(client.Email) == 0 {
@@ -1037,6 +1039,8 @@ func (s *ClientService) UpdateInboundClient(inboundSvc *InboundService, data *mo
 				inboundSvc.applyLocalAmneziaWG(oldInbound.Id)
 			} else if oldInbound.Protocol == model.TUIC {
 				inboundSvc.applyLocalTuic(oldInbound.Id)
+			} else if oldInbound.Protocol == model.NaiveProxy {
+				inboundSvc.applyLocalNaiveProxy(oldInbound.Id)
 			} else {
 				if oldClients[clientIndex].Enable {
 					err1 := rt.RemoveUser(context.Background(), oldInbound, oldEmail)
@@ -1233,6 +1237,10 @@ func (s *ClientService) DelInboundClientByEmail(inboundSvc *InboundService, inbo
 				// Same reasoning as MTProto above: the engine is started with
 				// the full secret list as -S args, so any delete re-applies it.
 				inboundSvc.applyLocalTproxy(oldInbound.Id)
+			} else if oldInbound.Protocol == model.NaiveProxy {
+				// Same reasoning as MTProto above: forward_proxy's basic_auth
+				// list is rebuilt in full, so any delete re-applies it.
+				inboundSvc.applyLocalNaiveProxy(oldInbound.Id)
 			} else if needApiDel {
 				// Local inbound: a disabled client isn't in the running Xray, so only
 				// a live one (needApiDel) needs an API removal.

@@ -329,6 +329,28 @@ func TestRemoveStopsTheProcess(t *testing.T) {
 	}
 }
 
+// The job's own cadence gates a costly frontproxy reload on this return
+// value -- a false positive would reload on every tick, a false negative
+// would leave a newly (un)reachable domain stale until the next real change.
+func TestReconcileReportsWhetherAnythingChanged(t *testing.T) {
+	installFakeCaddy(t)
+	m := newTestManager()
+	inst1 := testInst(t, 1, "alice")
+
+	if changed := m.Reconcile([]Instance{inst1}); !changed {
+		t.Error("first Reconcile: changed = false, want true (a process started)")
+	}
+	t.Cleanup(m.StopAll)
+
+	if changed := m.Reconcile([]Instance{inst1}); changed {
+		t.Error("identical Reconcile: changed = true, want false")
+	}
+
+	if changed := m.Reconcile(nil); !changed {
+		t.Error("Reconcile with nothing desired: changed = false, want true (a process stopped)")
+	}
+}
+
 func TestReconcileStopsWhatIsNoLongerDesired(t *testing.T) {
 	installFakeCaddy(t)
 	m := newTestManager()

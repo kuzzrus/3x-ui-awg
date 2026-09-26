@@ -28,9 +28,9 @@ func inboundTransports(protocol model.Protocol, streamSettings, settings string)
 		return transportUDP
 	case model.MTProto:
 		return transportTCP
-	case model.Tproxy:
-		// Lives entirely in frontproxy + supervised child processes; never
-		// asks Xray to bind anything, so it claims no transport at all.
+	case model.Tproxy, model.NaiveProxy:
+		// Neither asks Xray to bind anything -- tproxy lives in frontproxy
+		// + child processes, NaiveProxy's own Caddy binds loopback only.
 		return 0
 	}
 
