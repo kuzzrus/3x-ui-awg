@@ -180,15 +180,18 @@ func (m *Manager) Reconcile(desired []Instance) (changed bool) {
 		}
 		if proc != nil {
 			toAwait = append(toAwait, pending{inst.Id, proc})
-			changed = true
 		}
 	}
 	m.mu.Unlock()
 
+	// changed becomes true only on an actual success -- a spawn that never
+	// gets ready must not report a change on every retry tick.
 	for _, p := range toAwait {
 		if err := m.awaitReady(p.id, p.proc); err != nil {
 			logger.Warningf("naiveproxy: %v", err)
+			continue
 		}
+		changed = true
 	}
 	return changed
 }

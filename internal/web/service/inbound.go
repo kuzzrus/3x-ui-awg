@@ -1406,7 +1406,7 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 				if push {
 					payload := inbound
 					pushable := true
-					if inbound.Protocol == model.MTProto || inbound.Protocol == model.TUIC || inbound.Protocol == model.Tproxy {
+					if inbound.Protocol == model.MTProto || inbound.Protocol == model.TUIC || inbound.Protocol == model.Tproxy || inbound.Protocol == model.NaiveProxy {
 						if built, bErr := s.buildInboundForLocalRuntime(tx, inbound); bErr == nil {
 							payload = built
 						} else {
@@ -1420,7 +1420,7 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 								logger.Debug("New inbound added on", rt.Name(), ":", inbound.Tag)
 							} else {
 								logger.Debug("Unable to add inbound on", rt.Name(), ":", err1)
-								if inbound.Protocol != model.MTProto && inbound.Protocol != model.TUIC && inbound.Protocol != model.Tproxy {
+								if inbound.Protocol != model.MTProto && inbound.Protocol != model.TUIC && inbound.Protocol != model.Tproxy && inbound.Protocol != model.NaiveProxy {
 									needRestart = true
 								}
 							}
@@ -1990,7 +1990,8 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 				needRestart = true
 			} else if oldProtocol == model.MTProto || oldInbound.Protocol == model.MTProto ||
 				oldProtocol == model.TUIC || oldInbound.Protocol == model.TUIC ||
-				oldProtocol == model.Tproxy || oldInbound.Protocol == model.Tproxy {
+				oldProtocol == model.Tproxy || oldInbound.Protocol == model.Tproxy ||
+				oldProtocol == model.NaiveProxy || oldInbound.Protocol == model.NaiveProxy {
 				oldSnapshot := *oldInbound
 				oldSnapshot.Tag = tag
 				oldSnapshot.Protocol = oldProtocol
@@ -2005,7 +2006,7 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 					}
 				}
 				newProtocolIsSidecar := oldInbound.Protocol == model.MTProto || oldInbound.Protocol == model.TUIC ||
-					oldInbound.Protocol == model.Tproxy
+					oldInbound.Protocol == model.Tproxy || oldInbound.Protocol == model.NaiveProxy
 				if pushable {
 					postCommitApply = func() {
 						if err2 := rt.UpdateInbound(context.Background(), &oldSnapshot, payload); err2 == nil {

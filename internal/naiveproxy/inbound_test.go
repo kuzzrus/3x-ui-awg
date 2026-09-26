@@ -37,8 +37,8 @@ func TestInstanceFromInboundParsesSettings(t *testing.T) {
 	if inst.CertFile != "/etc/x.crt" || inst.KeyFile != "/etc/x.key" {
 		t.Errorf("CertFile/KeyFile = %q/%q, want /etc/x.crt//etc/x.key", inst.CertFile, inst.KeyFile)
 	}
-	if !inst.RouteThroughXray || inst.XrayRoutePort != 50000 {
-		t.Errorf("RouteThroughXray/XrayRoutePort = %v/%d, want true/50000", inst.RouteThroughXray, inst.XrayRoutePort)
+	if inst.RouteThroughXray || inst.XrayRoutePort != 0 {
+		t.Errorf("RouteThroughXray/XrayRoutePort = %v/%d, want false/0 (not read yet)", inst.RouteThroughXray, inst.XrayRoutePort)
 	}
 	if len(inst.Clients) != 1 || inst.Clients[0].Email != "alice" || inst.Clients[0].Username != "alice" || inst.Clients[0].Password != "pw-a" {
 		t.Errorf("Clients = %+v, want exactly alice/alice/pw-a (bob has no password, blank email, dave disabled)", inst.Clients)

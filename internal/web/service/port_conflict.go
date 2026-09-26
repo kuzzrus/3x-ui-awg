@@ -26,11 +26,13 @@ func inboundTransports(protocol model.Protocol, streamSettings, settings string)
 	switch protocol {
 	case model.Hysteria, model.WireGuard, model.AmneziaWG, model.TUIC:
 		return transportUDP
-	case model.MTProto:
+	case model.MTProto, model.NaiveProxy:
+		// NaiveProxy's own Caddy really does bind 127.0.0.1:<port> -- a real
+		// TCP listen this check must still protect, unlike tproxy below.
 		return transportTCP
-	case model.Tproxy, model.NaiveProxy:
-		// Neither asks Xray to bind anything -- tproxy lives in frontproxy
-		// + child processes, NaiveProxy's own Caddy binds loopback only.
+	case model.Tproxy:
+		// Lives entirely in frontproxy + supervised child processes; never
+		// asks Xray to bind anything, so it claims no transport at all.
 		return 0
 	}
 

@@ -9,6 +9,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
@@ -22,22 +23,14 @@ const sniPeekTimeout = 4 * time.Second
 var errSNIPeekDone = errors.New("frontproxy: sni peek complete")
 
 // newSNIRelayListener wraps inner so a matching ClientHello's raw bytes get
-// spliced to targets[sni] instead of terminated here. Returns inner
-// unchanged (no wrapper at all) when targets is empty.
-func newSNIRelayListener(inner net.Listener, targets map[string]string) net.Listener {
-	if len(targets) == 0 {
-		return inner
-	}
-	lower := make(map[string]string, len(targets))
-	for sni, backend := range targets {
-		lower[strings.ToLower(sni)] = backend
-	}
+// spliced to targets[sni]. Always wraps, even when empty, so Reload can SetTargets later.
+func newSNIRelayListener(inner net.Listener, targets map[string]string) *sniRelayListener {
 	l := &sniRelayListener{
 		Listener: inner,
-		targets:  lower,
 		out:      make(chan net.Conn),
 		done:     make(chan struct{}),
 	}
+	l.SetTargets(targets)
 	go l.acceptLoop()
 	return l
 }
@@ -46,13 +39,23 @@ func newSNIRelayListener(inner net.Listener, targets map[string]string) net.List
 // overridden below.
 type sniRelayListener struct {
 	net.Listener
-	targets map[string]string
+	targets atomic.Pointer[map[string]string]
 	out     chan net.Conn
 	done    chan struct{}
 
 	closeOnce sync.Once
 	mu        sync.Mutex
 	closeErr  error
+}
+
+// SetTargets atomically replaces the live SNI->backend map -- safe to call
+// while acceptLoop/handle goroutines are concurrently reading the old one.
+func (l *sniRelayListener) SetTargets(targets map[string]string) {
+	lower := make(map[string]string, len(targets))
+	for sni, backend := range targets {
+		lower[strings.ToLower(sni)] = backend
+	}
+	l.targets.Store(&lower)
 }
 
 // shutdown marks the listener terminally closed with err. Safe to call more
@@ -114,7 +117,8 @@ func (l *sniRelayListener) acceptLoop() {
 func (l *sniRelayListener) handle(raw net.Conn) {
 	sni, prefix := peekClientHelloSNI(raw)
 	if sni != "" {
-		if backend, ok := l.targets[strings.ToLower(sni)]; ok {
+		targets := *l.targets.Load()
+		if backend, ok := targets[strings.ToLower(sni)]; ok {
 			logger.Debugf("frontproxy: sni relay: %q -> %s", sni, backend)
 			relayRaw(raw, prefix, backend)
 			return
