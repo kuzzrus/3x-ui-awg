@@ -32,7 +32,11 @@ import { Controller, FormProvider, useForm, useWatch, useFieldArray } from 'reac
 
 import { HttpUtil, IntlUtil, RandomUtil, Wireguard } from '@/utils';
 import { formatInboundLabel } from '@/lib/inbounds/label';
-import { generateMtprotoSecret, generateTproxySecret } from '@/lib/xray/inbound-defaults';
+import {
+  generateMtprotoSecret,
+  generateNaiveProxyPassword,
+  generateTproxySecret,
+} from '@/lib/xray/inbound-defaults';
 import { normalizeClientIps, type ClientIpInfo } from '@/lib/clients/ip-log';
 import { resolveExternalLinkExpiry } from '@/lib/clients/external-link';
 import { useDatepicker } from '@/hooks/useDatepicker';
@@ -63,6 +67,7 @@ const MULTI_CLIENT_PROTOCOLS = new Set([
   'wireguard',
   'mtproto',
   'amneziawg',
+  'naiveproxy',
   'tuic',
   'tproxy',
 ]);
@@ -140,6 +145,7 @@ type Values = ClientFormValues & {
   secret: string;
   adTag: string;
   tproxySecret: string;
+  naiveProxyPassword: string;
 };
 
 const EMPTY: Values = {
@@ -178,6 +184,7 @@ const EMPTY: Values = {
   secret: '',
   adTag: '',
   tproxySecret: '',
+  naiveProxyPassword: '',
 };
 
 function toExternalLinkRows(links: ExternalLink[] | undefined): ExternalLinkRow[] {
@@ -268,6 +275,7 @@ export default function ClientFormModal({
   const reverseTag = useWatch({ control: methods.control, name: 'reverseTag' });
   const secret = useWatch({ control: methods.control, name: 'secret' });
   const tproxySecret = useWatch({ control: methods.control, name: 'tproxySecret' });
+  const naiveProxyPassword = useWatch({ control: methods.control, name: 'naiveProxyPassword' });
   const email = useWatch({ control: methods.control, name: 'email' });
   const uuid = useWatch({ control: methods.control, name: 'uuid' });
   const trafficReset = useWatch({ control: methods.control, name: 'trafficReset' });
@@ -391,6 +399,7 @@ export default function ClientFormModal({
         secret: client.secret || '',
         adTag: client.adTag || '',
         tproxySecret: client.tproxySecret || '',
+        naiveProxyPassword: client.naiveProxyPassword || '',
       };
       if (et < 0) {
         seed.delayedStart = true;
@@ -457,6 +466,14 @@ export default function ClientFormModal({
     const ids = new Set<number>();
     for (const row of inbounds || []) {
       if (row && row.protocol === 'tproxy') ids.add(row.id);
+    }
+    return ids;
+  }, [inbounds]);
+
+  const naiveproxyIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const row of inbounds || []) {
+      if (row && row.protocol === 'naiveproxy') ids.add(row.id);
     }
     return ids;
   }, [inbounds]);
@@ -535,6 +552,11 @@ export default function ClientFormModal({
     [inboundIds, tproxyIds],
   );
 
+  const showNaiveproxy = useMemo(
+    () => (inboundIds || []).some((id) => naiveproxyIds.has(id)),
+    [inboundIds, naiveproxyIds],
+  );
+
   function regenerateWireguardKeys() {
     const kp = Wireguard.generateKeypair();
     methods.setValue('wgPrivateKey', kp.privateKey);
@@ -551,6 +573,10 @@ export default function ClientFormModal({
 
   function regenerateTproxySecret() {
     methods.setValue('tproxySecret', generateTproxySecret());
+  }
+
+  function regenerateNaiveProxyPassword() {
+    methods.setValue('naiveProxyPassword', generateNaiveProxyPassword());
   }
 
   useEffect(() => {
@@ -589,6 +615,12 @@ export default function ClientFormModal({
       methods.setValue('tproxySecret', generateTproxySecret());
     }
   }, [showTproxy, tproxySecret, methods]);
+
+  useEffect(() => {
+    if (showNaiveproxy && !naiveProxyPassword) {
+      methods.setValue('naiveProxyPassword', generateNaiveProxyPassword());
+    }
+  }, [showNaiveproxy, naiveProxyPassword, methods]);
 
   const inboundOptions = useMemo(
     () =>
@@ -789,6 +821,10 @@ export default function ClientFormModal({
 
     if (showTproxy) {
       clientPayload.tproxySecret = values.tproxySecret;
+    }
+
+    if (showNaiveproxy) {
+      clientPayload.naiveProxyPassword = values.naiveProxyPassword;
     }
 
     const externalLinks: ExternalLinkInput[] = values.externalLinks
@@ -1403,6 +1439,27 @@ export default function ClientFormModal({
                               aria-label={t('regenerate')}
                               icon={<ReloadOutlined />}
                               onClick={regenerateTproxySecret}
+                            />
+                          </Space.Compact>
+                        </Form.Item>
+                      )}
+                      {showNaiveproxy && (
+                        <Form.Item
+                          label={t('pages.clients.naiveProxyPassword')}
+                          extra={t('pages.clients.naiveProxyPasswordHint')}
+                        >
+                          <Space.Compact style={{ display: 'flex' }}>
+                            <Input
+                              value={naiveProxyPassword}
+                              style={{ flex: 1 }}
+                              onChange={(e) =>
+                                methods.setValue('naiveProxyPassword', e.target.value)
+                              }
+                            />
+                            <Button
+                              aria-label={t('regenerate')}
+                              icon={<ReloadOutlined />}
+                              onClick={regenerateNaiveProxyPassword}
                             />
                           </Space.Compact>
                         </Form.Item>

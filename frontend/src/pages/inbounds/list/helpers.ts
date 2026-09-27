@@ -93,6 +93,7 @@ export function isInboundMultiUser(record: { protocol: string; settings: unknown
     case 'amneziawg':
     case 'tuic':
     case 'tproxy':
+    case 'naiveproxy':
       return true;
     case 'shadowsocks':
       return isSSMultiUser({ protocol: 'shadowsocks', settings: readSettings(record.settings) });

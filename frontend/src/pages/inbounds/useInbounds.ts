@@ -100,6 +100,7 @@ const TRACKED_PROTOCOLS: readonly string[] = [
   Protocols.WIREGUARD,
   Protocols.MTPROTO,
   Protocols.AMNEZIAWG,
+  Protocols.NAIVEPROXY,
   Protocols.TUIC,
   Protocols.TPROXY,
 ];
@@ -276,6 +277,9 @@ export function useInbounds() {
   const [mtprotoInboundSpeed, setMtprotoInboundSpeed] = useState<Record<number, InboundSpeedEntry>>(
     {},
   );
+  const [naiveproxyInboundSpeed, setNaiveproxyInboundSpeed] = useState<
+    Record<number, InboundSpeedEntry>
+  >({});
 
   const [onlineClients, setOnlineClients] = useState<string[]>([]);
   const onlineClientsRef = useRef<string[]>([]);
@@ -528,6 +532,7 @@ export function useInbounds() {
         nodeTraffics?: TrafficDelta[];
         amneziawgTraffics?: TrafficDelta[];
         mtprotoTraffics?: TrafficDelta[];
+        naiveproxyTraffics?: TrafficDelta[];
         onlineClients?: string[];
         onlineByGuid?: Record<string, string[]>;
         activeInbounds?: Record<string, string[]>;
@@ -626,6 +631,13 @@ export function useInbounds() {
       }
       if (Array.isArray(p.mtprotoTraffics)) {
         applySidecarInboundTraffics(p.mtprotoTraffics, Protocols.MTPROTO, setMtprotoInboundSpeed);
+      }
+      if (Array.isArray(p.naiveproxyTraffics)) {
+        applySidecarInboundTraffics(
+          p.naiveproxyTraffics,
+          Protocols.NAIVEPROXY,
+          setNaiveproxyInboundSpeed,
+        );
       }
 
       rebuildClientCount();
@@ -774,12 +786,18 @@ export function useInbounds() {
   const inboundSpeedOut = useMemo(() => {
     if (
       Object.keys(amneziawgInboundSpeed).length === 0 &&
-      Object.keys(mtprotoInboundSpeed).length === 0
+      Object.keys(mtprotoInboundSpeed).length === 0 &&
+      Object.keys(naiveproxyInboundSpeed).length === 0
     ) {
       return inboundSpeed;
     }
-    return { ...inboundSpeed, ...amneziawgInboundSpeed, ...mtprotoInboundSpeed };
-  }, [inboundSpeed, amneziawgInboundSpeed, mtprotoInboundSpeed]);
+    return {
+      ...inboundSpeed,
+      ...amneziawgInboundSpeed,
+      ...mtprotoInboundSpeed,
+      ...naiveproxyInboundSpeed,
+    };
+  }, [inboundSpeed, amneziawgInboundSpeed, mtprotoInboundSpeed, naiveproxyInboundSpeed]);
 
   return {
     fetched,

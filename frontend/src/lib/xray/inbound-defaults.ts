@@ -9,6 +9,10 @@ import type { HysteriaClient, HysteriaInboundSettings } from '@/schemas/protocol
 import type { MixedInboundSettings } from '@/schemas/protocols/inbound/mixed';
 import type { MtprotoClient, MtprotoInboundSettings } from '@/schemas/protocols/inbound/mtproto';
 import type {
+  NaiveproxyClient,
+  NaiveproxyInboundSettings,
+} from '@/schemas/protocols/inbound/naiveproxy';
+import type {
   ShadowsocksClient,
   ShadowsocksInboundSettings,
 } from '@/schemas/protocols/inbound/shadowsocks';
@@ -282,6 +286,28 @@ export function createDefaultTproxyClient(): Partial<TproxyClient> {
   };
 }
 
+// generateNaiveProxyPassword is a fresh HTTP Basic Auth password for Caddy's
+// forward_proxy -- opaque, no embedded domain (the username is the client's
+// own Email instead, so this only ever needs to be a plain secret).
+export function generateNaiveProxyPassword(): string {
+  return RandomUtil.randomSeq(16);
+}
+
+export function createDefaultNaiveProxyInboundSettings(): NaiveproxyInboundSettings {
+  return {
+    domain: '',
+    certFile: '',
+    keyFile: '',
+    clients: [],
+  };
+}
+
+export function createDefaultNaiveProxyClient(): Partial<NaiveproxyClient> {
+  return {
+    naiveProxyPassword: generateNaiveProxyPassword(),
+  };
+}
+
 export function createDefaultTunnelInboundSettings(): TunnelInboundSettings {
   return {
     portMap: {},
@@ -425,6 +451,7 @@ export type AnyInboundSettings =
   | WireguardInboundSettings
   | MtprotoInboundSettings
   | AmneziawgInboundSettings
+  | NaiveproxyInboundSettings
   | TuicInboundSettings
   | TproxyInboundSettings;
 
@@ -454,6 +481,8 @@ export function createDefaultInboundSettings(protocol: string): AnyInboundSettin
       return createDefaultMtprotoInboundSettings();
     case 'amneziawg':
       return createDefaultAmneziawgInboundSettings();
+    case 'naiveproxy':
+      return createDefaultNaiveProxyInboundSettings();
     case 'tuic':
       return createDefaultTuicInboundSettings();
     case 'tproxy':

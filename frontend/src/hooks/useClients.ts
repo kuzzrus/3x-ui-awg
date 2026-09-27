@@ -398,6 +398,9 @@ export function useClients(options: UseClientsOptions = {}) {
   const [mtprotoClientSpeed, setMtprotoClientSpeed] = useState<Record<string, ClientSpeedEntry>>(
     {},
   );
+  const [naiveproxyClientSpeed, setNaiveproxyClientSpeed] = useState<
+    Record<string, ClientSpeedEntry>
+  >({});
   // Pinned to the server's own count: recomputing it from the client_stats
   // push double-counts orphan rows and misses gaps (upstream #6116). The live
   // stats still drive per-row speed below -- only the totals come from the
@@ -826,6 +829,7 @@ export function useClients(options: UseClientsOptions = {}) {
         clientTraffics?: { email: string; up: number; down: number }[];
         amneziawgClientTraffics?: { email: string; up: number; down: number }[];
         mtprotoClientTraffics?: { email: string; up: number; down: number }[];
+        naiveproxyClientTraffics?: { email: string; up: number; down: number }[];
       };
       if (Array.isArray(p.onlineClients)) {
         queryClient.setQueryData(keys.clients.onlines(), p.onlineClients);
@@ -870,6 +874,9 @@ export function useClients(options: UseClientsOptions = {}) {
       }
       if (Array.isArray(p.mtprotoClientTraffics)) {
         applySidecarClientTraffics(p.mtprotoClientTraffics, setMtprotoClientSpeed);
+      }
+      if (Array.isArray(p.naiveproxyClientTraffics)) {
+        applySidecarClientTraffics(p.naiveproxyClientTraffics, setNaiveproxyClientSpeed);
       }
     },
     [queryClient],
@@ -921,12 +928,18 @@ export function useClients(options: UseClientsOptions = {}) {
   const clientSpeedOut = useMemo(() => {
     if (
       Object.keys(amneziawgClientSpeed).length === 0 &&
-      Object.keys(mtprotoClientSpeed).length === 0
+      Object.keys(mtprotoClientSpeed).length === 0 &&
+      Object.keys(naiveproxyClientSpeed).length === 0
     ) {
       return clientSpeed;
     }
-    return { ...clientSpeed, ...amneziawgClientSpeed, ...mtprotoClientSpeed };
-  }, [clientSpeed, amneziawgClientSpeed, mtprotoClientSpeed]);
+    return {
+      ...clientSpeed,
+      ...amneziawgClientSpeed,
+      ...mtprotoClientSpeed,
+      ...naiveproxyClientSpeed,
+    };
+  }, [clientSpeed, amneziawgClientSpeed, mtprotoClientSpeed, naiveproxyClientSpeed]);
 
   return {
     clients,
