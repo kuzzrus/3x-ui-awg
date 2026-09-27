@@ -152,7 +152,7 @@ func (m *Manager) removeLocked(id int) {
 
 // Reconcile drives the running set toward desired -- spawns happen under
 // m.mu, readiness waits after releasing it, so one slow instance can't stall the rest.
-func (m *Manager) Reconcile(desired []Instance) {
+func (m *Manager) Reconcile(desired []Instance) (changed bool) {
 	m.mu.Lock()
 	m.sweepOrphansLocked()
 
@@ -163,6 +163,7 @@ func (m *Manager) Reconcile(desired []Instance) {
 	for id := range m.procs {
 		if _, ok := want[id]; !ok {
 			m.removeLocked(id)
+			changed = true
 		}
 	}
 
@@ -183,11 +184,16 @@ func (m *Manager) Reconcile(desired []Instance) {
 	}
 	m.mu.Unlock()
 
+	// changed becomes true only on an actual success -- a spawn that never
+	// gets ready must not report a change on every retry tick.
 	for _, p := range toAwait {
 		if err := m.awaitReady(p.id, p.proc); err != nil {
 			logger.Warningf("naiveproxy: %v", err)
+			continue
 		}
+		changed = true
 	}
+	return changed
 }
 
 // StopAll stops every managed Caddy process. Called on panel shutdown.

@@ -37,6 +37,11 @@ func TestMain(m *testing.M) {
 			fmt.Fprintf(f, "%d\n", os.Getpid())
 			f.Close()
 		}
+		// NAIVE_FAKE_NEVER_READY simulates a process that starts (and gets a
+		// pid recorded above) but never opens its listener -- WaitReady times out.
+		if os.Getenv("NAIVE_FAKE_NEVER_READY") == "1" {
+			select {}
+		}
 		for i, arg := range os.Args {
 			if arg == "--config" && i+1 < len(os.Args) {
 				if port, ok := fakeChildListenPort(os.Args[i+1]); ok {
@@ -326,6 +331,47 @@ func TestRemoveStopsTheProcess(t *testing.T) {
 	m.Remove(1)
 	if m.IsRunning(1) {
 		t.Error("IsRunning(1) = true after Remove")
+	}
+}
+
+// The job's own cadence gates a costly frontproxy reload on this return
+// value, so a false positive/negative here is a real, not just cosmetic, bug.
+func TestReconcileReportsWhetherAnythingChanged(t *testing.T) {
+	installFakeCaddy(t)
+	m := newTestManager()
+	inst1 := testInst(t, 1, "alice")
+
+	if changed := m.Reconcile([]Instance{inst1}); !changed {
+		t.Error("first Reconcile: changed = false, want true (a process started)")
+	}
+	t.Cleanup(m.StopAll)
+
+	if changed := m.Reconcile([]Instance{inst1}); changed {
+		t.Error("identical Reconcile: changed = true, want false")
+	}
+
+	if changed := m.Reconcile(nil); !changed {
+		t.Error("Reconcile with nothing desired: changed = false, want true (a process stopped)")
+	}
+}
+
+// A never-ready instance must not report changed every retry tick, or a
+// broken config forces an unconditional frontproxy reload every 10s forever.
+func TestReconcileDoesNotReportChangedForAnInstanceThatNeverBecomesReady(t *testing.T) {
+	installFakeCaddy(t)
+	t.Setenv("NAIVE_FAKE_NEVER_READY", "1")
+	oldTimeout := startupTimeout
+	startupTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { startupTimeout = oldTimeout })
+
+	m := newTestManager()
+	inst := testInst(t, 1, "alice")
+
+	if changed := m.Reconcile([]Instance{inst}); changed {
+		t.Error("first Reconcile (spawn never becomes ready): changed = true, want false")
+	}
+	if changed := m.Reconcile([]Instance{inst}); changed {
+		t.Error("retry Reconcile (still never ready): changed = true, want false")
 	}
 }
 

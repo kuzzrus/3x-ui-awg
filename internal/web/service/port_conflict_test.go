@@ -89,6 +89,7 @@ func TestInboundTransports(t *testing.T) {
 		{"mixed udp missing", model.Mixed, `{"network":"tcp"}`, `{}`, transportTCP},
 
 		{"tproxy claims no transport", model.Tproxy, ``, ``, transportBits(0)},
+		{"naiveproxy claims real tcp -- its own Caddy really binds a loopback port", model.NaiveProxy, ``, ``, transportTCP},
 	}
 
 	for _, c := range cases {

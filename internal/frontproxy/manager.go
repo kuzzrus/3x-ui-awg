@@ -40,6 +40,9 @@ type Manager struct {
 	// handed a stable dispatcher that reads this, so a settings edit does not
 	// have to tear down the listener and redo the TLS setup.
 	routed atomic.Pointer[http.Handler]
+	// sniRelay is the same listener wrapped into ln below, kept by its
+	// concrete type so Reload can push a live SetTargets update through it.
+	sniRelay *sniRelayListener
 }
 
 var (
@@ -95,8 +98,8 @@ func (m *Manager) Start(opts Options) error {
 		setCertStatus(CertStatus{State: CertStateFailed, Error: err.Error()})
 		return err
 	}
-	ln = newSNIRelayListener(ln, opts.SNITargets)
-	ln = tls.NewListener(ln, tlsCfg)
+	sniRelay := newSNIRelayListener(ln, opts.SNITargets)
+	ln = tls.NewListener(sniRelay, tlsCfg)
 
 	m.store(newHandler(opts.Routing, opts.Decoy))
 	srv := &http.Server{
@@ -104,7 +107,7 @@ func (m *Manager) Start(opts Options) error {
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
-	m.server, m.listener, m.cancel = srv, ln, cancel
+	m.server, m.listener, m.cancel, m.sniRelay = srv, ln, cancel, sniRelay
 	go network.ServeHTTP(srv, ln, "Reverse proxy")
 	logger.Infof("frontproxy: listening on %s", addr)
 	return nil
@@ -128,19 +131,23 @@ func (m *Manager) dispatch(w http.ResponseWriter, r *http.Request) {
 // they were given at Start -- those still need a real restart.
 func (m *Manager) Reload(opts Options) {
 	m.mu.Lock()
+	sniRelay := m.sniRelay
 	running := m.server != nil
 	m.mu.Unlock()
 	if !running {
 		return
 	}
 	m.store(newHandler(opts.Routing, opts.Decoy))
+	if sniRelay != nil {
+		sniRelay.SetTargets(opts.SNITargets)
+	}
 }
 
 // Stop shuts the reverse proxy down. A no-op when it is already stopped.
 func (m *Manager) Stop() error {
 	m.mu.Lock()
 	srv, ln, cancel := m.server, m.listener, m.cancel
-	m.server, m.listener, m.cancel = nil, nil, nil
+	m.server, m.listener, m.cancel, m.sniRelay = nil, nil, nil, nil
 	m.mu.Unlock()
 	if srv == nil {
 		return nil

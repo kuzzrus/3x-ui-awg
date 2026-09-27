@@ -12,6 +12,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/amneziawgnet"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/mtproto"
+	"github.com/mhsanaei/3x-ui/v3/internal/naiveproxy"
 	"github.com/mhsanaei/3x-ui/v3/internal/tproxy"
 	"github.com/mhsanaei/3x-ui/v3/internal/tuic"
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
@@ -86,6 +87,9 @@ func (l *Local) AddInbound(_ context.Context, ib *model.Inbound) error {
 	if ib.Protocol == model.Tproxy {
 		return l.ensureTproxy(ib)
 	}
+	if ib.Protocol == model.NaiveProxy {
+		return l.ensureNaiveProxy(ib)
+	}
 	if ib.Protocol == model.AmneziaWG {
 		inst, ok := amneziawg.InstanceFromInbound(ib)
 		if !ok {
@@ -135,6 +139,10 @@ func (l *Local) DelInbound(_ context.Context, ib *model.Inbound) error {
 		l.removeTproxy(ib.Id)
 		return nil
 	}
+	if ib.Protocol == model.NaiveProxy {
+		l.removeNaiveProxy(ib.Id)
+		return nil
+	}
 	if ib.Protocol == model.AmneziaWG {
 		amneziawgnet.GetManager().Remove(ib.Id)
 		// This may have been the only inbound backing the relay -- schedule
@@ -157,6 +165,9 @@ func (l *Local) UpdateInbound(ctx context.Context, oldIb, newIb *model.Inbound) 
 	}
 	if oldIb.Protocol == model.Tproxy || newIb.Protocol == model.Tproxy {
 		return l.updateTproxyInbound(ctx, oldIb, newIb)
+	}
+	if oldIb.Protocol == model.NaiveProxy || newIb.Protocol == model.NaiveProxy {
+		return l.updateNaiveProxyInbound(ctx, oldIb, newIb)
 	}
 	if oldIb.Protocol == model.AmneziaWG || newIb.Protocol == model.AmneziaWG {
 		return l.updateAmneziaWGInbound(ctx, oldIb, newIb)
@@ -217,6 +228,43 @@ func (l *Local) updateTproxyInbound(ctx context.Context, oldIb, newIb *model.Inb
 		return nil
 	}
 	return l.ensureTproxy(newIb)
+}
+
+// ensureNaiveProxy applies ib and always reloads frontproxy afterward, even
+// for a no-op instance -- unlike tproxy, its domain lives in ib's own Settings.
+func (l *Local) ensureNaiveProxy(ib *model.Inbound) error {
+	defer l.reloadFrontProxy()
+	inst, ok := naiveproxy.InstanceFromInbound(ib)
+	if !ok {
+		naiveproxy.GetManager().Remove(ib.Id)
+		return nil
+	}
+	return naiveproxy.GetManager().Ensure(inst)
+}
+
+func (l *Local) removeNaiveProxy(id int) {
+	naiveproxy.GetManager().Remove(id)
+	l.reloadFrontProxy()
+}
+
+// updateNaiveProxyInbound mirrors updateTproxyInbound: skips Del+Add so
+// Ensure's own fingerprint check can keep the running Caddy process.
+func (l *Local) updateNaiveProxyInbound(ctx context.Context, oldIb, newIb *model.Inbound) error {
+	if oldIb.Protocol == model.NaiveProxy && newIb.Protocol != model.NaiveProxy {
+		l.removeNaiveProxy(oldIb.Id)
+		if !newIb.Enable {
+			return nil
+		}
+		return l.AddInbound(ctx, newIb)
+	}
+	if oldIb.Protocol != model.NaiveProxy {
+		_ = l.DelInbound(ctx, oldIb)
+	}
+	if !newIb.Enable {
+		l.removeNaiveProxy(newIb.Id)
+		return nil
+	}
+	return l.ensureNaiveProxy(newIb)
 }
 
 // updateMtprotoInbound applies an inbound update without the Del+Add sequence
@@ -324,7 +372,7 @@ func (l *Local) updateTuicInbound(ctx context.Context, oldIb, newIb *model.Inbou
 }
 
 func (l *Local) AddUser(_ context.Context, ib *model.Inbound, userMap map[string]any) error {
-	if ib.Protocol == model.MTProto || ib.Protocol == model.AmneziaWG || ib.Protocol == model.TUIC || ib.Protocol == model.Tproxy {
+	if ib.Protocol == model.MTProto || ib.Protocol == model.AmneziaWG || ib.Protocol == model.TUIC || ib.Protocol == model.Tproxy || ib.Protocol == model.NaiveProxy {
 		return nil
 	}
 	return l.withAPI(func(api *xray.XrayAPI) error {
@@ -333,7 +381,7 @@ func (l *Local) AddUser(_ context.Context, ib *model.Inbound, userMap map[string
 }
 
 func (l *Local) RemoveUser(_ context.Context, ib *model.Inbound, email string) error {
-	if ib.Protocol == model.MTProto || ib.Protocol == model.AmneziaWG || ib.Protocol == model.TUIC || ib.Protocol == model.Tproxy {
+	if ib.Protocol == model.MTProto || ib.Protocol == model.AmneziaWG || ib.Protocol == model.TUIC || ib.Protocol == model.Tproxy || ib.Protocol == model.NaiveProxy {
 		return nil
 	}
 	return l.withAPI(func(api *xray.XrayAPI) error {

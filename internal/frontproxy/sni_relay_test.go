@@ -10,21 +10,108 @@ import (
 	"time"
 )
 
-// TestNewSNIRelayListenerNoTargetsReturnsInnerUnchanged pins the actual
-// regression guarantee: with no targets, the wrapper is skipped entirely,
-// not just made to behave the same.
-func TestNewSNIRelayListenerNoTargetsReturnsInnerUnchanged(t *testing.T) {
-	inner, err := net.Listen("tcp", "127.0.0.1:0")
+// TestNewSNIRelayListenerWithNoTargetsStillPassesConnectionsThrough pins the
+// always-wrap behavior needed so Manager.Reload can later call SetTargets on
+// a listener started with none configured -- a real two-sided TLS handshake
+// over the pass-through path, same as the non-matching-SNI test below.
+func TestNewSNIRelayListenerWithNoTargetsStillPassesConnectionsThrough(t *testing.T) {
+	for _, targets := range []map[string]string{nil, {}} {
+		frontLn, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer frontLn.Close()
+		relayLn := newSNIRelayListener(frontLn, targets)
+
+		accepted := make(chan net.Conn, 1)
+		go func() {
+			c, err := relayLn.Accept()
+			if err == nil {
+				accepted <- c
+			}
+		}()
+
+		clientConn, err := net.DialTimeout("tcp", frontLn.Addr().String(), 2*time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		clientErrCh := make(chan error, 1)
+		go func() {
+			//nolint:gosec // test cert, loopback only
+			clientErrCh <- tls.Client(clientConn, &tls.Config{ServerName: "some-site.test", InsecureSkipVerify: true}).Handshake()
+		}()
+
+		var server net.Conn
+		select {
+		case server = <-accepted:
+		case <-time.After(2 * time.Second):
+			t.Fatal("Accept never returned a connection")
+		}
+		certFile, keyFile, _ := writeTestCert(t)
+		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := tls.Server(server, &tls.Config{Certificates: []tls.Certificate{cert}}).Handshake(); err != nil {
+			t.Fatalf("server-side handshake over the passed-through connection failed: %v", err)
+		}
+		select {
+		case err := <-clientErrCh:
+			if err != nil {
+				t.Fatalf("client-side handshake failed: %v", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("client-side handshake never completed")
+		}
+		server.Close()
+		clientConn.Close()
+	}
+}
+
+// TestSetTargetsActivatesRelayOnARunningListener is the actual regression
+// guarantee this fix exists for: Manager.Reload calls this on a listener
+// that may have started with no targets at all, and a connection dialed
+// after that call must be relayed, not just ones dialed after Start.
+func TestSetTargetsActivatesRelayOnARunningListener(t *testing.T) {
+	backendLn, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer inner.Close()
+	defer backendLn.Close()
+	backendHit := make(chan struct{}, 1)
+	go func() {
+		c, err := backendLn.Accept()
+		if err != nil {
+			return
+		}
+		backendHit <- struct{}{}
+		c.Close()
+	}()
 
-	if got := newSNIRelayListener(inner, nil); got != inner {
-		t.Fatalf("newSNIRelayListener(inner, nil) = %v, want the exact same listener back", got)
+	frontLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := newSNIRelayListener(inner, map[string]string{}); got != inner {
-		t.Fatalf("newSNIRelayListener(inner, {}) = %v, want the exact same listener back", got)
+	defer frontLn.Close()
+	relayLn := newSNIRelayListener(frontLn, nil)
+	go drainAccept(relayLn)
+
+	relayLn.SetTargets(map[string]string{"naive.example.test": backendLn.Addr().String()})
+
+	hello := clientHelloBytes(t, "naive.example.test")
+	client, err := net.DialTimeout("tcp", frontLn.Addr().String(), 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	if _, err := client.Write(hello); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-backendHit:
+	case <-time.After(2 * time.Second):
+		t.Fatal("backend never received a connection -- SetTargets after construction did not take effect")
 	}
 }
 

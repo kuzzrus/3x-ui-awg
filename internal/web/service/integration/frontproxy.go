@@ -3,6 +3,7 @@ package integration
 import (
 	"crypto/tls"
 	"io"
+	"strings"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/adguard"
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
@@ -140,8 +141,9 @@ func (s *FrontProxyService) Options() (frontproxy.Options, error) {
 			TproxyTarget:       tproxyTarget,
 			PathTargets:        s.pathTargets(),
 		},
-		Decoy: decoy,
-		TLS:   tlsSettings,
+		Decoy:      decoy,
+		TLS:        tlsSettings,
+		SNITargets: s.naiveProxySNITargets(tlsSettings.Domain),
 	}, nil
 }
 
@@ -266,6 +268,35 @@ func (s *FrontProxyService) pathTargets() []frontproxy.PathTarget {
 	if err != nil {
 		logger.Warningf("frontproxy: cannot read path routes: %v", err)
 		return nil
+	}
+	return targets
+}
+
+// naiveProxySNITargets is best-effort, keyed per-instance. frontProxyDomain
+// and duplicate domains are rejected -- the relay runs before every other route.
+func (s *FrontProxyService) naiveProxySNITargets(frontProxyDomain string) map[string]string {
+	instances, err := s.inboundService.DesiredNaiveProxyInstances()
+	if err != nil {
+		logger.Warningf("frontproxy: cannot read desired naiveproxy clients: %v", err)
+		return nil
+	}
+	if len(instances) == 0 {
+		return nil
+	}
+	targets := make(map[string]string, len(instances))
+	for _, inst := range instances {
+		if inst.Domain == "" {
+			continue
+		}
+		if strings.EqualFold(inst.Domain, frontProxyDomain) {
+			logger.Warningf("frontproxy: naiveproxy inbound %d's domain %q matches the panel's own -- skipped", inst.Id, inst.Domain)
+			continue
+		}
+		if _, dup := targets[inst.Domain]; dup {
+			logger.Warningf("frontproxy: naiveproxy inbound %d's domain %q is already used by another inbound -- skipped", inst.Id, inst.Domain)
+			continue
+		}
+		targets[inst.Domain] = inst.ListenAddr
 	}
 	return targets
 }
