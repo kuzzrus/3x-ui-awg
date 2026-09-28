@@ -15,7 +15,7 @@ import {
   UsergroupDeleteOutlined,
 } from '@ant-design/icons';
 
-import { isInboundMultiUser, showQrCodeMenu } from './helpers';
+import { hasExportableLinks, isInboundMultiUser, showQrCodeMenu } from './helpers';
 import type { DBInboundRecord, RowAction } from './types';
 
 interface RowActionsMenuProps {
@@ -46,7 +46,7 @@ export function buildRowActionsMenu({
   if (showQrCodeMenu(record)) {
     items.push({ key: 'qrcode', icon: <QrcodeOutlined />, label: t('qrCode') });
   }
-  if (isInboundMultiUser(record)) {
+  if (hasExportableLinks(record)) {
     items.push({ key: 'export', icon: <ExportOutlined />, label: t('pages.inbounds.export') });
     if (subEnable) {
       items.push({

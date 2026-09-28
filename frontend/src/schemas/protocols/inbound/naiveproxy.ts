@@ -26,9 +26,11 @@ export type NaiveproxyClient = z.infer<typeof NaiveproxyClientSchema>;
 // settings, and (unlike every Xray protocol) genuinely needs its own domain
 // and certificate rather than sharing the panel's.
 export const NaiveproxyInboundSettingsSchema = z.object({
-  domain: z.string().default(''),
-  certFile: z.string().default(''),
-  keyFile: z.string().default(''),
+  // All three are required: an untouched '' reaches frontproxy's SNITargets
+  // (dropped silently) and Caddy's own "tls ..." directive (fails to start).
+  domain: z.string().min(1).default(''),
+  certFile: z.string().min(1).default(''),
+  keyFile: z.string().min(1).default(''),
   clients: z.array(NaiveproxyClientSchema).default([]),
 });
 export type NaiveproxyInboundSettings = z.infer<typeof NaiveproxyInboundSettingsSchema>;
