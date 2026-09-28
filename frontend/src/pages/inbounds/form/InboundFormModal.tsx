@@ -69,6 +69,7 @@ import {
   HysteriaFields,
   MixedFields,
   MtprotoFields,
+  NaiveProxyFields,
   ShadowsocksFields,
   TproxyFields,
   TuicFields,
@@ -767,7 +768,11 @@ export default function InboundFormModal({
     if (!open) return;
     if (!protocol) return;
     const current = getV('shareAddrStrategy') as InboundFormValues['shareAddrStrategy'] | undefined;
-    if (protocol === Protocols.MTPROTO || protocol === Protocols.TPROXY) {
+    if (
+      protocol === Protocols.MTPROTO ||
+      protocol === Protocols.TPROXY ||
+      protocol === Protocols.NAIVEPROXY
+    ) {
       if (current !== 'listen') setV('shareAddrStrategy', 'listen');
       if (getV('shareAddr')) setV('shareAddr', '');
       return;
@@ -925,43 +930,45 @@ export default function InboundFormModal({
         <Input placeholder={t('pages.inbounds.monitorDesc')} />
       </FormField>
 
-      {protocol !== Protocols.MTPROTO && protocol !== Protocols.TPROXY && (
-        <>
-          <FormField
-            name="shareAddrStrategy"
-            label={labelWithHint(
-              t('pages.inbounds.form.shareAddrStrategy'),
-              t('pages.inbounds.form.shareAddrStrategyHelp'),
-            )}
-          >
-            <Select
-              options={SHARE_ADDR_STRATEGIES.filter(
-                (strategy) => strategy !== 'node' || nodeShareOptionAvailable,
-              ).map((strategy) => ({
-                value: strategy,
-                label: t(`pages.inbounds.form.shareAddrStrategyOptions.${strategy}`),
-              }))}
-            />
-          </FormField>
-
-          {shareAddrStrategy === 'custom' && (
+      {protocol !== Protocols.MTPROTO &&
+        protocol !== Protocols.TPROXY &&
+        protocol !== Protocols.NAIVEPROXY && (
+          <>
             <FormField
-              name="shareAddr"
+              name="shareAddrStrategy"
               label={labelWithHint(
-                t('pages.inbounds.form.shareAddr'),
-                t('pages.inbounds.form.shareAddrHelp'),
+                t('pages.inbounds.form.shareAddrStrategy'),
+                t('pages.inbounds.form.shareAddrStrategyHelp'),
               )}
-              rules={{
-                validate: (value) =>
-                  isValidShareAddrInput(String(value ?? '')) ||
-                  t('pages.inbounds.form.shareAddrHelp'),
-              }}
             >
-              <Input placeholder="edge.example.com" />
+              <Select
+                options={SHARE_ADDR_STRATEGIES.filter(
+                  (strategy) => strategy !== 'node' || nodeShareOptionAvailable,
+                ).map((strategy) => ({
+                  value: strategy,
+                  label: t(`pages.inbounds.form.shareAddrStrategyOptions.${strategy}`),
+                }))}
+              />
             </FormField>
-          )}
-        </>
-      )}
+
+            {shareAddrStrategy === 'custom' && (
+              <FormField
+                name="shareAddr"
+                label={labelWithHint(
+                  t('pages.inbounds.form.shareAddr'),
+                  t('pages.inbounds.form.shareAddrHelp'),
+                )}
+                rules={{
+                  validate: (value) =>
+                    isValidShareAddrInput(String(value ?? '')) ||
+                    t('pages.inbounds.form.shareAddrHelp'),
+                }}
+              >
+                <Input placeholder="edge.example.com" />
+              </FormField>
+            )}
+          </>
+        )}
 
       <FormField
         name="subSortIndex"
@@ -1097,6 +1104,8 @@ export default function InboundFormModal({
       {protocol === Protocols.MIXED && <MixedFields mixedUdpOn={mixedUdpOn} />}
 
       {protocol === Protocols.MTPROTO && <MtprotoFields />}
+
+      {protocol === Protocols.NAIVEPROXY && <NaiveProxyFields />}
 
       {protocol === Protocols.TPROXY && <TproxyFields />}
 
@@ -1429,6 +1438,7 @@ export default function InboundFormModal({
                     Protocols.WIREGUARD,
                     Protocols.MTPROTO,
                     Protocols.AMNEZIAWG,
+                    Protocols.NAIVEPROXY,
                     Protocols.TUIC,
                     Protocols.TPROXY,
                   ] as string[]

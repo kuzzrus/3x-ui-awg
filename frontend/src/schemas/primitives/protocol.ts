@@ -13,6 +13,7 @@ export const ProtocolSchema = z.enum([
   'tun',
   'mtproto',
   'amneziawg',
+  'naiveproxy',
   'tuic',
   'tproxy',
 ]);
@@ -37,6 +38,7 @@ export const Protocols = Object.freeze({
   TUN: 'tun',
   MTPROTO: 'mtproto',
   AMNEZIAWG: 'amneziawg',
+  NAIVEPROXY: 'naiveproxy',
   TUIC: 'tuic',
   TPROXY: 'tproxy',
 });

@@ -18,6 +18,7 @@ const MULTI_USER_PROTOCOLS = new Set([
   'amneziawg',
   'tuic',
   'tproxy',
+  'naiveproxy',
 ]);
 
 interface BulkAttachInboundsModalProps {

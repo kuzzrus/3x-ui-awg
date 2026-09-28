@@ -93,12 +93,21 @@ export function isInboundMultiUser(record: { protocol: string; settings: unknown
     case 'amneziawg':
     case 'tuic':
     case 'tproxy':
+    case 'naiveproxy':
       return true;
     case 'shadowsocks':
       return isSSMultiUser({ protocol: 'shadowsocks', settings: readSettings(record.settings) });
     default:
       return false;
   }
+}
+
+// Narrower than isInboundMultiUser: every protocol it covers has a real
+// genInboundLinks branch except naiveproxy (no link format yet -- deferred,
+// tracked separately), which would otherwise show export/subs actions that
+// open on an empty link block.
+export function hasExportableLinks(record: { protocol: string; settings: unknown }): boolean {
+  return isInboundMultiUser(record) && record.protocol !== 'naiveproxy';
 }
 
 export function showQrCodeMenu(dbInbound: DBInboundRecord): boolean {

@@ -8,6 +8,7 @@ import {
   AmneziawgClientSchema,
   HysteriaClientSchema,
   MtprotoClientSchema,
+  NaiveproxyClientSchema,
   ShadowsocksClientSchema,
   TproxyClientSchema,
   TrojanClientSchema,
@@ -275,6 +276,8 @@ function clientSchemaForProtocol(protocol: string): z.ZodType | null {
       return MtprotoClientSchema;
     case 'amneziawg':
       return AmneziawgClientSchema;
+    case 'naiveproxy':
+      return NaiveproxyClientSchema;
     case 'tuic':
       return TuicClientSchema;
     case 'tproxy':
