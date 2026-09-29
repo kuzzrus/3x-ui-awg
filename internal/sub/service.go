@@ -629,7 +629,7 @@ func (s *SubService) getInboundsBySubId(subId string) ([]*model.Inbound, error) 
 		JOIN client_inbounds ON client_inbounds.inbound_id = inbounds.id
 		JOIN clients ON clients.id = client_inbounds.client_id
 		WHERE
-			inbounds.protocol in ('vmess','vless','trojan','shadowsocks','hysteria','wireguard','amneziawg','mtproto','tuic','tproxy')
+			inbounds.protocol in ('vmess','vless','trojan','shadowsocks','hysteria','wireguard','amneziawg','mtproto','tuic','tproxy','naiveproxy')
 			AND clients.sub_id = ? AND inbounds.enable = ?
 	)`, subId, true).Order("sub_sort_index ASC").Order("id ASC").Find(&inbounds).Error
 	if err != nil {
@@ -780,6 +780,8 @@ func (s *SubService) GetLink(inbound *model.Inbound, email string) string {
 		return s.genMtprotoLink(inbound, email)
 	case "tproxy":
 		return s.genTproxyLink(inbound, email)
+	case "naiveproxy":
+		return s.genNaiveProxyLink(inbound, email)
 	case "wireguard":
 		return s.genWireguardLink(inbound, email)
 	case "amneziawg":
@@ -1116,6 +1118,25 @@ func (s *SubService) genTproxyLink(inbound *model.Inbound, email string) string 
 		"server": hostname,
 		"secret": secret,
 	}, "")
+}
+
+// naiveProxyPublicPort is where NaiveProxy clients connect: the shared front
+// door's 443, not the inbound's own loopback-only listen port.
+const naiveProxyPublicPort = 443
+
+// genNaiveProxyLink builds a naive+https:// link (NekoBox/husi/Exclave form): the
+// inbound's own domain on 443, the client's email as username (Caddy's basic_auth).
+func (s *SubService) genNaiveProxyLink(inbound *model.Inbound, email string) string {
+	if inbound.Protocol != model.NaiveProxy {
+		return ""
+	}
+	domain, _ := s.linkSettings(inbound)["domain"].(string)
+	resolved, ok := s.clientForLink(inbound, email)
+	if domain == "" || !ok || resolved.NaiveProxyPassword == "" {
+		return ""
+	}
+	link := fmt.Sprintf("naive+https://%s:%s@%s", encodeUserinfo(email), encodeUserinfo(resolved.NaiveProxyPassword), joinHostPort(domain, naiveProxyPublicPort))
+	return buildLinkWithParams(link, nil, s.genRemark(inbound, email, "", ""))
 }
 
 // Protocol link generators are intentionally ordered as:

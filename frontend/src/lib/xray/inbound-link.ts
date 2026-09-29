@@ -891,6 +891,34 @@ export function genTproxyLink(input: GenTproxyLinkInput): string {
   return url.toString();
 }
 
+// Where NaiveProxy clients connect: the shared front door's 443, never the
+// inbound's own loopback-only listen port.
+const NAIVEPROXY_PUBLIC_PORT = 443;
+
+export interface GenNaiveProxyLinkInput {
+  inbound: Inbound;
+  remark?: string;
+  clientEmail?: string;
+  clientPassword?: string;
+}
+
+// naive+https:// share link (the form NekoBox/husi/Exclave import), mirroring
+// internal/sub/service.go's genNaiveProxyLink: the inbound's own domain on 443,
+// the client's email as username (Caddy's basic_auth pair).
+export function genNaiveProxyLink(input: GenNaiveProxyLinkInput): string {
+  const { inbound, remark = '', clientEmail = '', clientPassword = '' } = input;
+  if (inbound.protocol !== 'naiveproxy') return '';
+  const domain = inbound.settings.domain;
+  if (!domain || !clientEmail || !clientPassword) return '';
+  const url = new URL(
+    `naive+https://${encodeURIComponent(clientEmail)}:${encodeURIComponent(clientPassword)}@${formatUrlHost(domain)}:${NAIVEPROXY_PUBLIC_PORT}`,
+  );
+  if (remark) {
+    url.hash = encodeURIComponent(remark);
+  }
+  return url.toString();
+}
+
 export interface GenTuicLinkInput {
   inbound: Inbound;
   address: string;
@@ -1425,6 +1453,7 @@ type ClientShape = {
   auth?: string;
   secret?: string;
   tproxySecret?: string;
+  naiveProxyPassword?: string;
   email?: string;
   subId?: string;
 };
@@ -1450,6 +1479,8 @@ export function getInboundClients(inbound: Inbound): ClientShape[] | null {
     case 'tuic':
       return (inbound.settings.clients ?? []) as ClientShape[];
     case 'tproxy':
+      return (inbound.settings.clients ?? []) as ClientShape[];
+    case 'naiveproxy':
       return (inbound.settings.clients ?? []) as ClientShape[];
     case 'shadowsocks': {
       const isMultiUser = inbound.settings.method !== '2022-blake3-chacha20-poly1305';
@@ -1548,6 +1579,13 @@ export function genLink(input: GenLinkInput): string {
       return genMtprotoLink({ inbound, address, port, clientSecret: client.secret ?? '' });
     case 'tproxy':
       return genTproxyLink({ inbound, frontProxyDomain, clientSecret: client.tproxySecret ?? '' });
+    case 'naiveproxy':
+      return genNaiveProxyLink({
+        inbound,
+        remark,
+        clientEmail: client.email ?? '',
+        clientPassword: client.naiveProxyPassword ?? '',
+      });
     case 'tuic':
       return genTuicLink({
         inbound,

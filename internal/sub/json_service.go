@@ -659,9 +659,9 @@ func (s *SubJsonService) getConfig(subReq *SubService, inbound *model.Inbound, c
 				continue
 			}
 			newOutbounds = append(newOutbounds, wgOutbound)
-		case "amneziawg", "tuic":
-			// Both have their own link format (vpn://, tuic://) with no Xray
-			// outbound representation -- skip rather than emit an empty entry.
+		case "amneziawg", "tuic", "mtproto", "tproxy", "naiveproxy":
+			// Each has its own link format (vpn://, tuic://, tg://, naive+https://) with
+			// no Xray outbound representation -- skip rather than emit an empty entry.
 			continue
 		}
 

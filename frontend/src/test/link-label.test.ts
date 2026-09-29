@@ -109,4 +109,16 @@ describe('link-label parseLinkParts', () => {
     expect(parts?.port).toBe('8443');
     expect(parts?.remark).toBe('tuic-remark');
   });
+
+  // naive+https carries a '+' in its scheme, which the scheme matcher used to
+  // reject outright -- the link fell back to a bare "Link N" with no tags.
+  it('labels a naive+https link with TLS security, its port and remark', () => {
+    const link = 'naive+https://alice:pw@naive.example.com:443#np-remark';
+    const parts = parseLinkParts(link);
+    expect(parts?.protocol).toBe('NaiveProxy');
+    expect(parts?.network).toBe('');
+    expect(parts?.security).toBe('TLS');
+    expect(parts?.port).toBe('443');
+    expect(parts?.remark).toBe('np-remark');
+  });
 });

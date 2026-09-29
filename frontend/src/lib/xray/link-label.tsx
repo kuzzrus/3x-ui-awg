@@ -29,6 +29,7 @@ const PROTOCOL_LABELS: Record<string, string> = {
   'tg-webproxy': 'WEB Proxy',
   vpn: 'AmneziaWG',
   tuic: 'TUIC',
+  'naive+https': 'NaiveProxy',
 };
 
 const PROTOCOL_COLORS: Record<string, string> = {
@@ -43,6 +44,7 @@ const PROTOCOL_COLORS: Record<string, string> = {
   'WEB Proxy': 'geekblue',
   AmneziaWG: 'yellow',
   TUIC: 'orange',
+  NaiveProxy: 'lime',
 };
 
 const SECURITY_COLORS: Record<string, string> = {
@@ -79,7 +81,7 @@ function fromBase64Url(value: string): string {
    into the body a client app imports, so there is nothing to strip here. */
 export function parseLinkParts(link: string): LinkParts | null {
   const trimmed = link.trim();
-  const schemeMatch = /^([a-z0-9]+):\/\/([a-z0-9]*)/i.exec(trimmed);
+  const schemeMatch = /^([a-z0-9][a-z0-9+.-]*):\/\/([a-z0-9]*)/i.exec(trimmed);
   const rawScheme = schemeMatch?.[1]?.toLowerCase() ?? '';
   if (!rawScheme) return null;
   // tg://proxy (mtproto) and tg://webproxy (tproxy) share a scheme but are
@@ -145,6 +147,7 @@ export function parseLinkParts(link: string): LinkParts | null {
       network = 'quic';
       security = 'TLS';
     }
+    if (scheme === 'naive+https') security = 'TLS';
   }
   if (security === 'none') security = '';
   return {

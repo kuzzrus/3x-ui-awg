@@ -534,3 +534,17 @@ func TestSubJsonServiceSkipsTUIC(t *testing.T) {
 		t.Fatalf("getConfig emitted %d unsupported TUIC Xray config(s), want 0", len(got))
 	}
 }
+
+// MTProto, tproxy and naiveproxy each have their own link format and no Xray
+// outbound; without the skip, getConfig emitted an entry holding only direct+block.
+func TestSubJsonServiceSkipsSidecarProtocols(t *testing.T) {
+	for _, protocol := range []model.Protocol{model.MTProto, model.Tproxy, model.NaiveProxy} {
+		t.Run(string(protocol), func(t *testing.T) {
+			inbound := &model.Inbound{Listen: "203.0.113.8", Port: 8443, Protocol: protocol}
+			got := NewSubJsonService("", "", "", "", nil).getConfig(&SubService{address: "sub.example.com"}, inbound, model.Client{}, "sub.example.com")
+			if len(got) != 0 {
+				t.Fatalf("getConfig emitted %d unsupported %s Xray config(s), want 0", len(got), protocol)
+			}
+		})
+	}
+}
