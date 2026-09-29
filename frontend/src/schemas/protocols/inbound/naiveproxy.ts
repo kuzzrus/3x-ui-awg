@@ -32,6 +32,11 @@ export const NaiveproxyInboundSettingsSchema = z.object({
   certFile: z.string().min(1).default(''),
   keyFile: z.string().min(1).default(''),
   publicPort: z.number().int().min(1).max(65535).default(443),
+  // Opt-in: Caddy dials out through a loopback Xray SOCKS bridge; routeXrayPort is
+  // allocated and owned by the backend, never edited here.
+  routeThroughXray: z.boolean().optional(),
+  outboundTag: z.string().optional(),
+  routeXrayPort: z.number().int().min(0).max(65535).optional(),
   clients: z.array(NaiveproxyClientSchema).default([]),
 });
 export type NaiveproxyInboundSettings = z.infer<typeof NaiveproxyInboundSettingsSchema>;

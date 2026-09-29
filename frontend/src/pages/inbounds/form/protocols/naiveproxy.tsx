@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Input, InputNumber } from 'antd';
+import { Alert, Button, Input, InputNumber, Select, Switch } from 'antd';
+import { useFormContext, useWatch } from 'react-hook-form';
 
 import { keys } from '@/api/queryKeys';
 import { useNaiveProxyEngineQuery } from '@/api/queries/useNaiveProxyEngineQuery';
+import { useOutboundTags } from '@/api/queries/useOutboundTags';
 import { FormField } from '@/components/form/rhf';
 import { HttpUtil } from '@/utils';
 import { getMessage } from '@/utils/messageBus';
@@ -59,6 +61,11 @@ function EngineNotice() {
 
 export default function NaiveProxyFields() {
   const { t } = useTranslation();
+  const { control } = useFormContext();
+  const routeThroughXray = useWatch({ control, name: 'settings.routeThroughXray' }) as
+    | boolean
+    | undefined;
+  const { data: outboundTags } = useOutboundTags({ excludeBlackhole: true });
   return (
     <>
       <EngineNotice />
@@ -85,6 +92,29 @@ export default function NaiveProxyFields() {
       >
         <InputNumber min={1} max={65535} placeholder="443" />
       </FormField>
+      <FormField
+        name={['settings', 'routeThroughXray']}
+        label={t('pages.inbounds.form.naiveProxyRouteThroughXray')}
+        tooltip={t('pages.inbounds.form.naiveProxyRouteThroughXrayHint')}
+        valueProp="checked"
+      >
+        <Switch />
+      </FormField>
+      {routeThroughXray && (
+        <FormField
+          name={['settings', 'outboundTag']}
+          label={t('pages.inbounds.form.naiveProxyRouteOutbound')}
+          tooltip={t('pages.inbounds.form.naiveProxyRouteOutboundHint')}
+        >
+          <Select
+            id="naiveProxyOutboundTag"
+            allowClear
+            showSearch
+            placeholder={t('pages.inbounds.form.naiveProxyRouteOutboundPlaceholder')}
+            options={(outboundTags ?? []).map((tag) => ({ value: tag, label: tag }))}
+          />
+        </FormField>
+      )}
     </>
   );
 }
