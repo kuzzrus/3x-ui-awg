@@ -132,6 +132,9 @@ func (p *Process) Start() error {
 	if p.IsRunning() {
 		return errors.New("caddy is already running")
 	}
+	if !IsInstalled() {
+		return ErrNotInstalled
+	}
 	cmd := exec.CommandContext(context.Background(), BinPath(), "run", "--config", p.configPath, "--adapter", "caddyfile")
 	cmd.Stdout = p.logWriter
 	cmd.Stderr = p.logWriter

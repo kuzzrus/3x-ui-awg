@@ -22,6 +22,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"sync"
 
 	"github.com/ulikunitz/xz"
 
@@ -61,11 +62,21 @@ func BinPath() string {
 	return filepath.Join(Dir(), name)
 }
 
+// ErrNotInstalled is what starting an instance returns while the binary is
+// missing, so the log says what to do instead of a raw fork/exec ENOENT.
+var ErrNotInstalled = errors.New("the NaiveProxy engine is not installed -- install it from the NaiveProxy inbound's settings")
+
 // IsInstalled reports whether a usable binary is present.
 func IsInstalled() bool {
 	info, err := os.Stat(BinPath())
 	return err == nil && info.Mode().IsRegular()
 }
+
+// Platform is this host's "os/arch", shown when the engine is unavailable here.
+func Platform() string { return runtime.GOOS + "/" + runtime.GOARCH }
+
+// Supported reports whether klzgrad/forwardproxy publishes a build for this host.
+func Supported() bool { return checkPlatform(runtime.GOOS, runtime.GOARCH) == nil }
 
 // checkPlatform rejects anything but the one platform klzgrad/forwardproxy
 // actually publishes a naive-enabled Caddy build for.
@@ -75,6 +86,10 @@ func checkPlatform(goos, goarch string) error {
 	}
 	return fmt.Errorf("NaiveProxy is only available on linux/amd64 (this host is %s/%s)", goos, goarch)
 }
+
+// installMu serialises Install: its staging file has a fixed name, so two
+// concurrent installs would truncate each other's download.
+var installMu sync.Mutex
 
 // downloadURL is the pinned release asset. A var, not a func returning a
 // constant, purely so tests can point it at an httptest server.
@@ -86,6 +101,8 @@ var downloadURL = fmt.Sprintf(
 // Install downloads the pinned Caddy+forwardproxy release and extracts its
 // binary. client comes from the caller so the download honors the panel's own proxy.
 func Install(ctx context.Context, client *http.Client) error {
+	installMu.Lock()
+	defer installMu.Unlock()
 	if IsInstalled() {
 		return nil
 	}

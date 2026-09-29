@@ -1,6 +1,7 @@
 package naiveproxy
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -175,6 +176,27 @@ func TestEnsureStartsAProcess(t *testing.T) {
 	waitSpawnCount(t, pidFile, 1)
 	if !m.IsRunning(1) {
 		t.Error("IsRunning(1) = false after Ensure started it")
+	}
+}
+
+// Until the engine is installed every NaiveProxy inbound hits this: the error
+// must say so, and the files written ahead of the spawn must not be left behind.
+func TestEnsureReportsAMissingEngine(t *testing.T) {
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+	m := newTestManager()
+
+	err := m.Ensure(testInst(t, 1, "alice"))
+	if !errors.Is(err, ErrNotInstalled) {
+		t.Fatalf("Ensure without the binary = %v, want ErrNotInstalled", err)
+	}
+	if m.IsRunning(1) {
+		t.Fatal("IsRunning(1) = true although nothing could start")
+	}
+	if _, statErr := os.Stat(configPathForID(1)); !os.IsNotExist(statErr) {
+		t.Errorf("Caddyfile left behind after a failed start: %v", statErr)
+	}
+	if _, statErr := os.Stat(decoyDirForID(1)); !os.IsNotExist(statErr) {
+		t.Errorf("decoy dir left behind after a failed start: %v", statErr)
 	}
 }
 

@@ -114,6 +114,9 @@ func (m *Manager) ensureLocked(inst Instance) (*Process, error) {
 
 	proc := newProcess(cfgPath, inst.ListenAddr, fmt.Sprintf("inbound %d", inst.Id))
 	if err := proc.Start(); err != nil {
+		// Never tracked, so removeLocked would not clean these up later.
+		_ = os.Remove(cfgPath)
+		_ = os.RemoveAll(decoyDirForID(inst.Id))
 		return nil, err
 	}
 	m.procs[inst.Id] = &managed{proc: proc, fingerprint: fp}

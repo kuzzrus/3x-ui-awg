@@ -2327,6 +2327,20 @@ export const sections: readonly Section[] = [
       },
       {
         method: 'POST',
+        path: '/panel/api/xray/naiveproxy/:action',
+        summary:
+          'Manage the NaiveProxy engine binary (a Caddy build with the klzgrad forward_proxy plugin) that NaiveProxy inbounds run. The action parameter selects the operation.',
+        params: [
+          {
+            name: 'action',
+            in: 'path',
+            type: 'string',
+            desc: 'status — return {installed, supported, platform}; supported is false on any host but linux/amd64, where no build is published. install — download the pinned release (verified against its sha256) into bin/naiveproxy; a no-op when already installed. NaiveProxy inbounds that were waiting for the engine start on the next reconcile tick, no restart needed.',
+          },
+        ],
+      },
+      {
+        method: 'POST',
         path: '/panel/api/xray/wireproxy/:action',
         summary:
           'Manage the panel-hosted WARP-via-wireproxy sidecar (github.com/kuzzrus/WARP_WireProxy_Manager, vendored and pinned). The action parameter selects the operation.',
