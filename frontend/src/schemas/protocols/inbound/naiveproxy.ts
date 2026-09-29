@@ -31,6 +31,7 @@ export const NaiveproxyInboundSettingsSchema = z.object({
   domain: z.string().min(1).default(''),
   certFile: z.string().min(1).default(''),
   keyFile: z.string().min(1).default(''),
+  publicPort: z.number().int().min(1).max(65535).default(443),
   clients: z.array(NaiveproxyClientSchema).default([]),
 });
 export type NaiveproxyInboundSettings = z.infer<typeof NaiveproxyInboundSettingsSchema>;

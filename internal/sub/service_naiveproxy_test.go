@@ -47,6 +47,39 @@ func TestGenNaiveProxyLinkFields(t *testing.T) {
 	}
 }
 
+// A front door that is not on 443 must be dialled where it is reachable; a
+// missing or out-of-range value falls back to 443 rather than emitting a dead link.
+func TestGenNaiveProxyLinkPublicPort(t *testing.T) {
+	cases := []struct {
+		name string
+		port string
+		want string
+	}{
+		{"custom", `"publicPort":8443,`, "8443"},
+		{"missing", ``, "443"},
+		{"zero", `"publicPort":0,`, "443"},
+		{"too large", `"publicPort":70000,`, "443"},
+		{"fractional", `"publicPort":8443.5,`, "443"},
+		{"not a number", `"publicPort":"8443",`, "443"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			inbound := &model.Inbound{
+				Protocol: model.NaiveProxy,
+				Settings: `{"domain":"naive.example.com",` + tc.port + `"clients":[{"email":"user","enable":true,"naiveProxyPassword":"` + naiveTestPassword + `"}]}`,
+			}
+			s := &SubService{}
+			u, err := url.Parse(s.genNaiveProxyLink(inbound, "user"))
+			if err != nil {
+				t.Fatalf("link does not parse: %v", err)
+			}
+			if u.Port() != tc.want {
+				t.Fatalf("port = %q, want %q", u.Port(), tc.want)
+			}
+		})
+	}
+}
+
 // Caddy's basic_auth compares the decoded pair, so reserved characters in a
 // hand-set credential must survive the userinfo round trip.
 func TestGenNaiveProxyLinkEscapesCredentials(t *testing.T) {

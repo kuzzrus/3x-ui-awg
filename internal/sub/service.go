@@ -1120,22 +1120,32 @@ func (s *SubService) genTproxyLink(inbound *model.Inbound, email string) string 
 	}, "")
 }
 
-// naiveProxyPublicPort is where NaiveProxy clients connect: the shared front
-// door's 443, not the inbound's own loopback-only listen port.
-const naiveProxyPublicPort = 443
+// naiveProxyDefaultPublicPort is where NaiveProxy clients connect unless the
+// inbound sets publicPort: the shared front door's 443, not its loopback listen port.
+const naiveProxyDefaultPublicPort = 443
 
-// genNaiveProxyLink builds a naive+https:// link (NekoBox/husi/Exclave form): the
-// inbound's own domain on 443, the client's email as username (Caddy's basic_auth).
+// naiveProxyPublicPort reads the inbound's publicPort, falling back to 443 for a
+// missing or out-of-range value (settings reach us as free-form JSON via the API).
+func naiveProxyPublicPort(settings map[string]any) int {
+	if p, ok := settings["publicPort"].(float64); ok && p >= 1 && p <= 65535 && p == float64(int(p)) {
+		return int(p)
+	}
+	return naiveProxyDefaultPublicPort
+}
+
+// genNaiveProxyLink builds a naive+https:// link (NekoBox/husi/Exclave form): the inbound's
+// own domain and public port, the client's email as username (Caddy's basic_auth).
 func (s *SubService) genNaiveProxyLink(inbound *model.Inbound, email string) string {
 	if inbound.Protocol != model.NaiveProxy {
 		return ""
 	}
-	domain, _ := s.linkSettings(inbound)["domain"].(string)
+	settings := s.linkSettings(inbound)
+	domain, _ := settings["domain"].(string)
 	resolved, ok := s.clientForLink(inbound, email)
 	if domain == "" || !ok || resolved.NaiveProxyPassword == "" {
 		return ""
 	}
-	link := fmt.Sprintf("naive+https://%s:%s@%s", encodeUserinfo(email), encodeUserinfo(resolved.NaiveProxyPassword), joinHostPort(domain, naiveProxyPublicPort))
+	link := fmt.Sprintf("naive+https://%s:%s@%s", encodeUserinfo(email), encodeUserinfo(resolved.NaiveProxyPassword), joinHostPort(domain, naiveProxyPublicPort(settings)))
 	return buildLinkWithParams(link, nil, s.genRemark(inbound, email, "", ""))
 }
 

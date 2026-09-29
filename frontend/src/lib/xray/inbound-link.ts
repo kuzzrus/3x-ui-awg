@@ -891,9 +891,9 @@ export function genTproxyLink(input: GenTproxyLinkInput): string {
   return url.toString();
 }
 
-// Where NaiveProxy clients connect: the shared front door's 443, never the
-// inbound's own loopback-only listen port.
-const NAIVEPROXY_PUBLIC_PORT = 443;
+// Where NaiveProxy clients connect unless the inbound sets publicPort: the
+// shared front door's 443, never the inbound's own loopback-only listen port.
+const NAIVEPROXY_DEFAULT_PUBLIC_PORT = 443;
 
 export interface GenNaiveProxyLinkInput {
   inbound: Inbound;
@@ -902,16 +902,16 @@ export interface GenNaiveProxyLinkInput {
   clientPassword?: string;
 }
 
-// naive+https:// share link (the form NekoBox/husi/Exclave import), mirroring
-// internal/sub/service.go's genNaiveProxyLink: the inbound's own domain on 443,
-// the client's email as username (Caddy's basic_auth pair).
+// naive+https:// link (NekoBox/husi/Exclave form), mirroring internal/sub's
+// genNaiveProxyLink: the inbound's domain and public port, the email as username.
 export function genNaiveProxyLink(input: GenNaiveProxyLinkInput): string {
   const { inbound, remark = '', clientEmail = '', clientPassword = '' } = input;
   if (inbound.protocol !== 'naiveproxy') return '';
   const domain = inbound.settings.domain;
   if (!domain || !clientEmail || !clientPassword) return '';
+  const port = inbound.settings.publicPort || NAIVEPROXY_DEFAULT_PUBLIC_PORT;
   const url = new URL(
-    `naive+https://${encodeURIComponent(clientEmail)}:${encodeURIComponent(clientPassword)}@${formatUrlHost(domain)}:${NAIVEPROXY_PUBLIC_PORT}`,
+    `naive+https://${encodeURIComponent(clientEmail)}:${encodeURIComponent(clientPassword)}@${formatUrlHost(domain)}:${port}`,
   );
   if (remark) {
     url.hash = encodeURIComponent(remark);

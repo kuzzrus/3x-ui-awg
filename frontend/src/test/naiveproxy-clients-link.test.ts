@@ -4,9 +4,8 @@ import { genInboundLinks, genNaiveProxyLink } from '@/lib/xray/inbound-link';
 import { InboundSchema } from '@/schemas/api/inbound';
 
 // Multi-client naiveproxy renders one naive+https:// link per entry in
-// settings.clients: the inbound's OWN domain on the public 443 (never its
-// loopback listen port), the client's email as username.
-function naiveInbound() {
+// settings.clients: the inbound's own domain and public port, never its loopback port.
+function naiveInbound(publicPort?: number) {
   return InboundSchema.parse({
     id: 72,
     remark: 'np-mc',
@@ -16,6 +15,7 @@ function naiveInbound() {
       domain: 'naive.example.com',
       certFile: '/etc/ssl/naive.pem',
       keyFile: '/etc/ssl/naive.key',
+      ...(publicPort === undefined ? {} : { publicPort }),
       clients: [
         { email: 'alice', naiveProxyPassword: 'pw-alice', enable: true },
         { email: 'bob', naiveProxyPassword: 'pw-bob', enable: true },
@@ -40,6 +40,21 @@ describe('naiveproxy multi-client link fan-out', () => {
       expect(link).not.toContain('18443');
       expect(link).not.toContain('panel.example.test');
     }
+  });
+
+  it('dials the inbound publicPort when the front door is not on 443', () => {
+    const out = genInboundLinks({
+      inbound: naiveInbound(8443),
+      remark: 'np-mc',
+      fallbackHostname: 'panel.example.test',
+    });
+    const links = out.split('\r\n').filter(Boolean);
+    expect(links[0]).toBe('naive+https://alice:pw-alice@naive.example.com:8443#np-mc');
+  });
+
+  it('rejects a public port outside 1-65535', () => {
+    expect(() => naiveInbound(0)).toThrow();
+    expect(() => naiveInbound(70000)).toThrow();
   });
 
   it('skips a client that has no password yet', () => {

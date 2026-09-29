@@ -298,6 +298,7 @@ export function createDefaultNaiveProxyInboundSettings(): NaiveproxyInboundSetti
     domain: '',
     certFile: '',
     keyFile: '',
+    publicPort: 443,
     clients: [],
   };
 }
