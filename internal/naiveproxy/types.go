@@ -12,6 +12,7 @@ type Client struct {
 // process. Package-local, mirrors internal/mtproto's Instance.
 type Instance struct {
 	Id         int
+	Tag        string // the inbound's own tag, only used to roll metered traffic up to it
 	ListenAddr string // loopback "127.0.0.1:PORT" this Caddy binds to
 	Domain     string // the SNI frontproxy's SNI-relay matches to reach ListenAddr
 

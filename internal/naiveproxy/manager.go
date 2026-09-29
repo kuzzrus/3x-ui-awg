@@ -43,6 +43,9 @@ type Manager struct {
 	mu    sync.Mutex
 	procs map[int]*managed
 	swept bool
+	// meters outlive their process, so bytes a stopped Caddy's last tunnels
+	// reported are still handed over by the next CollectTraffic.
+	meters map[int]*meter
 }
 
 var (
@@ -52,8 +55,23 @@ var (
 
 // GetManager returns the process-wide NaiveProxy manager singleton.
 func GetManager() *Manager {
-	managerOnce.Do(func() { manager = &Manager{procs: map[int]*managed{}} })
+	managerOnce.Do(func() { manager = &Manager{procs: map[int]*managed{}, meters: map[int]*meter{}} })
 	return manager
+}
+
+// meterLocked returns inbound id's meter, created on first use and retagged so
+// it follows the inbound's current tag.
+func (m *Manager) meterLocked(id int, tag string) *meter {
+	if m.meters == nil {
+		m.meters = map[int]*meter{}
+	}
+	mt, ok := m.meters[id]
+	if !ok {
+		mt = newMeter(tag)
+		m.meters[id] = mt
+	}
+	mt.setTag(tag)
+	return mt
 }
 
 // sweepOrphansLocked kills stray caddy processes from a previous run, once
@@ -92,6 +110,7 @@ func (m *Manager) ensureLocked(inst Instance) (*Process, error) {
 	if err != nil {
 		return nil, err
 	}
+	mt := m.meterLocked(inst.Id, inst.Tag)
 	// Unconditional: the decoy dir is keyed by Id not Domain, so a
 	// domain-only change would never show up in fp if this were gated on it.
 	writeDecoyContent(inst)
@@ -112,7 +131,7 @@ func (m *Manager) ensureLocked(inst Instance) (*Process, error) {
 		return nil, fmt.Errorf("naiveproxy: cannot write %s: %w", cfgPath, err)
 	}
 
-	proc := newProcess(cfgPath, inst.ListenAddr, fmt.Sprintf("inbound %d", inst.Id))
+	proc := newProcess(cfgPath, inst.ListenAddr, fmt.Sprintf("inbound %d", inst.Id), mt)
 	if err := proc.Start(); err != nil {
 		// Never tracked, so removeLocked would not clean these up later.
 		_ = os.Remove(cfgPath)
@@ -214,4 +233,24 @@ func (m *Manager) IsRunning(id int) bool {
 	defer m.mu.Unlock()
 	cur, ok := m.procs[id]
 	return ok && cur.proc.IsRunning()
+}
+
+// CollectTraffic returns each client's byte delta since the last call, plus the emails
+// that moved bytes. A tunnel counts only once it closes, so a long one lands late, at once.
+func (m *Manager) CollectTraffic() ([]Traffic, []string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []Traffic
+	var online []string
+	for id, mt := range m.meters {
+		for _, t := range mt.drain() {
+			out = append(out, t)
+			online = append(online, t.Email)
+		}
+		// Drained just above, and no process left to write more.
+		if _, alive := m.procs[id]; !alive {
+			delete(m.meters, id)
+		}
+	}
+	return out, online
 }

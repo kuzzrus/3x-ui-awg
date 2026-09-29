@@ -55,6 +55,9 @@ func renderCaddyfile(inst Instance) (string, error) {
 	fmt.Fprintf(&b, "https://:%s {\n", port)
 	b.WriteString("\tbind 127.0.0.1\n")
 	fmt.Fprintf(&b, "\ttls %s %s\n", caddyfileQuote(inst.CertFile), caddyfileQuote(inst.KeyFile))
+	// Stdout carries only this access log, which accounting.go meters per user;
+	// dropping request/resp_headers keeps client IPs and targets out of it.
+	b.WriteString("\tlog {\n\t\toutput stdout\n\t\tformat filter {\n\t\t\twrap json\n\t\t\tfields {\n\t\t\t\trequest delete\n\t\t\t\tresp_headers delete\n\t\t\t}\n\t\t}\n\t}\n")
 	// Required: forward_proxy's default order runs before file_server,
 	// which confirmed live never gets a turn at all without this route{}.
 	b.WriteString("\troute {\n")
