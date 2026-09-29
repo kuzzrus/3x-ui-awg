@@ -629,7 +629,7 @@ func (s *SubService) getInboundsBySubId(subId string) ([]*model.Inbound, error) 
 		JOIN client_inbounds ON client_inbounds.inbound_id = inbounds.id
 		JOIN clients ON clients.id = client_inbounds.client_id
 		WHERE
-			inbounds.protocol in ('vmess','vless','trojan','shadowsocks','hysteria','wireguard','amneziawg','mtproto','tuic','tproxy')
+			inbounds.protocol in ('vmess','vless','trojan','shadowsocks','hysteria','wireguard','amneziawg','mtproto','tuic','tproxy','naiveproxy')
 			AND clients.sub_id = ? AND inbounds.enable = ?
 	)`, subId, true).Order("sub_sort_index ASC").Order("id ASC").Find(&inbounds).Error
 	if err != nil {
@@ -780,6 +780,8 @@ func (s *SubService) GetLink(inbound *model.Inbound, email string) string {
 		return s.genMtprotoLink(inbound, email)
 	case "tproxy":
 		return s.genTproxyLink(inbound, email)
+	case "naiveproxy":
+		return s.genNaiveProxyLink(inbound, email)
 	case "wireguard":
 		return s.genWireguardLink(inbound, email)
 	case "amneziawg":
@@ -1116,6 +1118,35 @@ func (s *SubService) genTproxyLink(inbound *model.Inbound, email string) string 
 		"server": hostname,
 		"secret": secret,
 	}, "")
+}
+
+// naiveProxyDefaultPublicPort is where NaiveProxy clients connect unless the
+// inbound sets publicPort: the shared front door's 443, not its loopback listen port.
+const naiveProxyDefaultPublicPort = 443
+
+// naiveProxyPublicPort reads the inbound's publicPort, falling back to 443 for a
+// missing or out-of-range value (settings reach us as free-form JSON via the API).
+func naiveProxyPublicPort(settings map[string]any) int {
+	if p, ok := settings["publicPort"].(float64); ok && p >= 1 && p <= 65535 && p == float64(int(p)) {
+		return int(p)
+	}
+	return naiveProxyDefaultPublicPort
+}
+
+// genNaiveProxyLink builds a naive+https:// link (NekoBox/husi/Exclave form): the inbound's
+// own domain and public port, the client's email as username (Caddy's basic_auth).
+func (s *SubService) genNaiveProxyLink(inbound *model.Inbound, email string) string {
+	if inbound.Protocol != model.NaiveProxy {
+		return ""
+	}
+	settings := s.linkSettings(inbound)
+	domain, _ := settings["domain"].(string)
+	resolved, ok := s.clientForLink(inbound, email)
+	if domain == "" || !ok || resolved.NaiveProxyPassword == "" {
+		return ""
+	}
+	link := fmt.Sprintf("naive+https://%s:%s@%s", encodeUserinfo(email), encodeUserinfo(resolved.NaiveProxyPassword), joinHostPort(domain, naiveProxyPublicPort(settings)))
+	return buildLinkWithParams(link, nil, s.genRemark(inbound, email, "", ""))
 }
 
 // Protocol link generators are intentionally ordered as:

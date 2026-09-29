@@ -543,6 +543,8 @@
         "naiveProxyDomainHint": "This inbound's own domain, reached via the reverse proxy's SNI relay -- must differ from the panel's own domain and from every other NaiveProxy inbound's.",
         "naiveProxyCertFile": "Certificate file",
         "naiveProxyKeyFile": "Certificate key file",
+        "naiveProxyPublicPort": "Public port",
+        "naiveProxyPublicPortHint": "The port clients dial for this domain: the one your reverse proxy is reachable on (normally the REALITY inbound's port in front of it). Only used to build share links; 443 by default.",
         "tproxyRouteThroughXray": "Route through Xray",
         "tproxyRouteThroughXrayHint": "Send this proxy's Telegram traffic through Xray so it follows your routing rules. The MTProxy engine itself can't dial out through a proxy, so the panel transparently redirects its traffic at the OS level into a loopback Xray bridge tagged with this inbound's tag; reference that tag in the Routing tab for advanced rules.",
         "tproxyRouteOutbound": "Outbound",

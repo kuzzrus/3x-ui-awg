@@ -19,6 +19,7 @@ const LINK_PROTOCOLS: ReadonlySet<string> = new Set([
   Protocols.MTPROTO,
   Protocols.TUIC,
   Protocols.TPROXY,
+  Protocols.NAIVEPROXY,
 ]);
 
 export function hasShareLink(protocol: string): boolean {
