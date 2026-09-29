@@ -451,6 +451,16 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 		injectTproxyEgress(xrayConfig, inbound)
 	}
 
+	// Same opt-in shape again for naiveproxy, whose Caddy dials out through the
+	// same kind of loopback SOCKS bridge as mtproto's mtg.
+	for i := range inbounds {
+		inbound := inbounds[i]
+		if inbound.Protocol != model.NaiveProxy || !inbound.Enable || inbound.NodeID != nil {
+			continue
+		}
+		injectNaiveProxyEgress(xrayConfig, inbound)
+	}
+
 	// Every AmneziaWG inbound is embedded (internal/amneziawgnet: amneziawg-go
 	// over a gVisor netstack, no kernel module) and relays every peer's
 	// decapsulated traffic into its own loopback SOCKS5 inbound, always on —
@@ -695,10 +705,9 @@ func routingTagIsBalancer(routing map[string]any, tag string) bool {
 	return false
 }
 
-// mtprotoEgressSocksSettings is the loopback SOCKS server a routed mtproto
-// inbound exposes for its mtg sidecar to dial Telegram through. mtg makes plain
-// TCP connections, so UDP is left off (matching the panel egress bridge).
-const mtprotoEgressSocksSettings = `{"auth":"noauth","udp":false}`
+// socksEgressSettings is the loopback SOCKS server a routed mtproto or naiveproxy
+// inbound exposes for its sidecar to dial out through; both make plain TCP, so UDP stays off.
+const socksEgressSettings = `{"auth":"noauth","udp":false}`
 
 // injectMtprotoEgress wires one routed mtproto inbound into the generated
 // config after any selected outbound resolves in the final target set. Invalid
@@ -707,6 +716,18 @@ const mtprotoEgressSocksSettings = `{"auth":"noauth","udp":false}`
 // hot-appliable, leaves the stored template untouched, and never forces a full
 // Xray restart. Mirrors injectPanelEgress.
 func injectMtprotoEgress(cfg *xray.Config, inbound *model.Inbound) {
+	injectEgressBridge(cfg, inbound, "mtproto egress", "socks", socksEgressSettings)
+}
+
+// injectNaiveProxyEgress is injectMtprotoEgress's sibling: Caddy's forward_proxy dials out
+// through `upstream socks5://127.0.0.1:<routeXrayPort>` (renderCaddyfile), the same SOCKS bridge.
+func injectNaiveProxyEgress(cfg *xray.Config, inbound *model.Inbound) {
+	injectEgressBridge(cfg, inbound, "naiveproxy egress", "socks", socksEgressSettings)
+}
+
+// injectEgressBridge is the body the per-protocol injectors share: they differ only
+// in the log label and in the bridge inbound's protocol and settings.
+func injectEgressBridge(cfg *xray.Config, inbound *model.Inbound, label, protocol, settings string) {
 	var parsed struct {
 		RouteThroughXray bool   `json:"routeThroughXray"`
 		RouteXrayPort    int    `json:"routeXrayPort"`
@@ -715,13 +736,13 @@ func injectMtprotoEgress(cfg *xray.Config, inbound *model.Inbound) {
 	if err := json.Unmarshal([]byte(inbound.Settings), &parsed); err != nil {
 		return
 	}
-	if !parsed.RouteThroughXray || parsed.RouteXrayPort <= 0 || inbound.Tag == "" {
+	if !parsed.RouteThroughXray || !validEgressPort(parsed.RouteXrayPort) || inbound.Tag == "" {
 		return
 	}
 	tag := inbound.Tag
 	for i := range cfg.InboundConfigs {
 		if cfg.InboundConfigs[i].Tag == tag {
-			logger.Warning("mtproto egress: inbound tag [", tag, "] already present in generated config, skipping bridge")
+			logger.Warning(label, ": inbound tag [", tag, "] already present in generated config, skipping bridge")
 			return
 		}
 	}
@@ -730,12 +751,12 @@ func injectMtprotoEgress(cfg *xray.Config, inbound *model.Inbound) {
 		routing := map[string]any{}
 		if len(cfg.RouterConfig) > 0 {
 			if err := json.Unmarshal(cfg.RouterConfig, &routing); err != nil {
-				logger.Warning("mtproto egress: routing section is unparsable, skipping injection:", err)
+				logger.Warning(label, ": routing section is unparsable, skipping injection:", err)
 				return
 			}
 		}
 		if !routingTargetExists(routing, cfg.OutboundConfigs, parsed.OutboundTag) {
-			logger.Warning("mtproto egress: target tag [", parsed.OutboundTag, "] not found, skipping injection")
+			logger.Warning(label, ": target tag [", parsed.OutboundTag, "] not found, skipping injection")
 			return
 		}
 		rules, _ := routing["rules"].([]any)
@@ -751,7 +772,7 @@ func injectMtprotoEgress(cfg *xray.Config, inbound *model.Inbound) {
 		routing["rules"] = append([]any{rule}, rules...)
 		newRouting, err := json.Marshal(routing)
 		if err != nil {
-			logger.Warning("mtproto egress: failed to rebuild routing section, skipping injection:", err)
+			logger.Warning(label, ": failed to rebuild routing section, skipping injection:", err)
 			return
 		}
 		cfg.RouterConfig = json_util.RawMessage(newRouting)
@@ -760,8 +781,8 @@ func injectMtprotoEgress(cfg *xray.Config, inbound *model.Inbound) {
 	cfg.InboundConfigs = append(cfg.InboundConfigs, xray.InboundConfig{
 		Listen:   json_util.RawMessage(`"127.0.0.1"`),
 		Port:     parsed.RouteXrayPort,
-		Protocol: "socks",
-		Settings: json_util.RawMessage(mtprotoEgressSocksSettings),
+		Protocol: protocol,
+		Settings: json_util.RawMessage(settings),
 		Tag:      tag,
 	})
 }
@@ -791,63 +812,7 @@ const tproxyEgressDokodemoSettings = `{"network":"tcp","followRedirect":true}`
 // bridge, which is what followRedirect is for -- the engine itself is never
 // told anything and has no idea this is happening.
 func injectTproxyEgress(cfg *xray.Config, inbound *model.Inbound) {
-	var parsed struct {
-		RouteThroughXray bool   `json:"routeThroughXray"`
-		RouteXrayPort    int    `json:"routeXrayPort"`
-		OutboundTag      string `json:"outboundTag"`
-	}
-	if err := json.Unmarshal([]byte(inbound.Settings), &parsed); err != nil {
-		return
-	}
-	if !parsed.RouteThroughXray || parsed.RouteXrayPort <= 0 || inbound.Tag == "" {
-		return
-	}
-	tag := inbound.Tag
-	for i := range cfg.InboundConfigs {
-		if cfg.InboundConfigs[i].Tag == tag {
-			logger.Warning("tproxy egress: inbound tag [", tag, "] already present in generated config, skipping bridge")
-			return
-		}
-	}
-
-	if parsed.OutboundTag != "" {
-		routing := map[string]any{}
-		if len(cfg.RouterConfig) > 0 {
-			if err := json.Unmarshal(cfg.RouterConfig, &routing); err != nil {
-				logger.Warning("tproxy egress: routing section is unparsable, skipping injection:", err)
-				return
-			}
-		}
-		if !routingTargetExists(routing, cfg.OutboundConfigs, parsed.OutboundTag) {
-			logger.Warning("tproxy egress: target tag [", parsed.OutboundTag, "] not found, skipping injection")
-			return
-		}
-		rules, _ := routing["rules"].([]any)
-		rule := map[string]any{
-			"type":       "field",
-			"inboundTag": []any{tag},
-		}
-		if routingTagIsBalancer(routing, parsed.OutboundTag) {
-			rule["balancerTag"] = parsed.OutboundTag
-		} else {
-			rule["outboundTag"] = parsed.OutboundTag
-		}
-		routing["rules"] = append([]any{rule}, rules...)
-		newRouting, err := json.Marshal(routing)
-		if err != nil {
-			logger.Warning("tproxy egress: failed to rebuild routing section, skipping injection:", err)
-			return
-		}
-		cfg.RouterConfig = json_util.RawMessage(newRouting)
-	}
-
-	cfg.InboundConfigs = append(cfg.InboundConfigs, xray.InboundConfig{
-		Listen:   json_util.RawMessage(`"127.0.0.1"`),
-		Port:     parsed.RouteXrayPort,
-		Protocol: "dokodemo-door",
-		Settings: json_util.RawMessage(tproxyEgressDokodemoSettings),
-		Tag:      tag,
-	})
+	injectEgressBridge(cfg, inbound, "tproxy egress", "dokodemo-door", tproxyEgressDokodemoSettings)
 }
 
 // amneziawgEgressSniffingSettings matches this fork's normal per-inbound
