@@ -10,12 +10,14 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/naiveproxy"
 )
 
+const fakeNaiveProxyBinary = "pretend-binary"
+
 func placeFakeNaiveProxyBinary(t *testing.T) {
 	t.Helper()
 	if err := os.MkdirAll(naiveproxy.Dir(), 0o700); err != nil {
 		t.Fatalf("create %s: %v", naiveproxy.Dir(), err)
 	}
-	if err := os.WriteFile(naiveproxy.BinPath(), []byte("pretend-binary"), 0o750); err != nil {
+	if err := os.WriteFile(naiveproxy.BinPath(), []byte(fakeNaiveProxyBinary), 0o750); err != nil {
 		t.Fatalf("write fake binary: %v", err)
 	}
 }
@@ -41,7 +43,8 @@ func TestNaiveProxyStatusFollowsTheBinary(t *testing.T) {
 	}
 }
 
-// Install must not touch the network when the engine is already there.
+// A download would replace the placeholder with the real engine (or fail
+// offline), so an untouched file proves Install returned before fetching anything.
 func TestNaiveProxyInstallIsANoOpWhenInstalled(t *testing.T) {
 	if err := database.InitDB(filepath.Join(t.TempDir(), "x-ui.db")); err != nil {
 		t.Fatalf("InitDB: %v", err)
@@ -52,5 +55,12 @@ func TestNaiveProxyInstallIsANoOpWhenInstalled(t *testing.T) {
 
 	if err := (&NaiveProxyService{}).Install(); err != nil {
 		t.Fatalf("Install with the engine already present: %v", err)
+	}
+	got, err := os.ReadFile(naiveproxy.BinPath())
+	if err != nil {
+		t.Fatalf("read the binary back: %v", err)
+	}
+	if string(got) != fakeNaiveProxyBinary {
+		t.Fatalf("Install replaced the engine that was already installed (%d bytes now)", len(got))
 	}
 }
