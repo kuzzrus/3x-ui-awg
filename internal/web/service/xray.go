@@ -736,7 +736,7 @@ func injectEgressBridge(cfg *xray.Config, inbound *model.Inbound, label, protoco
 	if err := json.Unmarshal([]byte(inbound.Settings), &parsed); err != nil {
 		return
 	}
-	if !parsed.RouteThroughXray || parsed.RouteXrayPort <= 0 || inbound.Tag == "" {
+	if !parsed.RouteThroughXray || !validEgressPort(parsed.RouteXrayPort) || inbound.Tag == "" {
 		return
 	}
 	tag := inbound.Tag

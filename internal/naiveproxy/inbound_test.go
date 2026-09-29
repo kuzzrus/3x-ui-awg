@@ -45,13 +45,6 @@ func TestInstanceFromInboundParsesSettings(t *testing.T) {
 	}
 }
 
-func TestFreeLocalPortIsUsable(t *testing.T) {
-	port, err := FreeLocalPort()
-	if err != nil || port <= 0 || port > 65535 {
-		t.Fatalf("FreeLocalPort = %d, %v; want a usable loopback port", port, err)
-	}
-}
-
 func TestInstanceFromInboundRejectsWrongProtocol(t *testing.T) {
 	ib := &model.Inbound{Protocol: model.VLESS, Settings: `{}`}
 	if _, ok := InstanceFromInbound(ib); ok {

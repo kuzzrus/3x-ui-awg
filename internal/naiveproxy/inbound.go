@@ -1,24 +1,11 @@
 package naiveproxy
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 )
-
-// FreeLocalPort asks the OS for a loopback TCP port and releases it, for the
-// Xray egress bridge (internal/web/service's normalizeNaiveProxyXrayPort).
-func FreeLocalPort() (int, error) {
-	l, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
-}
 
 // InstanceFromInbound builds Instance from ib's own Settings JSON. ok is
 // false only for a wrong protocol or unparsable Settings, never a client-less inbound.

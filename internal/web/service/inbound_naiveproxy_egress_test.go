@@ -95,6 +95,63 @@ func TestNormalizeNaiveProxyXrayPort(t *testing.T) {
 	}
 }
 
+// A port past 65535 would be written verbatim into the generated Xray config and
+// stop Xray from starting, so anywhere the backend picks the port it counts as missing.
+func TestNormalizeRoutedXrayPortReplacesAnOutOfRangePort(t *testing.T) {
+	allocate := func() (int, error) { return 47001, nil }
+	routed := func(port string) string { return `{"routeThroughXray":true,"routeXrayPort":` + port + `}` }
+	cases := []struct {
+		name     string
+		settings string
+		old      string
+		want     int
+	}{
+		{"sent above the range", routed("65536"), "", 47001},
+		{"sent far above the range", routed("99999999999"), "", 47001},
+		{"sent negative", routed("-5"), "", 47001},
+		{"sent zero", routed("0"), "", 47001},
+		{"stored above the range, none sent", `{"routeThroughXray":true}`, routed("70000"), 47001},
+		{"stored above the range, valid one sent", routed("52000"), routed("70000"), 52000},
+		{"top of the range is kept", routed("65535"), "", 65535},
+		{"bottom of the range is kept", routed("1"), "", 1},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ib := &model.Inbound{Protocol: model.NaiveProxy, Settings: c.settings}
+			if err := normalizeRoutedXrayPort(ib, c.old, "naiveproxy", allocate); err != nil {
+				t.Fatal(err)
+			}
+			if got := routeXrayPortOf(t, ib.Settings); got != c.want {
+				t.Fatalf("port = %d, want %d (settings %s)", got, c.want, ib.Settings)
+			}
+		})
+	}
+}
+
+// An out-of-range port already stored (saved before the normalizer checked it)
+// must not reach the generated config, or Xray would refuse to start at all.
+func TestInjectEgressBridgeSkipsAnOutOfRangePort(t *testing.T) {
+	for _, port := range []int{0, -1, 65536, 99999} {
+		cfg := egressTestConfig()
+		injectNaiveProxyEgress(cfg, &model.Inbound{
+			Tag: "inbound-18443", Protocol: model.NaiveProxy, Enable: true,
+			Settings: fmt.Sprintf(`{"routeThroughXray":true,"routeXrayPort":%d}`, port),
+		})
+		if len(cfg.InboundConfigs) != 1 {
+			t.Fatalf("port %d: a bridge with an unusable port must not be injected, got %+v", port, cfg.InboundConfigs)
+		}
+	}
+
+	cfg := egressTestConfig()
+	injectNaiveProxyEgress(cfg, &model.Inbound{
+		Tag: "inbound-18443", Protocol: model.NaiveProxy, Enable: true,
+		Settings: `{"routeThroughXray":true,"routeXrayPort":65535}`,
+	})
+	if len(cfg.InboundConfigs) != 2 || cfg.InboundConfigs[1].Port != 65535 {
+		t.Fatalf("the top of the range is a valid bridge port, got %+v", cfg.InboundConfigs)
+	}
+}
+
 func TestInjectNaiveProxyEgress(t *testing.T) {
 	cfg := egressTestConfig()
 	injectNaiveProxyEgress(cfg, &model.Inbound{

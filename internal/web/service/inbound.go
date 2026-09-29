@@ -21,7 +21,6 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/mtproto"
-	"github.com/mhsanaei/3x-ui/v3/internal/naiveproxy"
 	"github.com/mhsanaei/3x-ui/v3/internal/tproxy"
 	"github.com/mhsanaei/3x-ui/v3/internal/tuic"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/common"
@@ -1060,9 +1059,11 @@ func (s *InboundService) normalizeMtprotoXrayPort(inbound *model.Inbound, oldSet
 	return normalizeRoutedXrayPort(inbound, oldSettings, "mtproto", mtproto.FreeLocalPort)
 }
 
-// normalizeRoutedXrayPort is the protocol-independent body of the per-protocol
-// normalizers: mtproto, tproxy and naiveproxy share the same two settings keys
-// and differ only in the log label and which package allocates the free port.
+// validEgressPort reports whether p can be the loopback port of an egress bridge.
+func validEgressPort(p int) bool { return p >= 1 && p <= 65535 }
+
+// normalizeRoutedXrayPort is the body the mtproto, tproxy and naiveproxy normalizers
+// share; they differ only in the log label and the free-port allocator.
 func normalizeRoutedXrayPort(inbound *model.Inbound, oldSettings, label string, allocate func() (int, error)) error {
 	var parsed map[string]any
 	if err := json.Unmarshal([]byte(inbound.Settings), &parsed); err != nil || parsed == nil {
@@ -1086,12 +1087,12 @@ func normalizeRoutedXrayPort(inbound *model.Inbound, oldSettings, label string, 
 	}
 
 	// Prefer the already-stored port (carried across edits), then any value the
-	// client sent, then allocate a fresh one.
+	// client sent, then allocate a fresh one; an out-of-range port counts as missing.
 	port := parseRouteXrayPort(oldSettings)
-	if port <= 0 {
+	if !validEgressPort(port) {
 		port = settingsRouteXrayPort(parsed)
 	}
-	if port <= 0 {
+	if !validEgressPort(port) {
 		allocated, err := allocate()
 		if err != nil {
 			return common.NewError(label+": could not allocate an Xray egress port:", err)
@@ -1130,13 +1131,13 @@ func (s *InboundService) normalizeTproxyXrayPort(inbound *model.Inbound, oldSett
 	return normalizeRoutedXrayPort(inbound, oldSettings, "tproxy", tproxy.FreeLocalPort)
 }
 
-// normalizeNaiveProxyXrayPort is the same contract for naiveproxy inbounds: its
-// Caddy dials out through the loopback SOCKS bridge injectNaiveProxyEgress adds.
+// normalizeNaiveProxyXrayPort is the same contract for naiveproxy inbounds, whose
+// Caddy dials out through injectNaiveProxyEgress's bridge; it reuses mtproto's allocator.
 func (s *InboundService) normalizeNaiveProxyXrayPort(inbound *model.Inbound, oldSettings string) error {
 	if inbound.Protocol != model.NaiveProxy {
 		return nil
 	}
-	return normalizeRoutedXrayPort(inbound, oldSettings, "naiveproxy", naiveproxy.FreeLocalPort)
+	return normalizeRoutedXrayPort(inbound, oldSettings, "naiveproxy", mtproto.FreeLocalPort)
 }
 
 // AddInbound creates a new inbound configuration.
@@ -1422,9 +1423,8 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 		postCommitApply()
 	}
 
-	// A routed sidecar inbound (mtproto, tproxy, naiveproxy) is not an Xray inbound
-	// itself, so the runtime push above only (re)starts its sidecar. The egress
-	// bridge lives in the generated config, so force a regen to wire it in.
+	// A routed sidecar's egress bridge lives in the generated config, which the
+	// runtime push above never touches, so force a regen to wire it in.
 	if sidecarRoutesThroughXray(inbound) {
 		needRestart = true
 	}
@@ -2051,9 +2051,8 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 				return err
 			}
 		}
-		// (Re)generate the Xray config whenever routing was or is now enabled, so
-		// the egress bridge (SOCKS for mtproto/naiveproxy, dokodemo-door for
-		// tproxy) is added, moved, or dropped to match the new settings.
+		// Regenerate whenever routing was or is now on, so the egress bridge (SOCKS,
+		// or tproxy's dokodemo-door) is added, moved or dropped to match the settings.
 		if sidecarRoutesThroughXray(inbound) || oldRouted {
 			needRestart = true
 		}
