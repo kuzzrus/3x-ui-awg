@@ -31,6 +31,7 @@ type XraySettingController struct {
 	NordService                 integration.NordService
 	TorService                  integration.TorService
 	PsiphonService              integration.PsiphonService
+	NaiveProxyService           integration.NaiveProxyService
 	WireproxyService            integration.WireproxyService
 	FrontProxyService           integration.FrontProxyService
 	FrontProxyPathService       service.FrontProxyPathService
@@ -60,6 +61,7 @@ func (a *XraySettingController) initRouter(g *gin.RouterGroup) {
 	g.POST("/tor/:action", a.tor)
 	g.POST("/psiphon/:action", a.psiphon)
 	g.POST("/psiphon/config/upload", a.psiphonConfigUpload)
+	g.POST("/naiveproxy/:action", a.naiveProxy)
 	g.POST("/wireproxy/:action", a.wireproxy)
 	g.POST("/frontproxy/:action", a.frontProxy)
 	g.POST("/frontproxy/decoy/upload", a.frontProxyDecoyUpload)
@@ -336,6 +338,21 @@ func (a *XraySettingController) psiphon(c *gin.Context) {
 		err = a.PsiphonService.SetEgressRegion(c.PostForm("region"))
 	case "verify":
 		resp, err = a.PsiphonService.CurrentExit()
+	}
+	jsonObj(c, resp, err)
+}
+
+// naiveProxy handles the NaiveProxy engine binary (internal/naiveproxy) based on
+// the action parameter. The engine runs per inbound, so there is no start/stop.
+func (a *XraySettingController) naiveProxy(c *gin.Context) {
+	action := c.Param("action")
+	var resp any
+	var err error
+	switch action {
+	case "status":
+		resp = a.NaiveProxyService.Status()
+	case "install":
+		err = a.NaiveProxyService.Install()
 	}
 	jsonObj(c, resp, err)
 }

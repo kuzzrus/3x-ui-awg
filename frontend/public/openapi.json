@@ -13904,6 +13904,47 @@
         }
       }
     },
+    "/panel/api/xray/naiveproxy/{action}": {
+      "post": {
+        "tags": [
+          "Xray Settings"
+        ],
+        "summary": "Manage the NaiveProxy engine binary (a Caddy build with the klzgrad forward_proxy plugin) that NaiveProxy inbounds run. The action parameter selects the operation.",
+        "operationId": "post_panel_api_xray_naiveproxy_action",
+        "parameters": [
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "description": "status — return {installed, supported, platform}; supported is false on any host but linux/amd64, where no build is published. install — download the pinned release (verified against its sha256) into bin/naiveproxy; a no-op when already installed. NaiveProxy inbounds that were waiting for the engine start on the next reconcile tick, no restart needed.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/panel/api/xray/wireproxy/{action}": {
       "post": {
         "tags": [

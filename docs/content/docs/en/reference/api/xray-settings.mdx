@@ -53,6 +53,11 @@ _openapi:
         psiphon/:action region action to actually apply and verify one).
       url: '#list-iso-3166-1-codes-states-plus-common-territories-for-the-egress-region-picker-not-a-psiphon-curated-subset----see-the-psiphonaction-region-action-to-actually-apply-and-verify-one'
     - depth: 2
+      title: Manage the NaiveProxy engine binary (a Caddy build with the klzgrad
+        forward_proxy plugin) that NaiveProxy inbounds run. The action parameter
+        selects the operation.
+      url: '#manage-the-naiveproxy-engine-binary-a-caddy-build-with-the-klzgrad-forward_proxy-plugin-that-naiveproxy-inbounds-run-the-action-parameter-selects-the-operation'
+    - depth: 2
       title: Manage the panel-hosted WARP-via-wireproxy sidecar
         (github.com/kuzzrus/WARP_WireProxy_Manager, vendored and pinned). The
         action parameter selects the operation.
@@ -70,6 +75,17 @@ _openapi:
         must contain an index.html, either at its root or inside a single
         wrapping folder.
       url: '#replace-the-reverse-proxy-decoy-with-an-uploaded-static-site-the-zip-must-contain-an-indexhtml-either-at-its-root-or-inside-a-single-wrapping-folder'
+    - depth: 2
+      title: "List the panel-wide path routes: each entry reaches one XHTTP/WS
+        inbound's own loopback address under a path on the shared reverse-proxy
+        domain, instead of a hand-built external nginx location block. Always
+        resolved after the panel/subscription/tproxy paths, so those can never
+        be shadowed."
+      url: '#list-the-panel-wide-path-routes-each-entry-reaches-one-xhttpws-inbounds-own-loopback-address-under-a-path-on-the-shared-reverse-proxy-domain-instead-of-a-hand-built-external-nginx-location-block-always-resolved-after-the-panelsubscriptiontproxy-paths-so-those-can-never-be-shadowed'
+    - depth: 2
+      title: Replace the entire panel-wide path-route list. Body is JSON. Reloads the
+        running reverse proxy (does not touch or restart Xray).
+      url: '#replace-the-entire-panel-wide-path-route-list-body-is-json-reloads-the-running-reverse-proxy-does-not-touch-or-restart-xray'
     - depth: 2
       title: Manage the AdGuard Home instance the reverse proxy can serve as its
         decoy. Unlike the template decoys this is a real service, so the domain
@@ -191,6 +207,10 @@ _openapi:
           egress-region picker (not a Psiphon-curated subset -- see the
           psiphon/:action region action to actually apply and verify one).
         id: list-iso-3166-1-codes-states-plus-common-territories-for-the-egress-region-picker-not-a-psiphon-curated-subset----see-the-psiphonaction-region-action-to-actually-apply-and-verify-one
+      - content: Manage the NaiveProxy engine binary (a Caddy build with the klzgrad
+          forward_proxy plugin) that NaiveProxy inbounds run. The action
+          parameter selects the operation.
+        id: manage-the-naiveproxy-engine-binary-a-caddy-build-with-the-klzgrad-forward_proxy-plugin-that-naiveproxy-inbounds-run-the-action-parameter-selects-the-operation
       - content: Manage the panel-hosted WARP-via-wireproxy sidecar
           (github.com/kuzzrus/WARP_WireProxy_Manager, vendored and pinned). The
           action parameter selects the operation.
@@ -205,6 +225,15 @@ _openapi:
           must contain an index.html, either at its root or inside a single
           wrapping folder.
         id: replace-the-reverse-proxy-decoy-with-an-uploaded-static-site-the-zip-must-contain-an-indexhtml-either-at-its-root-or-inside-a-single-wrapping-folder
+      - content: "List the panel-wide path routes: each entry reaches one XHTTP/WS
+          inbound's own loopback address under a path on the shared
+          reverse-proxy domain, instead of a hand-built external nginx location
+          block. Always resolved after the panel/subscription/tproxy paths, so
+          those can never be shadowed."
+        id: list-the-panel-wide-path-routes-each-entry-reaches-one-xhttpws-inbounds-own-loopback-address-under-a-path-on-the-shared-reverse-proxy-domain-instead-of-a-hand-built-external-nginx-location-block-always-resolved-after-the-panelsubscriptiontproxy-paths-so-those-can-never-be-shadowed
+      - content: Replace the entire panel-wide path-route list. Body is JSON. Reloads
+          the running reverse proxy (does not touch or restart Xray).
+        id: replace-the-entire-panel-wide-path-route-list-body-is-json-reloads-the-running-reverse-proxy-does-not-touch-or-restart-xray
       - content: Manage the AdGuard Home instance the reverse proxy can serve as its
           decoy. Unlike the template decoys this is a real service, so the
           domain answers with a working admin UI and DNS-over-HTTPS.
@@ -283,7 +312,7 @@ export default function Layout(props) {
   return (
     <>
       {props.children}
-      <Comp document="./public/openapi.json" webhooks={[]} operations={[{"path":"/panel/api/xray/","method":"post"},{"path":"/panel/api/xray/getDefaultJsonConfig","method":"get"},{"path":"/panel/api/xray/getOutboundsTraffic","method":"get"},{"path":"/panel/api/xray/getXrayResult","method":"get"},{"path":"/panel/api/xray/update","method":"post"},{"path":"/panel/api/xray/warp/{action}","method":"post"},{"path":"/panel/api/xray/nord/{action}","method":"post"},{"path":"/panel/api/xray/tor/{action}","method":"post"},{"path":"/panel/api/xray/psiphon/{action}","method":"post"},{"path":"/panel/api/xray/psiphon/config/upload","method":"post"},{"path":"/panel/api/xray/psiphon/regions","method":"get"},{"path":"/panel/api/xray/wireproxy/{action}","method":"post"},{"path":"/panel/api/xray/pia/{action}","method":"post"},{"path":"/panel/api/xray/frontproxy/{action}","method":"post"},{"path":"/panel/api/xray/frontproxy/decoy/upload","method":"post"},{"path":"/panel/api/xray/adguard/{action}","method":"post"},{"path":"/panel/api/xray/resetOutboundsTraffic","method":"post"},{"path":"/panel/api/xray/testOutbound","method":"post"},{"path":"/panel/api/xray/testOutbounds","method":"post"},{"path":"/panel/api/xray/balancerStatus","method":"post"},{"path":"/panel/api/xray/balancerOverride","method":"post"},{"path":"/panel/api/xray/routeTest","method":"post"},{"path":"/panel/api/xray/geodata/files","method":"get"},{"path":"/panel/api/xray/geodata/categories","method":"get"},{"path":"/panel/api/xray/geodata/entries","method":"get"},{"path":"/panel/api/xray/geodata/validate","method":"post"},{"path":"/panel/api/xray/outbound-subs","method":"get"},{"path":"/panel/api/xray/outbound-subs","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}","method":"delete"},{"path":"/panel/api/xray/outbound-subs/{id}/del","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}/refresh","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}/move","method":"post"},{"path":"/panel/api/xray/outbound-subs/parse","method":"post"}]} showTitle />
+      <Comp document="./public/openapi.json" webhooks={[]} operations={[{"path":"/panel/api/xray/","method":"post"},{"path":"/panel/api/xray/getDefaultJsonConfig","method":"get"},{"path":"/panel/api/xray/getOutboundsTraffic","method":"get"},{"path":"/panel/api/xray/getXrayResult","method":"get"},{"path":"/panel/api/xray/update","method":"post"},{"path":"/panel/api/xray/warp/{action}","method":"post"},{"path":"/panel/api/xray/nord/{action}","method":"post"},{"path":"/panel/api/xray/tor/{action}","method":"post"},{"path":"/panel/api/xray/psiphon/{action}","method":"post"},{"path":"/panel/api/xray/psiphon/config/upload","method":"post"},{"path":"/panel/api/xray/psiphon/regions","method":"get"},{"path":"/panel/api/xray/naiveproxy/{action}","method":"post"},{"path":"/panel/api/xray/wireproxy/{action}","method":"post"},{"path":"/panel/api/xray/pia/{action}","method":"post"},{"path":"/panel/api/xray/frontproxy/{action}","method":"post"},{"path":"/panel/api/xray/frontproxy/decoy/upload","method":"post"},{"path":"/panel/api/xray/frontproxy/pathRoutes","method":"get"},{"path":"/panel/api/xray/frontproxy/pathRoutes","method":"post"},{"path":"/panel/api/xray/adguard/{action}","method":"post"},{"path":"/panel/api/xray/resetOutboundsTraffic","method":"post"},{"path":"/panel/api/xray/testOutbound","method":"post"},{"path":"/panel/api/xray/testOutbounds","method":"post"},{"path":"/panel/api/xray/balancerStatus","method":"post"},{"path":"/panel/api/xray/balancerOverride","method":"post"},{"path":"/panel/api/xray/routeTest","method":"post"},{"path":"/panel/api/xray/geodata/files","method":"get"},{"path":"/panel/api/xray/geodata/categories","method":"get"},{"path":"/panel/api/xray/geodata/entries","method":"get"},{"path":"/panel/api/xray/geodata/validate","method":"post"},{"path":"/panel/api/xray/outbound-subs","method":"get"},{"path":"/panel/api/xray/outbound-subs","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}","method":"delete"},{"path":"/panel/api/xray/outbound-subs/{id}/del","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}/refresh","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}/move","method":"post"},{"path":"/panel/api/xray/outbound-subs/parse","method":"post"}]} showTitle />
     </>
   );
 }

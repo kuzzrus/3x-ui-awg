@@ -13560,9 +13560,7 @@
                   }
                 },
                 "required": [
-                  "xraySetting",
-                  "speedDownloadUrl",
-                  "speedUploadUrl"
+                  "xraySetting"
                 ]
               }
             }
@@ -13906,6 +13904,47 @@
         }
       }
     },
+    "/panel/api/xray/naiveproxy/{action}": {
+      "post": {
+        "tags": [
+          "Xray Settings"
+        ],
+        "summary": "Manage the NaiveProxy engine binary (a Caddy build with the klzgrad forward_proxy plugin) that NaiveProxy inbounds run. The action parameter selects the operation.",
+        "operationId": "post_panel_api_xray_naiveproxy_action",
+        "parameters": [
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "description": "status — return {installed, supported, platform}; supported is false on any host but linux/amd64, where no build is published. install — download the pinned release (verified against its sha256) into bin/naiveproxy; a no-op when already installed. NaiveProxy inbounds that were waiting for the engine start on the next reconcile tick, no restart needed.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/panel/api/xray/wireproxy/{action}": {
       "post": {
         "tags": [
@@ -14126,6 +14165,110 @@
         }
       }
     },
+    "/panel/api/xray/frontproxy/pathRoutes": {
+      "get": {
+        "tags": [
+          "Xray Settings"
+        ],
+        "summary": "List the panel-wide path routes: each entry reaches one XHTTP/WS inbound's own loopback address under a path on the shared reverse-proxy domain, instead of a hand-built external nginx location block. Always resolved after the panel/subscription/tproxy paths, so those can never be shadowed.",
+        "operationId": "get_panel_api_xray_frontproxy_pathRoutes",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": [
+                    {
+                      "id": 1,
+                      "childId": 12,
+                      "path": "cdn-path",
+                      "sortOrder": 0
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Xray Settings"
+        ],
+        "summary": "Replace the entire panel-wide path-route list. Body is JSON. Reloads the running reverse proxy (does not touch or restart Xray).",
+        "operationId": "post_panel_api_xray_frontproxy_pathRoutes",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "routes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Array of {childId, path, sortOrder} entries. childId must be an enabled XHTTP or WS inbound listening on a loopback-reachable address; path must be non-empty, unique, and must not collide with the panel base path, subscription path, or the \"api/v1\" prefix."
+                  }
+                },
+                "required": [
+                  "routes"
+                ]
+              },
+              "example": {
+                "routes": [
+                  {
+                    "childId": 12,
+                    "path": "cdn-path",
+                    "sortOrder": 0
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "msg": "Path routes saved"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/panel/api/xray/adguard/{action}": {
       "post": {
         "tags": [
@@ -14276,9 +14419,7 @@
                   }
                 },
                 "required": [
-                  "outbound",
-                  "speedDownloadUrl",
-                  "speedUploadUrl"
+                  "outbound"
                 ]
               }
             }
@@ -14343,9 +14484,7 @@
                   }
                 },
                 "required": [
-                  "outbounds",
-                  "speedDownloadUrl",
-                  "speedUploadUrl"
+                  "outbounds"
                 ]
               }
             }
