@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -50,6 +53,17 @@ func TestMain(m *testing.M) {
 		if f, err := os.OpenFile(os.Getenv("NAIVE_FAKE_PIDFILE"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
 			fmt.Fprintf(f, "%d\n", os.Getpid())
 			f.Close()
+		}
+		// NAIVE_FAKE_STDOUT_ON_TERM_FILE makes it flush that file to stdout on SIGTERM and
+		// exit, as Caddy writes the lines of the tunnels it is closing while it shuts down.
+		if termFile := os.Getenv("NAIVE_FAKE_STDOUT_ON_TERM_FILE"); termFile != "" {
+			sigs := make(chan os.Signal, 1)
+			signal.Notify(sigs, syscall.SIGTERM)
+			go func() {
+				<-sigs
+				replayFakeOutput(os.Stdout, termFile)
+				os.Exit(0)
+			}()
 		}
 		// NAIVE_FAKE_NEVER_READY simulates a process that starts (and gets a
 		// pid recorded above) but never opens its listener -- WaitReady times out.
@@ -602,5 +616,64 @@ func TestEnsureFollowsATagChangeWithoutRestartingCaddy(t *testing.T) {
 	feed(t, m.meters[1], accessLine("alice@x", 1, 1))
 	if got := m.meters[1].drain(); len(got) != 1 || got[0].Tag != "inbound-2" {
 		t.Errorf("drain = %+v, want it rolled up under inbound-2", got)
+	}
+}
+
+// A routed inbound that leaves the desired set is stopped and its last lines are drained
+// afterwards; they must still say the Xray bridge already counted them.
+func TestCollectTrafficKeepsTheRoutedLabelOfAStoppedProcess(t *testing.T) {
+	installFakeCaddy(t)
+	stdout := stageFakeOutput(t, accessLine("alice@x", 100, 2000), "")
+	m := newTestManager()
+	inst := testInst(t, 1, "alice")
+	inst.Tag = "inbound-1"
+	inst.RouteThroughXray, inst.XrayRoutePort = true, 50000
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+	waitUntil(t, "the child to replay its output", func() bool {
+		_, err := os.Stat(stdout + ".sent")
+		return err == nil
+	})
+
+	m.Remove(1)
+
+	got, _ := m.CollectTraffic()
+	want := []Traffic{{Tag: "inbound-1", Email: "alice@x", Routed: true, Up: 100, Down: 2000}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("CollectTraffic after Remove = %+v, want %+v", got, want)
+	}
+}
+
+// Caddy writes the lines of the tunnels it is closing while it shuts down, so a routing switch
+// must label them with the routing they ran under, not the one that replaces it.
+func TestEnsureLabelsAStoppingProcessLinesWithTheOldRouting(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake child flushes on SIGTERM, which Windows cannot deliver")
+	}
+	installFakeCaddy(t)
+	term := filepath.Join(t.TempDir(), "on-term.txt")
+	if err := os.WriteFile(term, []byte(accessLine("alice@x", 100, 2000)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NAIVE_FAKE_STDOUT_ON_TERM_FILE", term)
+	m := newTestManager()
+	inst := testInst(t, 1, "alice")
+	inst.Tag = "inbound-1"
+	inst.RouteThroughXray, inst.XrayRoutePort = true, 50000
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+	t.Cleanup(m.StopAll)
+
+	inst.RouteThroughXray = false // restarts Caddy: the routed process flushes its line, then an unrouted one starts
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("Ensure after the switch: %v", err)
+	}
+
+	got, _ := m.CollectTraffic()
+	want := []Traffic{{Tag: "inbound-1", Email: "alice@x", Routed: true, Up: 100, Down: 2000}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("CollectTraffic after the switch = %+v, want the flushed line labelled routed: %+v", got, want)
 	}
 }

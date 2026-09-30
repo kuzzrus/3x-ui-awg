@@ -18,10 +18,11 @@ const invalidUserPrefix = "invalid:"
 // Traffic is one client's byte delta since the last CollectTraffic (Up is client to
 // target, Down the reverse). Email is Caddy's user id, which is the client's email.
 type Traffic struct {
-	Tag   string
-	Email string
-	Up    int64
-	Down  int64
+	Tag    string
+	Email  string
+	Routed bool // written while Caddy dialed out through Xray, whose bridge already counts it under Tag
+	Up     int64
+	Down   int64
 }
 
 type counters struct {
@@ -29,23 +30,37 @@ type counters struct {
 	down int64
 }
 
+// usageKey separates what one user moved under each routing, so a switch never re-labels old bytes.
+type usageKey struct {
+	email  string
+	routed bool
+}
+
 // meter turns Caddy's access log into per-user byte counters, as forward_proxy has no
 // stats endpoint. A CONNECT tunnel is one log line, written when the tunnel closes.
 type meter struct {
 	mu       sync.Mutex
 	tag      string
+	routed   bool // the routing of the process now writing, stamped on each line as it arrives
 	partial  []byte
 	overflow bool
-	pending  map[string]*counters
+	pending  map[usageKey]*counters
 }
 
 func newMeter(tag string) *meter {
-	return &meter{tag: tag, pending: map[string]*counters{}}
+	return &meter{tag: tag, pending: map[usageKey]*counters{}}
 }
 
 func (m *meter) setTag(tag string) {
 	m.mu.Lock()
 	m.tag = tag
+	m.mu.Unlock()
+}
+
+// setRouted labels the lines written from now on; bytes already recorded keep their label.
+func (m *meter) setRouted(routed bool) {
+	m.mu.Lock()
+	m.routed = routed
 	m.mu.Unlock()
 }
 
@@ -104,16 +119,17 @@ func (m *meter) recordLocked(line []byte) {
 	if rec.BytesRead <= 0 && rec.Size <= 0 {
 		return
 	}
-	c := m.pending[rec.UserID]
+	key := usageKey{email: rec.UserID, routed: m.routed}
+	c := m.pending[key]
 	if c == nil {
 		c = &counters{}
-		m.pending[rec.UserID] = c
+		m.pending[key] = c
 	}
 	c.up += max(rec.BytesRead, 0)
 	c.down += max(rec.Size, 0)
 }
 
-// drain hands over everything recorded since the last call, sorted by email.
+// drain hands over everything recorded since the last call, sorted by email, unrouted first.
 func (m *meter) drain() []Traffic {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -121,10 +137,21 @@ func (m *meter) drain() []Traffic {
 		return nil
 	}
 	out := make([]Traffic, 0, len(m.pending))
-	for email, c := range m.pending {
-		out = append(out, Traffic{Tag: m.tag, Email: email, Up: c.up, Down: c.down})
+	for key, c := range m.pending {
+		out = append(out, Traffic{Tag: m.tag, Email: key.email, Routed: key.routed, Up: c.up, Down: c.down})
 	}
 	clear(m.pending)
-	slices.SortFunc(out, func(a, b Traffic) int { return strings.Compare(a.Email, b.Email) })
+	slices.SortFunc(out, func(a, b Traffic) int {
+		if c := strings.Compare(a.Email, b.Email); c != 0 {
+			return c
+		}
+		if a.Routed != b.Routed {
+			if a.Routed {
+				return 1
+			}
+			return -1
+		}
+		return 0
+	})
 	return out
 }

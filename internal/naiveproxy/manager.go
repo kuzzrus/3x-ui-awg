@@ -131,6 +131,8 @@ func (m *Manager) ensureLocked(inst Instance) (*Process, error) {
 		return nil, fmt.Errorf("naiveproxy: cannot write %s: %w", cfgPath, err)
 	}
 
+	// Only now: the process stopped above wrote its last lines under the old routing.
+	mt.setRouted(inst.RouteThroughXray)
 	proc := newProcess(cfgPath, inst.ListenAddr, fmt.Sprintf("inbound %d", inst.Id), mt)
 	if err := proc.Start(); err != nil {
 		// Never tracked, so removeLocked would not clean these up later.

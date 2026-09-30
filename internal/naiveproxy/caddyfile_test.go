@@ -242,7 +242,7 @@ func TestRenderCaddyfileLogsAccessToStdoutWithoutRequestDetails(t *testing.T) {
 	site := strings.Index(got, "https://:40100 {")
 	logBlock := strings.Index(got, "\tlog {\n")
 	route := strings.Index(got, "route {")
-	if site == -1 || logBlock == -1 || route == -1 || !(site < logBlock && logBlock < route) {
+	if site == -1 || logBlock == -1 || route == -1 || site >= logBlock || logBlock >= route {
 		t.Fatalf("expected a site-level log block between the site address and route{}, got:\n%s", got)
 	}
 	block := got[logBlock:route]

@@ -172,3 +172,22 @@ func TestMeterNeverCountsANegativeDirection(t *testing.T) {
 		t.Fatalf("drain = %+v, want 0 up / 10 down: a negative counter must not subtract usage", got)
 	}
 }
+
+// A routing switch restarts Caddy, and the old process's last lines can be drained after it:
+// each line keeps the routing it was written under, so old bytes are never re-labelled.
+func TestMeterLabelsEachLineWithTheRoutingItWasWrittenUnder(t *testing.T) {
+	m := newMeter("t")
+	feed(t, m, accessLine("alice@x", 100, 2000))
+	m.setRouted(true)
+	feed(t, m, accessLine("alice@x", 1, 2)+accessLine("alice@x", 3, 4))
+	feed(t, m, accessLine("bob@x", 5, 6))
+
+	want := []Traffic{
+		{Tag: "t", Email: "alice@x", Routed: false, Up: 100, Down: 2000},
+		{Tag: "t", Email: "alice@x", Routed: true, Up: 4, Down: 6},
+		{Tag: "t", Email: "bob@x", Routed: true, Up: 5, Down: 6},
+	}
+	if got := m.drain(); !slices.Equal(got, want) {
+		t.Fatalf("drain = %+v, want %+v", got, want)
+	}
+}
