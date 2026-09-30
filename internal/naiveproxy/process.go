@@ -22,8 +22,8 @@ var (
 	startupTimeout      = 10 * time.Second
 )
 
-// procLogWriter forwards a Caddy child's stdout/stderr into the panel log a
-// line at a time, and remembers the most recent one for GetResult.
+// procLogWriter forwards a Caddy child's stderr into the panel log a line at
+// a time, and remembers the most recent one for GetResult.
 type procLogWriter struct {
 	mu       sync.Mutex
 	label    string
@@ -82,15 +82,19 @@ type Process struct {
 	configPath      string
 	listenAddr      string
 	logWriter       *procLogWriter
+	access          *meter
 	exitErr         error
 	intentionalStop atomic.Bool
 }
 
-func newProcess(configPath, listenAddr, label string) *Process {
+// newProcess wires Caddy's stdout (the access log) to access, if non-nil, and
+// its stderr (everything operational) to the panel log.
+func newProcess(configPath, listenAddr, label string, access *meter) *Process {
 	return &Process{
 		configPath: configPath,
 		listenAddr: listenAddr,
 		logWriter:  &procLogWriter{label: label},
+		access:     access,
 	}
 }
 
@@ -136,7 +140,9 @@ func (p *Process) Start() error {
 		return ErrNotInstalled
 	}
 	cmd := exec.CommandContext(context.Background(), BinPath(), "run", "--config", p.configPath, "--adapter", "caddyfile")
-	cmd.Stdout = p.logWriter
+	if p.access != nil {
+		cmd.Stdout = p.access
+	}
 	cmd.Stderr = p.logWriter
 	done := make(chan struct{})
 	p.mu.Lock()
@@ -166,6 +172,9 @@ func (p *Process) wait(cmd *exec.Cmd, done chan struct{}) {
 	defer close(done)
 	err := cmd.Wait()
 	p.logWriter.Flush()
+	if p.access != nil {
+		p.access.discardPartial()
+	}
 	if err == nil || p.intentionalStop.Load() {
 		return
 	}

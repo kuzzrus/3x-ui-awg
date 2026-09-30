@@ -363,7 +363,7 @@ func (s *Server) startTask(restartXray bool, loc *time.Location) {
 	_, _ = s.cron.AddJob(cadenceTproxy, tproxyJob)
 	go tproxyJob.Run()
 
-	// Reconcile NaiveProxy's Caddy sidecars; no traffic step (forward_proxy exposes none)
+	// Reconcile NaiveProxy's Caddy sidecars and meter their per-client traffic
 	naiveProxyJob := job.NewNaiveProxyJob()
 	_, _ = s.cron.AddJob(cadenceNaiveProxy, naiveProxyJob)
 	go naiveProxyJob.Run()

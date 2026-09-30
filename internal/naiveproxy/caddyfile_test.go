@@ -231,3 +231,42 @@ func TestRenderCaddyfileDisablesAdminAPI(t *testing.T) {
 		t.Errorf("expected admin API disabled (no live-reload support yet, and no reason to open it), got:\n%s", got)
 	}
 }
+
+// accounting.go meters whatever Caddy writes to stdout, so the site must log
+// its access lines there -- and only those, without client IPs or targets.
+func TestRenderCaddyfileLogsAccessToStdoutWithoutRequestDetails(t *testing.T) {
+	got, err := renderCaddyfile(testInstance())
+	if err != nil {
+		t.Fatalf("renderCaddyfile: %v", err)
+	}
+	site := strings.Index(got, "https://:40100 {")
+	logBlock := strings.Index(got, "\tlog {\n")
+	route := strings.Index(got, "route {")
+	if site == -1 || logBlock == -1 || route == -1 || site >= logBlock || logBlock >= route {
+		t.Fatalf("expected a site-level log block between the site address and route{}, got:\n%s", got)
+	}
+	block := got[logBlock:route]
+	for _, want := range []string{"output stdout", "format filter", "wrap json", "request delete", "resp_headers delete"} {
+		if !strings.Contains(block, want) {
+			t.Errorf("log block is missing %q, got:\n%s", want, block)
+		}
+	}
+}
+
+// Tag only tells traffic which inbound to roll up to: a Caddyfile that varied
+// with it would restart Caddy, and drop every open tunnel, on a rename.
+func TestRenderCaddyfileIgnoresTag(t *testing.T) {
+	a, b := testInstance(), testInstance()
+	a.Tag, b.Tag = "inbound-1", "inbound-2"
+	first, err := renderCaddyfile(a)
+	if err != nil {
+		t.Fatalf("renderCaddyfile: %v", err)
+	}
+	second, err := renderCaddyfile(b)
+	if err != nil {
+		t.Fatalf("renderCaddyfile: %v", err)
+	}
+	if first != second {
+		t.Errorf("the Caddyfile depends on Tag:\n%s\nvs\n%s", first, second)
+	}
+}
