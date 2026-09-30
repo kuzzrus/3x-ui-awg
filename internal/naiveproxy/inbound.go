@@ -41,6 +41,7 @@ func InstanceFromInbound(ib *model.Inbound) (Instance, bool) {
 
 	return Instance{
 		Id:               ib.Id,
+		Tag:              ib.Tag,
 		ListenAddr:       fmt.Sprintf("127.0.0.1:%d", ib.Port),
 		Domain:           parsed.Domain,
 		CertFile:         parsed.CertFile,

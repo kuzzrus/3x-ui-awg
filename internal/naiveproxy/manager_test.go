@@ -5,10 +5,14 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -30,6 +34,18 @@ func fakeChildListenPort(configPath string) (int, bool) {
 	return port, err == nil
 }
 
+// replayFakeOutput has the fake child write path's contents to w once it is
+// serving, then drop <path>.sent so a test knows the bytes are in the pipe.
+func replayFakeOutput(w *os.File, path string) {
+	if path == "" {
+		return
+	}
+	if data, err := os.ReadFile(path); err == nil {
+		_, _ = w.Write(data)
+	}
+	_ = os.WriteFile(path+".sent", nil, 0o644)
+}
+
 // TestMain re-execs the test binary as a fake caddy child (NAIVE_FAKE_CHILD=1):
 // records its pid, listens on its --config file's own port, blocks. Mirrors internal/mtproto.
 func TestMain(m *testing.M) {
@@ -37,6 +53,17 @@ func TestMain(m *testing.M) {
 		if f, err := os.OpenFile(os.Getenv("NAIVE_FAKE_PIDFILE"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
 			fmt.Fprintf(f, "%d\n", os.Getpid())
 			f.Close()
+		}
+		// NAIVE_FAKE_STDOUT_ON_TERM_FILE makes it flush that file to stdout on SIGTERM and exit,
+		// like a Caddy whose last tunnels finish while it drains before shutting down.
+		if termFile := os.Getenv("NAIVE_FAKE_STDOUT_ON_TERM_FILE"); termFile != "" {
+			sigs := make(chan os.Signal, 1)
+			signal.Notify(sigs, syscall.SIGTERM)
+			go func() {
+				<-sigs
+				replayFakeOutput(os.Stdout, termFile)
+				os.Exit(0)
+			}()
 		}
 		// NAIVE_FAKE_NEVER_READY simulates a process that starts (and gets a
 		// pid recorded above) but never opens its listener -- WaitReady times out.
@@ -60,6 +87,8 @@ func TestMain(m *testing.M) {
 				}
 			}
 		}
+		replayFakeOutput(os.Stderr, os.Getenv("NAIVE_FAKE_STDERR_FILE"))
+		replayFakeOutput(os.Stdout, os.Getenv("NAIVE_FAKE_STDOUT_FILE"))
 		if exitFile := os.Getenv("NAIVE_FAKE_EXIT_FILE"); exitFile != "" {
 			for {
 				if _, err := os.Stat(exitFile); err == nil {
@@ -431,5 +460,220 @@ func TestStopAllStopsEveryProcess(t *testing.T) {
 	m.StopAll()
 	if m.IsRunning(1) || m.IsRunning(2) {
 		t.Error("an instance is still running after StopAll")
+	}
+}
+
+func waitUntil(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// stageFakeOutput sets what the fake child replays on its stdout and stderr,
+// and returns the stdout file so a test can wait for its ".sent" marker.
+func stageFakeOutput(t *testing.T, stdout, stderr string) string {
+	t.Helper()
+	dir := t.TempDir()
+	stdoutPath := filepath.Join(dir, "stdout.txt")
+	stderrPath := filepath.Join(dir, "stderr.txt")
+	if err := os.WriteFile(stdoutPath, []byte(stdout), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stderrPath, []byte(stderr), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NAIVE_FAKE_STDOUT_FILE", stdoutPath)
+	t.Setenv("NAIVE_FAKE_STDERR_FILE", stderrPath)
+	return stdoutPath
+}
+
+// Stdout is the access log and nothing else: a line on stderr, however
+// access-shaped, is operational output and must never be metered.
+func TestCollectTrafficMetersTheChildsStdoutOnly(t *testing.T) {
+	installFakeCaddy(t)
+	// Unwanted lines come first: the stream is read in order, so once the last
+	// wanted line is counted the unwanted ones before it have been rejected.
+	stageFakeOutput(t,
+		accessLine("invalid:eve@x", 9, 9)+"not json\n"+accessLine("alice@x", 100, 2000)+accessLine("bob@x", 5, 60)+accessLine("alice@x", 1, 2),
+		accessLine("mallory@x", 999, 999))
+
+	m := newTestManager()
+	inst := testInst(t, 1, "alice", "bob")
+	inst.Tag = "inbound-40100"
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+	t.Cleanup(m.StopAll)
+
+	// GetResult is stderr's last line, so seeing it proves stderr was read.
+	waitUntil(t, "the child's stderr line to be read", func() bool {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return strings.Contains(m.procs[1].proc.GetResult(), "mallory@x")
+	})
+
+	sums := map[string]counters{}
+	var online []string
+	waitUntil(t, "the child's access lines to be metered", func() bool {
+		deltas, on := m.CollectTraffic()
+		for _, d := range deltas {
+			if d.Tag != "inbound-40100" {
+				t.Errorf("delta %+v has tag %q, want the inbound's own tag", d, d.Tag)
+			}
+			c := sums[d.Email]
+			sums[d.Email] = counters{up: c.up + d.Up, down: c.down + d.Down}
+		}
+		online = append(online, on...)
+		return sums["alice@x"].up == 101 && sums["bob@x"].up == 5
+	})
+
+	want := map[string]counters{"alice@x": {up: 101, down: 2002}, "bob@x": {up: 5, down: 60}}
+	if len(sums) != len(want) || sums["alice@x"] != want["alice@x"] || sums["bob@x"] != want["bob@x"] {
+		t.Errorf("metered %+v, want %+v", sums, want)
+	}
+	slices.Sort(online)
+	if got := slices.Compact(online); !slices.Equal(got, []string{"alice@x", "bob@x"}) {
+		t.Errorf("online = %v, want exactly the two users that moved bytes", got)
+	}
+}
+
+// Bytes a Caddy reported while stopping (its open tunnels close then) must
+// still reach the next CollectTraffic, though the process is already gone.
+func TestCollectTrafficHandsOverWhatAStoppedProcessLeftBehind(t *testing.T) {
+	installFakeCaddy(t)
+	stdout := stageFakeOutput(t, accessLine("alice@x", 100, 2000), "")
+	m := newTestManager()
+	inst := testInst(t, 1, "alice")
+	inst.Tag = "inbound-1"
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+	waitUntil(t, "the child to replay its output", func() bool {
+		_, err := os.Stat(stdout + ".sent")
+		return err == nil
+	})
+
+	m.Remove(1) // returns only once the child has exited and its pipes are drained
+
+	got, online := m.CollectTraffic()
+	if len(got) != 1 || got[0] != (Traffic{Tag: "inbound-1", Email: "alice@x", Up: 100, Down: 2000}) {
+		t.Fatalf("CollectTraffic after Remove = %+v, want the stopped process's last line", got)
+	}
+	if !slices.Equal(online, []string{"alice@x"}) {
+		t.Errorf("online = %v, want [alice@x]", online)
+	}
+	if again, _ := m.CollectTraffic(); len(again) != 0 {
+		t.Errorf("second CollectTraffic = %+v, want nothing", again)
+	}
+	if len(m.meters) != 0 {
+		t.Errorf("%d meter(s) kept for an inbound with no process and nothing left to hand over", len(m.meters))
+	}
+}
+
+func TestCollectTrafficKeepsTheMeterOfARunningProcess(t *testing.T) {
+	m := newTestManager()
+	m.meters = map[int]*meter{1: newMeter("a"), 2: newMeter("b")}
+	m.procs[2] = &managed{proc: &Process{}}
+	feed(t, m.meters[1], accessLine("x@x", 1, 1))
+	feed(t, m.meters[2], accessLine("y@x", 1, 1))
+
+	if got, _ := m.CollectTraffic(); len(got) != 2 {
+		t.Fatalf("CollectTraffic = %+v, want both inbounds' deltas", got)
+	}
+	if _, ok := m.meters[1]; ok {
+		t.Error("meter of an inbound with no process was kept after being drained")
+	}
+	if _, ok := m.meters[2]; !ok {
+		t.Error("meter of a tracked process was dropped; its next tunnels would go unmetered")
+	}
+}
+
+// Tag is not part of the Caddyfile, so a tag-only change must not restart
+// Caddy (it would drop every tunnel) -- yet traffic must roll up to the new tag.
+func TestEnsureFollowsATagChangeWithoutRestartingCaddy(t *testing.T) {
+	pidFile := installFakeCaddy(t)
+	m := newTestManager()
+	inst := testInst(t, 1, "alice")
+	inst.Tag = "inbound-1"
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("first Ensure: %v", err)
+	}
+	t.Cleanup(m.StopAll)
+	waitSpawnCount(t, pidFile, 1)
+
+	inst.Tag = "inbound-2"
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("second Ensure: %v", err)
+	}
+	if got := spawnCount(t, pidFile); got != 1 {
+		t.Errorf("spawn count = %d after a tag-only change, want 1 (no restart)", got)
+	}
+	feed(t, m.meters[1], accessLine("alice@x", 1, 1))
+	if got := m.meters[1].drain(); len(got) != 1 || got[0].Tag != "inbound-2" {
+		t.Errorf("drain = %+v, want it rolled up under inbound-2", got)
+	}
+}
+
+// A routed inbound that leaves the desired set is stopped and its last lines are drained
+// afterwards; they must still say the Xray bridge already counted them.
+func TestCollectTrafficKeepsTheRoutedLabelOfAStoppedProcess(t *testing.T) {
+	installFakeCaddy(t)
+	stdout := stageFakeOutput(t, accessLine("alice@x", 100, 2000), "")
+	m := newTestManager()
+	inst := testInst(t, 1, "alice")
+	inst.Tag = "inbound-1"
+	inst.RouteThroughXray, inst.XrayRoutePort = true, 50000
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+	waitUntil(t, "the child to replay its output", func() bool {
+		_, err := os.Stat(stdout + ".sent")
+		return err == nil
+	})
+
+	m.Remove(1)
+
+	got, _ := m.CollectTraffic()
+	want := []Traffic{{Tag: "inbound-1", Email: "alice@x", Routed: true, Up: 100, Down: 2000}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("CollectTraffic after Remove = %+v, want %+v", got, want)
+	}
+}
+
+// A draining Caddy still logs the tunnels that finish before it exits, so a routing switch must
+// label those lines with the routing they ran under, not the one that replaces it.
+func TestEnsureLabelsAStoppingProcessLinesWithTheOldRouting(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake child flushes on SIGTERM, which Windows cannot deliver")
+	}
+	installFakeCaddy(t)
+	term := filepath.Join(t.TempDir(), "on-term.txt")
+	if err := os.WriteFile(term, []byte(accessLine("alice@x", 100, 2000)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NAIVE_FAKE_STDOUT_ON_TERM_FILE", term)
+	m := newTestManager()
+	inst := testInst(t, 1, "alice")
+	inst.Tag = "inbound-1"
+	inst.RouteThroughXray, inst.XrayRoutePort = true, 50000
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+	t.Cleanup(m.StopAll)
+
+	inst.RouteThroughXray = false // restarts Caddy: the routed process flushes its line, then an unrouted one starts
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("Ensure after the switch: %v", err)
+	}
+
+	got, _ := m.CollectTraffic()
+	want := []Traffic{{Tag: "inbound-1", Email: "alice@x", Routed: true, Up: 100, Down: 2000}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("CollectTraffic after the switch = %+v, want the flushed line labelled routed: %+v", got, want)
 	}
 }
