@@ -143,7 +143,7 @@ func TestPortForwardSetReconcileOpensAndClosesListeners(t *testing.T) {
 	gs := newTestStack(t, "10.211.0.1")
 	set := NewPortForwardSet(gs, 501)
 
-	const port = 58910
+	port := freePort(t)
 	inst := amneziawg.Instance{Peers: []amneziawg.Peer{
 		peerWithPortsAndIPs("a@x", fmt.Sprintf("%d", port), "10.211.0.2/32"),
 	}}
@@ -188,8 +188,8 @@ func TestPortForwardSetReconcileSurvivesPreBoundPort(t *testing.T) {
 	gs := newTestStack(t, "10.211.1.1")
 	set := NewPortForwardSet(gs, 502)
 
-	const collidingPort = 58911
-	const okPort = 58912
+	ports := freePorts(t, 2)
+	collidingPort, okPort := ports[0], ports[1]
 	blocker, err := net.Listen("tcp", fmt.Sprintf(":%d", collidingPort))
 	if err != nil {
 		t.Fatalf("pre-bind test port: %v", err)
@@ -240,9 +240,8 @@ func TestPortForwardRoundTripTCPAndUDP(t *testing.T) {
 		t.Fatalf("generate client keypair: %v", err)
 	}
 
-	const listenPort = 58920 // fixed loopback test port, matches this package's existing test convention
-	const tcpPort = 58921
-	const udpPort = 58922
+	ports := freePorts(t, 3)
+	listenPort, tcpPort, udpPort := ports[0], ports[1], ports[2]
 	const clientAddr = "10.202.0.2"
 
 	inst := amneziawg.Instance{

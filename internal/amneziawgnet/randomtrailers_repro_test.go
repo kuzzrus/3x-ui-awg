@@ -43,7 +43,7 @@ func TestRandomTrailersThroughputRepro(t *testing.T) {
 	for i, rt := range []bool{false, true} {
 		rt := rt
 		t.Run(fmt.Sprintf("RandomTrailers=%v", rt), func(t *testing.T) {
-			elapsed[i] = runThroughputRepro(t, rt, 58800+i, directWriteHandler)
+			elapsed[i] = runThroughputRepro(t, rt, freePort(t), directWriteHandler)
 			mbps := float64(reproPayloadSize) / elapsed[i].Seconds() / (1024 * 1024) * 8
 			t.Logf("RandomTrailers=%v: %d bytes in %v = %.1f Mbit/s", rt, reproPayloadSize, elapsed[i], mbps)
 		})
@@ -66,7 +66,7 @@ func TestRandomTrailersThroughputReproViaSocks5(t *testing.T) {
 				_, _ = conn.Write(make([]byte, reproPayloadSize))
 			})
 			relay := SocksRelay{Addr: socksAddr, Password: password}
-			elapsed[i] = runThroughputRepro(t, rt, 58810+i, func(conn *gonet.TCPConn, dest netip.AddrPort) {
+			elapsed[i] = runThroughputRepro(t, rt, freePort(t), func(conn *gonet.TCPConn, dest netip.AddrPort) {
 				relay.RelayTCP(conn, email, dest)
 			})
 			mbps := float64(reproPayloadSize) / elapsed[i].Seconds() / (1024 * 1024) * 8
@@ -312,7 +312,7 @@ func TestRandomTrailersPacketSizeInflation(t *testing.T) {
 	for i, rt := range []bool{false, true} {
 		rt := rt
 		t.Run(fmt.Sprintf("RandomTrailers=%v", rt), func(t *testing.T) {
-			sizes := runPacketSizeInflationProbe(t, rt, 58920+i)
+			sizes := runPacketSizeInflationProbe(t, rt, freePort(t))
 
 			bigIdx := -1
 			for idx, s := range sizes {
@@ -371,8 +371,8 @@ func TestHandshakeMessagePaddingBypassesContentPaddingAddition(t *testing.T) {
 		rt := rt
 		t.Run(fmt.Sprintf("RandomTrailers=%v", rt), func(t *testing.T) {
 			sizes := make([]int, 0, rounds)
-			for r := 0; r < rounds; r++ {
-				sizes = append(sizes, oneHandshakeResponseSize(t, rt, 58950+i*100+r))
+			for range rounds {
+				sizes = append(sizes, oneHandshakeResponseSize(t, rt, freePort(t)))
 			}
 			sum, max := 0, 0
 			for _, s := range sizes {
