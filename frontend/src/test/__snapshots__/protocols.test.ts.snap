@@ -114,6 +114,73 @@ exports[`InboundSettingsSchema fixtures > parses mtproto-domain-fronting byte-st
 }
 `;
 
+exports[`InboundSettingsSchema fixtures > parses naiveproxy-basic byte-stably 1`] = `
+{
+  "protocol": "naiveproxy",
+  "settings": {
+    "certFile": "/etc/ssl/naive.example.com/fullchain.pem",
+    "clients": [
+      {
+        "comment": "",
+        "email": "naive-user",
+        "enable": true,
+        "expiryTime": 0,
+        "limitIp": 0,
+        "naiveProxyPassword": "0123456789abcdef",
+        "reset": 0,
+        "subId": "",
+        "tgId": 0,
+        "totalGB": 0,
+      },
+    ],
+    "domain": "naive.example.com",
+    "keyFile": "/etc/ssl/naive.example.com/privkey.pem",
+    "publicPort": 443,
+  },
+}
+`;
+
+exports[`InboundSettingsSchema fixtures > parses naiveproxy-routed byte-stably 1`] = `
+{
+  "protocol": "naiveproxy",
+  "settings": {
+    "certFile": "/etc/ssl/naive.example.com/fullchain.pem",
+    "clients": [
+      {
+        "comment": "capped and expiring",
+        "email": "naive-quota-user",
+        "enable": true,
+        "expiryTime": 1893456000000,
+        "limitIp": 0,
+        "naiveProxyPassword": "fedcba9876543210",
+        "reset": 0,
+        "subId": "subnaive0000001",
+        "tgId": 0,
+        "totalGB": 10737418240,
+      },
+      {
+        "comment": "",
+        "email": "naive-off-user",
+        "enable": false,
+        "expiryTime": 0,
+        "limitIp": 0,
+        "naiveProxyPassword": "00112233aabbccdd",
+        "reset": 0,
+        "subId": "",
+        "tgId": 0,
+        "totalGB": 0,
+      },
+    ],
+    "domain": "naive.example.com",
+    "keyFile": "/etc/ssl/naive.example.com/privkey.pem",
+    "outboundTag": "warp",
+    "publicPort": 8443,
+    "routeThroughXray": true,
+    "routeXrayPort": 50123,
+  },
+}
+`;
+
 exports[`InboundSettingsSchema fixtures > parses shadowsocks-2022 byte-stably 1`] = `
 {
   "protocol": "shadowsocks",
