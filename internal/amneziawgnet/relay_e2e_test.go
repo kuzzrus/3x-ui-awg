@@ -3,6 +3,7 @@ package amneziawgnet
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"os"
@@ -78,7 +79,8 @@ func TestSocksRelayAgainstRealXray(t *testing.T) {
 		t.Fatalf("generate client keypair: %v", err)
 	}
 
-	const listenPort = 58715
+	ports := freePorts(t, 2)
+	listenPort, socksPort := ports[0], ports[1]
 	inst := amneziawg.Instance{
 		Id:            4,
 		InterfaceName: "awgtest4",
@@ -105,7 +107,6 @@ func TestSocksRelayAgainstRealXray(t *testing.T) {
 	idx := NewPeerIndex(inst.Peers)
 
 	// --- real xray-core process with a SOCKS5 inbound built by this package ---
-	socksPort := freePort(t)
 	settingsJSON, err := SocksInboundSettings([]string{wantEmail}, socksPassword)
 	if err != nil {
 		t.Fatalf("SocksInboundSettings: %v", err)
@@ -311,8 +312,8 @@ func TestManagerEnsureAutomaticallyWiresRelay(t *testing.T) {
 	}
 
 	const wantEmail = "manager-e2e-peer@example.com"
-	const listenPort = 58716
 	const inboundID = 5
+	listenPort := freePort(t)
 
 	tcpEcho, tcpEchoAddr := startTCPEcho(t, localIP)
 	defer tcpEcho.Close()
@@ -591,14 +592,41 @@ func (s *syncBuffer) String() string {
 	return s.buf.String()
 }
 
-func freePort(t *testing.T) int {
+// freePorts returns n distinct ports, each free for TCP and UDP on every
+// interface. Fixed ports in the ephemeral range flake on outbound sockets.
+func freePorts(t testing.TB, n int) []int {
 	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+	var held []io.Closer
+	defer func() {
+		for _, c := range held {
+			c.Close()
+		}
+	}()
+	var ports []int
+	for range 20 * n {
+		l, err := net.Listen("tcp", ":0")
+		if err != nil {
+			t.Fatalf("reserve tcp port: %v", err)
+		}
+		port := l.Addr().(*net.TCPAddr).Port
+		pc, err := net.ListenPacket("udp", fmt.Sprintf(":%d", port))
+		if err != nil {
+			l.Close()
+			continue
+		}
+		held = append(held, l, pc)
+		ports = append(ports, port)
+		if len(ports) == n {
+			return ports
+		}
 	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port
+	t.Fatalf("found %d of %d ports free for both tcp and udp", len(ports), n)
+	return nil
+}
+
+func freePort(t testing.TB) int {
+	t.Helper()
+	return freePorts(t, 1)[0]
 }
 
 func waitForPort(t *testing.T, port int) {
