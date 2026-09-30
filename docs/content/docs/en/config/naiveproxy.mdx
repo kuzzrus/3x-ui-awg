@@ -126,7 +126,8 @@ the served set and the sidecar restarts without it.
     inbound's total comes from Xray's own counters and per-client numbers from
     Caddy, so nothing is counted twice.
   - **Not enforced:** the per-client **Limit IP** setting does not apply to
-    NaiveProxy — its access log deliberately leaves client addresses out.
+    NaiveProxy — clients connect to Caddy, not to Xray, so the panel never sees
+    their addresses.
   - **Subscriptions:** NaiveProxy links appear in the raw subscription only;
     the JSON and Clash/Mihomo formats cannot express them.
   - **Deployment:** the sidecar runs on the main panel, so NaiveProxy inbounds
