@@ -125,6 +125,8 @@ the served set and the sidecar restarts without it.
     port is owned by the panel and preserved across edits. With routing on, the
     inbound's total comes from Xray's own counters and per-client numbers from
     Caddy, so nothing is counted twice.
+  - **Shared clients:** a client attached to several NaiveProxy inbounds has one
+    total, summed across them, so a quota covers all of its connections.
   - **Not enforced:** the per-client **Limit IP** setting does not apply to
     NaiveProxy — clients connect to Caddy, not to Xray, so the panel never sees
     their addresses.
