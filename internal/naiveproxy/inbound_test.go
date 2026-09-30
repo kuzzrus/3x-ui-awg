@@ -9,6 +9,7 @@ import (
 func TestInstanceFromInboundParsesSettings(t *testing.T) {
 	ib := &model.Inbound{
 		Id:       7,
+		Tag:      "inbound-18443",
 		Listen:   "0.0.0.0",
 		Port:     18443,
 		Protocol: model.NaiveProxy,
@@ -26,6 +27,9 @@ func TestInstanceFromInboundParsesSettings(t *testing.T) {
 	}
 	if inst.Id != 7 {
 		t.Errorf("Id = %d, want 7", inst.Id)
+	}
+	if inst.Tag != "inbound-18443" {
+		t.Errorf("Tag = %q, want the inbound's own tag (traffic rolls up under it)", inst.Tag)
 	}
 	// Always 127.0.0.1 regardless of ib.Listen -- renderCaddyfile rejects any other host.
 	if inst.ListenAddr != "127.0.0.1:18443" {

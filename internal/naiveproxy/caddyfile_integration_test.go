@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -114,9 +115,10 @@ func TestRenderCaddyfileValidatesAgainstTheRealBinary(t *testing.T) {
 	}
 }
 
-// TestNaiveProxyCamouflageAgainstTheRealBinary confirms an ordinary visitor
-// sees the decoy, not a proxy-revealing 407. Gated like the test above.
-func TestNaiveProxyCamouflageAgainstTheRealBinary(t *testing.T) {
+// startRealNaive installs the pinned Caddy and runs it on a self-signed cert with one
+// client, camo-user/camo-pass, whose tunnels feed access. Gated like the test above.
+func startRealNaive(t *testing.T) (ctx context.Context, inst Instance, access *meter) {
+	t.Helper()
 	if os.Getenv("XUI_NAIVE_E2E") == "" {
 		t.Skip("set XUI_NAIVE_E2E=1 to run (downloads the real Caddy release)")
 	}
@@ -129,7 +131,7 @@ func TestNaiveProxyCamouflageAgainstTheRealBinary(t *testing.T) {
 	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
+	t.Cleanup(cancel)
 	if !canReachGitHub(ctx) {
 		t.Skip("no network reachability to github.com in this environment")
 	}
@@ -137,11 +139,11 @@ func TestNaiveProxyCamouflageAgainstTheRealBinary(t *testing.T) {
 		t.Fatalf("Install (network was reachable): %v", err)
 	}
 
-	inst := testInstance()
+	inst = testInstance()
 	inst.Id = 1
 	inst.ListenAddr = fmt.Sprintf("127.0.0.1:%d", freeLoopbackPort(t))
 	inst.CertFile, inst.KeyFile = writeSelfSignedCert(t)
-	inst.Clients = []Client{{Email: "a@x", Username: "camo-user", Password: "camo-pass"}}
+	inst.Clients = []Client{{Email: "camo-user", Username: "camo-user", Password: "camo-pass"}}
 
 	writeDecoyContent(inst)
 	caddyfile, err := renderCaddyfile(inst)
@@ -153,14 +155,61 @@ func TestNaiveProxyCamouflageAgainstTheRealBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	proc := newProcess(cfgPath, inst.ListenAddr, "camouflage-test")
+	access = newMeter("inbound-1")
+	proc := newProcess(cfgPath, inst.ListenAddr, "e2e-test", access)
 	if err := proc.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	defer proc.Stop()
+	t.Cleanup(func() { _ = proc.Stop() })
 	if err := proc.WaitReady(); err != nil {
 		t.Fatalf("WaitReady: %v", err)
 	}
+	return ctx, inst, access
+}
+
+// TestNaiveProxyMetersTunnelsAgainstTheRealBinary pins the access-log shape
+// accounting.go parses to what the pinned Caddy build really writes.
+func TestNaiveProxyMetersTunnelsAgainstTheRealBinary(t *testing.T) {
+	ctx, inst, access := startRealNaive(t)
+
+	proxyURL := fmt.Sprintf("https://camo-user:camo-pass@%s", inst.ListenAddr)
+	out, err := exec.CommandContext(ctx, "curl", "-s", "-x", proxyURL, "--proxy-insecure", "-o", "/dev/null", "-w", "%{size_download}", "https://example.com/").CombinedOutput()
+	if err != nil {
+		t.Fatalf("curl: %v\n%s", err, out)
+	}
+	downloaded, err := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
+	if err != nil || downloaded <= 0 {
+		t.Fatalf("curl reported %q downloaded, want a positive byte count (err %v)", out, err)
+	}
+
+	// The tunnel is metered as it closes, which is right after curl exits.
+	var got []Traffic
+	waitUntil(t, "the closed tunnel to be metered", func() bool {
+		got = append(got, access.drain()...)
+		return len(got) > 0
+	})
+	if len(got) != 1 || got[0].Email != "camo-user" || got[0].Tag != "inbound-1" {
+		t.Fatalf("metered %+v, want exactly one record for camo-user under inbound-1", got)
+	}
+	// The tunnel carries the client's whole TLS session, so it is at least the page.
+	if got[0].Up <= 0 || got[0].Down < downloaded {
+		t.Errorf("metered up=%d down=%d, want up > 0 and down >= the %d body bytes curl received", got[0].Up, got[0].Down, downloaded)
+	}
+
+	t.Run("a wrong password meters nothing", func(t *testing.T) {
+		bad := fmt.Sprintf("https://camo-user:wrong@%s", inst.ListenAddr)
+		_, _ = exec.CommandContext(ctx, "curl", "-s", "-x", bad, "--proxy-insecure", "-o", "/dev/null", "https://example.com/").CombinedOutput()
+		time.Sleep(500 * time.Millisecond)
+		if extra := access.drain(); len(extra) != 0 {
+			t.Errorf("metered %+v for a failed login", extra)
+		}
+	})
+}
+
+// TestNaiveProxyCamouflageAgainstTheRealBinary confirms an ordinary visitor
+// sees the decoy, not a proxy-revealing 407. Gated like the test above.
+func TestNaiveProxyCamouflageAgainstTheRealBinary(t *testing.T) {
+	ctx, inst, _ := startRealNaive(t)
 
 	t.Run("valid credentials still tunnel real traffic", func(t *testing.T) {
 		// A real external site: forward_proxy's default ACL denies CONNECT
