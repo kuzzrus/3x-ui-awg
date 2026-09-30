@@ -54,8 +54,8 @@ func TestMain(m *testing.M) {
 			fmt.Fprintf(f, "%d\n", os.Getpid())
 			f.Close()
 		}
-		// NAIVE_FAKE_STDOUT_ON_TERM_FILE makes it flush that file to stdout on SIGTERM and
-		// exit, as Caddy writes the lines of the tunnels it is closing while it shuts down.
+		// NAIVE_FAKE_STDOUT_ON_TERM_FILE makes it flush that file to stdout on SIGTERM and exit,
+		// like a Caddy whose last tunnels finish while it drains before shutting down.
 		if termFile := os.Getenv("NAIVE_FAKE_STDOUT_ON_TERM_FILE"); termFile != "" {
 			sigs := make(chan os.Signal, 1)
 			signal.Notify(sigs, syscall.SIGTERM)
@@ -645,8 +645,8 @@ func TestCollectTrafficKeepsTheRoutedLabelOfAStoppedProcess(t *testing.T) {
 	}
 }
 
-// Caddy writes the lines of the tunnels it is closing while it shuts down, so a routing switch
-// must label them with the routing they ran under, not the one that replaces it.
+// A draining Caddy still logs the tunnels that finish before it exits, so a routing switch must
+// label those lines with the routing they ran under, not the one that replaces it.
 func TestEnsureLabelsAStoppingProcessLinesWithTheOldRouting(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake child flushes on SIGTERM, which Windows cannot deliver")
