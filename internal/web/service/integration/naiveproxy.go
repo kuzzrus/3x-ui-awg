@@ -44,6 +44,7 @@ func (s *NaiveProxyService) Install() error {
 type NaiveProxyCert struct {
 	InboundId int    `json:"inboundId"`
 	Domain    string `json:"domain"`
+	Enable    bool   `json:"enable"` // a disabled automatic inbound is never ordered, so its idle state is not "waiting"
 	naiveproxy.CertStatus
 }
 
@@ -60,7 +61,7 @@ func (s *NaiveProxyService) Certs() ([]NaiveProxyCert, error) {
 		if t.Mode == naiveproxy.CertAuto {
 			status = mgr.AutoCertStatus(t.Domain)
 		}
-		certs = append(certs, NaiveProxyCert{InboundId: t.InboundId, Domain: t.Domain, CertStatus: status})
+		certs = append(certs, NaiveProxyCert{InboundId: t.InboundId, Domain: t.Domain, Enable: t.Enable, CertStatus: status})
 	}
 	return certs, nil
 }

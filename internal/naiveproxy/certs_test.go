@@ -186,11 +186,46 @@ func TestCertManagerReportsAFailedOrder(t *testing.T) {
 	if !strings.Contains(st.Error, "the CA refused the challenge") {
 		t.Errorf("error = %q, want the CA's reason", st.Error)
 	}
+	if st.Hint != "" {
+		t.Errorf("hint = %q for a failure that says nothing about port 80", st.Hint)
+	}
 	if st.NotAfter != nil {
 		t.Errorf("expiry = %v for a certificate that was never issued", st.NotAfter)
 	}
 	if _, _, ok := m.lookup("naive.example.com"); ok {
 		t.Error("lookup reports a certificate that was never issued")
+	}
+}
+
+// What Let's Encrypt answers when another program holds port 80 (captured from a real order): the
+// token is fetched from that program, not from the panel. Only such failures get the hint.
+func TestCertHint(t *testing.T) {
+	cases := []struct {
+		name, msg, want string
+	}{
+		{"another program answers on port 80", `[app.example.com] solving challenge: authorization failed: HTTP 403 urn:ietf:params:acme:error:unauthorized - 203.0.113.7: Invalid response from http://app.example.com/.well-known/acme-challenge/tok: 403`, CertHintReach},
+		{"the domain does not exist", `HTTP 400 urn:ietf:params:acme:error:dns - DNS problem: NXDOMAIN looking up A for app.example.com`, CertHintReach},
+		{"port 80 is closed", `HTTP 400 urn:ietf:params:acme:error:connection - 203.0.113.7: Timeout during connect (likely firewall problem)`, CertHintReach},
+		{"rate limited", `HTTP 429 urn:ietf:params:acme:error:rateLimited - too many certificates`, ""},
+		{"not an ACME error", "unknown error", ""},
+	}
+	for _, tc := range cases {
+		if got := certHint(tc.msg); got != tc.want {
+			t.Errorf("%s: certHint = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestCertManagerHintsAtAnUnreachablePort80(t *testing.T) {
+	issuer := newFakeIssuer(t, time.Hour)
+	issuer.setErr(errors.New("HTTP 403 urn:ietf:params:acme:error:unauthorized - 203.0.113.7: Invalid response from http://naive.example.com/.well-known/acme-challenge/tok: 403"))
+	m := newTestCertManager(t, issuer, 0)
+
+	m.request(CertRequest{Domain: "naive.example.com"})
+	st := waitForStatus(t, m, "naive.example.com", CertStateFailed)
+
+	if st.Hint != CertHintReach {
+		t.Errorf("hint = %q after a failure of Let's Encrypt reaching the panel, want %q", st.Hint, CertHintReach)
 	}
 }
 
@@ -354,9 +389,12 @@ func TestCertDigestFollowsTheFiles(t *testing.T) {
 	if certDigest(otherCert, otherKey) == first {
 		t.Error("another pair has the same digest")
 	}
-	// Only the key changes: a half-replaced pair must not look unchanged.
-	if certDigest(certFile, otherKey) == first {
-		t.Error("replacing only the key left the digest unchanged")
+	// A deploy hook replaces the files one by one: the half-replaced pair is no pair, not a new one.
+	if got := certDigest(certFile, otherKey); got != "" {
+		t.Errorf("a certificate with another pair's key has digest %q, want none", got)
+	}
+	if got := certDigest(otherCert, keyFile); got != "" {
+		t.Errorf("another pair's certificate with this key has digest %q, want none", got)
 	}
 	if certDigest(certFile, filepath.Join(t.TempDir(), "absent.key")) != "" || certDigest("", keyFile) != "" {
 		t.Error("an unreadable or unset file still produced a digest")

@@ -103,19 +103,77 @@ func TestEnsureRestartsWhenAManualCertificateIsReplaced(t *testing.T) {
 	}
 
 	renewedCert, renewedKey := writeSelfSignedCert(t)
-	for dst, src := range map[string]string{certFile: renewedCert, keyFile: renewedKey} {
-		data, err := os.ReadFile(src)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(dst, data, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
+	copyOver(t, renewedCert, certFile)
+	copyOver(t, renewedKey, keyFile)
 	if err := m.Ensure(inst); err != nil {
 		t.Fatalf("Ensure after the pair was replaced: %v", err)
 	}
 	waitSpawnCount(t, pidFile, 2)
+}
+
+// A deploy hook writes the certificate and then the key. A Reconcile tick between the two sees
+// files that do not belong together; restarting Caddy on them would take the inbound down.
+func TestEnsureLeavesARunningCaddyAloneWhileAManualPairIsMismatched(t *testing.T) {
+	pidFile := installFakeCaddy(t)
+	m := newTestManager()
+	certFile, keyFile := writeSelfSignedCert(t)
+	inst := testInst(t, 1, "alice")
+	inst.CertFile, inst.KeyFile = certFile, keyFile
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("first Ensure: %v", err)
+	}
+	t.Cleanup(m.StopAll)
+	waitSpawnCount(t, pidFile, 1)
+
+	renewedCert, renewedKey := writeSelfSignedCert(t)
+	copyOver(t, renewedCert, certFile)
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("Ensure while the pair is half replaced: %v", err)
+	}
+	if got := spawnCount(t, pidFile); got != 1 {
+		t.Fatalf("spawn count = %d for a mismatched pair, want the running Caddy left alone", got)
+	}
+
+	copyOver(t, renewedKey, keyFile)
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("Ensure once the pair matches again: %v", err)
+	}
+	waitSpawnCount(t, pidFile, 2)
+}
+
+// The pair being half replaced says nothing about the clients: removing one must still reach the
+// running Caddy, or the removed client keeps getting through until the files settle.
+func TestEnsureStillAppliesClientChangesWhileAManualPairIsMismatched(t *testing.T) {
+	pidFile := installFakeCaddy(t)
+	m := newTestManager()
+	certFile, keyFile := writeSelfSignedCert(t)
+	inst := testInst(t, 1, "alice")
+	inst.CertFile, inst.KeyFile = certFile, keyFile
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("first Ensure: %v", err)
+	}
+	t.Cleanup(m.StopAll)
+	waitSpawnCount(t, pidFile, 1)
+
+	renewedCert, _ := writeSelfSignedCert(t)
+	copyOver(t, renewedCert, certFile)
+	inst.Clients = append(inst.Clients, Client{Email: "bob", Username: "bob", Password: "pw-b"})
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("Ensure with a new client and a half-replaced pair: %v", err)
+	}
+	waitSpawnCount(t, pidFile, 2)
+}
+
+// copyOver replaces dst with the contents of src, the way a deploy hook writes a certificate file.
+func copyOver(t *testing.T, src, dst string) {
+	t.Helper()
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dst, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // Waiting for a certificate is the normal first minute of an automatic inbound, so
@@ -168,6 +226,31 @@ func TestSyncCertsOrdersAndDropsDomains(t *testing.T) {
 	}
 	if st := m.AutoCertStatus("two.example.com"); st.State != CertStateObtained {
 		t.Errorf("a dropped domain reports %q, want its issued certificate still shown as obtained", st.State)
+	}
+}
+
+// The save-time check accepts every spelling of a name, so inbounds can disagree on the case, a
+// trailing dot or a space; each tick the later ones must not move the domain to their own account.
+func TestSyncCertsTreatsSpellingsOfOneDomainAsOne(t *testing.T) {
+	m := newTestManager()
+	m.certs = newTestCertManager(t, newFakeIssuer(t, time.Hour), 0)
+	reqs := []CertRequest{
+		{Domain: "Naive.Example.com", Email: "first@example.com"},
+		{Domain: "naive.example.com.", Email: "second@example.com"},
+		{Domain: " naive.example.com", Email: ""},
+	}
+
+	for range 3 {
+		m.SyncCerts(reqs)
+	}
+	waitForStatus(t, m.certs, "naive.example.com", CertStateObtained)
+
+	m.certs.mu.Lock()
+	managed := len(m.certs.managed)
+	email := m.certs.managed["naive.example.com"].email
+	m.certs.mu.Unlock()
+	if managed != 1 || email != "first@example.com" {
+		t.Errorf("managed %d domains, account %q, want one domain left with the first request's account", managed, email)
 	}
 }
 

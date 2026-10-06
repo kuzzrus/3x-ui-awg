@@ -58,13 +58,11 @@ func (j *NaiveProxyJob) syncCerts() {
 		return
 	}
 	var reqs []naiveproxy.CertRequest
-	seen := map[string]bool{}
 	fallback, fetched := "", false
 	for _, t := range targets {
-		if t.Mode != naiveproxy.CertAuto || !t.Enable || t.Domain == "" || seen[t.Domain] {
+		if t.Mode != naiveproxy.CertAuto || !t.Enable || t.Domain == "" {
 			continue
 		}
-		seen[t.Domain] = true
 		email := strings.TrimSpace(t.Email)
 		if email == "" {
 			if !fetched {

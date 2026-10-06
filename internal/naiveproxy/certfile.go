@@ -2,6 +2,7 @@ package naiveproxy
 
 import (
 	"crypto/sha256"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
@@ -63,11 +64,12 @@ func certLeaf(path string) (*x509.Certificate, error) {
 	}
 }
 
-// certDigest fingerprints a certificate and key file pair, "" when either is unreadable. Fed into
-// the Caddyfile, it makes a replaced pair restart Caddy, which only reads the files at start.
+// certDigest fingerprints a certificate and key file pair, "" unless both are readable and belong
+// together. Fed into the Caddyfile, it makes a replaced pair restart Caddy, which only reads the files at start.
 func certDigest(certFile, keyFile string) string {
+	var pair [2][]byte
 	h := sha256.New()
-	for _, path := range []string{certFile, keyFile} {
+	for i, path := range []string{certFile, keyFile} {
 		if path == "" {
 			return ""
 		}
@@ -75,8 +77,13 @@ func certDigest(certFile, keyFile string) string {
 		if err != nil {
 			return ""
 		}
+		pair[i] = data
 		h.Write(data)
 		h.Write([]byte{0})
+	}
+	// A deploy hook writes the two files one after the other; the pair in between must not pass for a new one.
+	if _, err := tls.X509KeyPair(pair[0], pair[1]); err != nil {
+		return ""
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }

@@ -41,6 +41,21 @@ type CertStatus struct {
 	State    CertState  `json:"state"`
 	NotAfter *time.Time `json:"notAfter,omitempty"`
 	Error    string     `json:"error,omitempty"`
+	Hint     string     `json:"hint,omitempty"` // a CertHint* the form words for the admin
+}
+
+// CertHintReach marks a failure of Let's Encrypt not getting the panel's answer on port 80: the domain
+// points elsewhere, or another program answers there. CertMagic assumes whatever holds the port can serve the challenge.
+const CertHintReach = "reach"
+
+// certHint classifies an ACME error message; "" for the failures with nothing more to say.
+func certHint(msg string) string {
+	for _, problem := range []string{"unauthorized", "connection", "dns"} {
+		if strings.Contains(msg, "urn:ietf:params:acme:error:"+problem) {
+			return CertHintReach
+		}
+	}
+	return ""
 }
 
 // CertRequest asks for an automatically managed certificate for Domain.
@@ -61,6 +76,7 @@ type managedCert struct {
 type certActivity struct {
 	state CertState
 	err   string
+	hint  string
 }
 
 // certManager orders and renews the certificates of automatic-mode inbounds with CertMagic.
@@ -158,7 +174,7 @@ func (m *certManager) onEvent(_ context.Context, event string, data map[string]a
 		if strings.Contains(msg, "context canceled") {
 			return nil
 		}
-		m.setActivity(domain, certActivity{state: CertStateFailed, err: msg})
+		m.setActivity(domain, certActivity{state: CertStateFailed, err: msg, hint: certHint(msg)})
 		logger.Warningf("naiveproxy: ordering the certificate for %s failed: %s", domain, msg)
 	}
 	return nil
@@ -304,7 +320,7 @@ func (m *certManager) status(domain string) CertStatus {
 		case CertStateObtaining:
 			st.State = CertStateObtaining
 		case CertStateFailed:
-			st.State, st.Error = CertStateFailed, act.err
+			st.State, st.Error, st.Hint = CertStateFailed, act.err, act.hint
 		}
 	}
 	return st
@@ -323,8 +339,8 @@ func (m *certManager) stop() {
 	}
 }
 
-// SyncCerts orders a certificate for every request and stops looking after the
-// automatic domains that are no longer asked for. Asking again is cheap.
+// SyncCerts orders a certificate for every request and stops looking after the automatic domains
+// that are no longer asked for. Asking again is cheap; of several requests for one domain the first wins.
 func (m *Manager) SyncCerts(reqs []CertRequest) {
 	m.mu.Lock()
 	if m.certs == nil {
@@ -339,8 +355,12 @@ func (m *Manager) SyncCerts(reqs []CertRequest) {
 
 	keep := make(map[string]struct{}, len(reqs))
 	for _, req := range reqs {
+		domain := normalizeDomain(req.Domain)
+		if _, taken := keep[domain]; taken {
+			continue // two inbounds on one domain would otherwise move it between their accounts every tick
+		}
+		keep[domain] = struct{}{}
 		cm.request(req)
-		keep[normalizeDomain(req.Domain)] = struct{}{}
 	}
 	cm.retain(keep)
 }

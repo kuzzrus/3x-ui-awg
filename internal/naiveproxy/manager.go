@@ -36,6 +36,7 @@ func writeDecoyContent(inst Instance) {
 type managed struct {
 	proc        *Process
 	fingerprint string
+	certDigest  string // of the certificate pair the process loaded, "" when it had none
 }
 
 // Manager owns every Naive-backed inbound's Caddy process, one per inbound,
@@ -126,6 +127,11 @@ func (m *Manager) ensureLocked(inst Instance) (*Process, error) {
 		inst.CertFile, inst.KeyFile = certFile, keyFile
 	}
 	inst.CertDigest = certDigest(inst.CertFile, inst.KeyFile)
+	// A deploy hook replaces the pair file by file. Until the two match again the running Caddy keeps its
+	// digest, so the half-written pair restarts nothing, while changes to its clients or routing still apply.
+	if cur, ok := m.procs[inst.Id]; ok && inst.CertDigest == "" {
+		inst.CertDigest = cur.certDigest
+	}
 
 	fp, err := renderCaddyfile(inst)
 	if err != nil {
@@ -166,7 +172,7 @@ func (m *Manager) ensureLocked(inst Instance) (*Process, error) {
 		_ = os.RemoveAll(decoyDirForID(inst.Id))
 		return nil, err
 	}
-	m.procs[inst.Id] = &managed{proc: proc, fingerprint: fp}
+	m.procs[inst.Id] = &managed{proc: proc, fingerprint: fp, certDigest: inst.CertDigest}
 	return proc, nil
 }
 
