@@ -51,9 +51,13 @@ Caddy never sees a direct connection, so it cannot obtain a certificate itself.
 With **Automatic (Let's Encrypt)** the panel does it for every enabled inbound in
 that mode and keeps it renewed.
 
-- **HTTP-01 on port 80.** Let's Encrypt has to reach the server on port 80, so the
-  domain's A record must point at it and nothing else may hold port 80. The panel
-  opens the port only while an order or a renewal is running.
+- **HTTP-01 on port 80.** Let's Encrypt has to reach the panel on port 80, so the
+  domain's A record must point at the server and nothing else may answer on that
+  port. The panel opens the port only while an order or a renewal is running. If
+  another program (nginx, Apache, ...) holds it, the panel cannot tell: the order
+  fails at Let's Encrypt with a message like `Invalid response from
+  http://<domain>/.well-known/acme-challenge/...`, and the form points at the port.
+  Stop that program, or use **My own files**.
 - **Renewal about 30 days before the certificate ends**, checked every ten minutes.
   A renewed certificate restarts the inbound's Caddy, which cuts the tunnels open at
   that moment.

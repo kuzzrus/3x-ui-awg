@@ -10,10 +10,12 @@ export type NaiveProxyCertState = '' | 'obtaining' | 'obtained' | 'failed';
 export interface NaiveProxyCert {
   inboundId: number;
   domain: string;
+  enable: boolean;
   mode: 'auto' | 'manual';
   state: NaiveProxyCertState;
   notAfter?: string;
   error?: string;
+  hint?: string; // 'reach': Let's Encrypt did not get the panel's answer on port 80
 }
 
 async function fetchNaiveProxyCerts(): Promise<NaiveProxyCert[]> {
@@ -26,17 +28,20 @@ async function fetchNaiveProxyCerts(): Promise<NaiveProxyCert[]> {
   return msg.obj ?? [];
 }
 
-// Polls quickly while an order is in flight, so the notice flips as soon as it lands.
+// Quickly while an enabled automatic inbound still waits for its order, so the notice flips as soon
+// as it lands. A disabled one stays idle for good and must not keep the fast poll going.
+export function certsPollInterval(certs: NaiveProxyCert[] | undefined): number {
+  const ordering = certs?.some(
+    (c) => c.mode === 'auto' && c.enable && (c.state === '' || c.state === 'obtaining'),
+  );
+  return ordering ? 3_000 : 30_000;
+}
+
 export function useNaiveProxyCertsQuery(enabled = true) {
   return useQuery({
     queryKey: keys.xray.naiveProxyCerts(),
     queryFn: fetchNaiveProxyCerts,
     enabled,
-    refetchInterval: (query) =>
-      query.state.data?.some(
-        (c) => c.mode === 'auto' && (c.state === '' || c.state === 'obtaining'),
-      )
-        ? 3_000
-        : 30_000,
+    refetchInterval: (query) => certsPollInterval(query.state.data),
   });
 }

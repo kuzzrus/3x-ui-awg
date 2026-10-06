@@ -5,8 +5,9 @@ import { FormProvider, useForm } from 'react-hook-form';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import NaiveProxyFields from '@/pages/inbounds/form/protocols/naiveproxy';
-import type { NaiveProxyCert } from '@/api/queries/useNaiveProxyCertsQuery';
+import { certsPollInterval, type NaiveProxyCert } from '@/api/queries/useNaiveProxyCertsQuery';
 import { keys } from '@/api/queryKeys';
+import { setDatepicker } from '@/hooks/useDatepicker';
 import { HttpUtil, Msg } from '@/utils';
 import { makeTestQueryClient, renderWithProviders } from './test-utils';
 
@@ -16,6 +17,8 @@ const DAY = 24 * 60 * 60 * 1000;
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOW);
+  // Also marks the setting as loaded, so the notice never asks the panel for it.
+  setDatepicker('gregorian');
 });
 
 afterEach(() => {
@@ -52,6 +55,7 @@ function cert(partial: Partial<NaiveProxyCert>): NaiveProxyCert {
   return {
     inboundId: 7,
     domain: 'naive.example.com',
+    enable: true,
     mode: 'auto',
     state: 'obtained',
     notAfter: inDays(60),
@@ -242,5 +246,100 @@ describe('NaiveProxy certificate notice', () => {
 
     await waitFor(() => expect(screen.getByText("Let's Encrypt email")).toBeTruthy());
     expect(screen.queryByText('Certificate file')).toBeNull();
+  });
+
+  // An inbound saved before the mode existed has no certMode and acts as manual. The switch has to
+  // show that, or its first segment looks selected and clicking it does nothing.
+  it('shows an inbound saved before the mode existed as using its own files, and switches in one click', async () => {
+    mockApi([]);
+    renderFields({ inboundId: null, certMode: undefined });
+
+    const own = await screen.findByRole('radio', { name: 'My own files' });
+    expect((own as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByText('Certificate file')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('radio', { name: "Automatic (Let's Encrypt)" }));
+
+    await waitFor(() => expect(screen.getByText("Let's Encrypt email")).toBeTruthy());
+    expect(screen.queryByText('Certificate file')).toBeNull();
+  });
+
+  it('says the certificate is dead when the renewal that should have replaced it keeps failing', async () => {
+    mockApi([cert({ state: 'failed', notAfter: inDays(-3), error: 'port 80 is in use' })]);
+    renderFields({ inboundId: 7, certMode: 'auto' });
+
+    await expectNotice(/expired on.*last renewal failed: port 80 is in use/);
+    expect(document.querySelector('.ant-alert-error')).not.toBeNull();
+    expect(notice()?.textContent).not.toMatch(/Valid until/);
+  });
+
+  it('writes the end date in the calendar the panel is set to', async () => {
+    setDatepicker('jalalian');
+    const expiry = inDays(60);
+    mockApi([cert({ notAfter: expiry })]);
+    renderFields({ inboundId: 7, certMode: 'auto' });
+
+    const jalali = new Intl.DateTimeFormat('fa-IR', { dateStyle: 'medium' }).format(
+      new Date(expiry),
+    );
+    const gregorian = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(
+      new Date(expiry),
+    );
+    expect(jalali).not.toBe(gregorian);
+    await expectNotice(new RegExp(`Valid until ${jalali}`));
+  });
+
+  it('does not promise an order for an inbound that is switched off', async () => {
+    mockApi([cert({ enable: false, state: '', notAfter: undefined })]);
+    renderFields({ inboundId: 7, certMode: 'auto' });
+
+    await expectNotice(/inbound is disabled/);
+    expect(notice()?.textContent).not.toMatch(/as soon as the panel picks/);
+  });
+
+  // What Let's Encrypt says when another program answers on port 80 is no help to an admin
+  // who does not know the panel serves the challenge there.
+  it("tells what to check when Let's Encrypt cannot reach the panel on port 80", async () => {
+    mockApi([
+      cert({
+        state: 'failed',
+        notAfter: undefined,
+        error: 'Invalid response from http://naive.example.com/.well-known/acme-challenge/x: 403',
+        hint: 'reach',
+      }),
+    ]);
+    renderFields({ inboundId: 7, certMode: 'auto' });
+
+    await expectNotice(/Could not get the certificate: Invalid response/);
+    expect(notice()?.textContent).toMatch(/stop whatever else answers on port 80/);
+  });
+
+  it('adds no port hint to a failure that does not carry one', async () => {
+    mockApi([cert({ state: 'failed', notAfter: undefined, error: 'rate limited' })]);
+    renderFields({ inboundId: 7, certMode: 'auto' });
+
+    await expectNotice(/Could not get the certificate: rate limited/);
+    expect(notice()?.textContent).not.toMatch(/port 80/);
+  });
+});
+
+describe('NaiveProxy certificate polling', () => {
+  it('polls quickly while an enabled automatic inbound waits for its order', () => {
+    expect(certsPollInterval([cert({ state: '', notAfter: undefined })])).toBe(3_000);
+    expect(certsPollInterval([cert({ state: 'obtaining', notAfter: undefined })])).toBe(3_000);
+  });
+
+  it('settles to the slow poll once every order has an answer', () => {
+    expect(certsPollInterval(undefined)).toBe(30_000);
+    expect(certsPollInterval([cert({ state: 'obtained' })])).toBe(30_000);
+    expect(certsPollInterval([cert({ state: 'failed', error: 'no' })])).toBe(30_000);
+    expect(certsPollInterval([cert({ mode: 'manual', state: '' })])).toBe(30_000);
+  });
+
+  // A switched-off automatic inbound stays idle for good: it must not pin the poll at three seconds.
+  it('ignores an inbound that is switched off', () => {
+    expect(certsPollInterval([cert({ enable: false, state: '', notAfter: undefined })])).toBe(
+      30_000,
+    );
   });
 });

@@ -13,7 +13,8 @@ import {
 } from '@/api/queries/useNaiveProxyCertsQuery';
 import { useOutboundTags } from '@/api/queries/useOutboundTags';
 import { FormField } from '@/components/form/rhf';
-import { HttpUtil, LanguageManager } from '@/utils';
+import { useDatepicker } from '@/hooks/useDatepicker';
+import { HttpUtil, LanguageManager, type CalendarKind } from '@/utils';
 import { getMessage } from '@/utils/messageBus';
 
 // The Caddy build every NaiveProxy inbound runs is downloaded on demand, so a
@@ -73,6 +74,7 @@ interface CertView {
   type: 'info' | 'success' | 'warning' | 'error';
   message: string;
   retry: boolean;
+  hint?: string;
 }
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
@@ -82,16 +84,27 @@ function daysUntil(notAfter: Date, now: number): number {
   return Math.ceil((notAfter.getTime() - now) / DAY_MS);
 }
 
-function describeCert(cert: NaiveProxyCert, t: Translate, now: number): CertView {
+// A date in the calendar the panel's other dates use, as IntlUtil.formatDate picks the locale.
+function formatDay(date: Date, calendar: CalendarKind): string {
+  const locale = calendar === 'jalalian' ? 'fa-IR' : LanguageManager.getLanguage();
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(date);
+}
+
+function describeCert(
+  cert: NaiveProxyCert,
+  t: Translate,
+  now: number,
+  calendar: CalendarKind,
+): CertView {
   const key = (name: string) => `pages.inbounds.form.${name}`;
   const parsed = cert.notAfter ? new Date(cert.notAfter) : null;
   const expiry = parsed && Number.isFinite(parsed.getTime()) ? parsed : null;
   const days = expiry ? daysUntil(expiry, now) : 0;
-  const date = expiry
-    ? new Intl.DateTimeFormat(LanguageManager.getLanguage(), { dateStyle: 'medium' }).format(expiry)
-    : '';
+  const date = expiry ? formatDay(expiry, calendar) : '';
   const error = cert.error ?? '';
   const auto = cert.mode === 'auto';
+  // What an admin can do about the failures that mean Let's Encrypt never got the panel's answer.
+  const hint = cert.hint === 'reach' ? t(key('naiveProxyCertReachHint')) : undefined;
 
   // A certificate that is in place, however it got there.
   const inPlace = (): CertView => {
@@ -117,6 +130,12 @@ function describeCert(cert: NaiveProxyCert, t: Translate, now: number): CertView
     message: t(key('naiveProxyCertWaiting')),
     retry: false,
   };
+  // A switched-off inbound is never ordered, so nothing is about to happen.
+  const disabled: CertView = {
+    type: 'info',
+    message: t(key('naiveProxyCertDisabled')),
+    retry: false,
+  };
 
   if (!auto) {
     if (cert.state === 'failed' || !expiry) {
@@ -139,17 +158,32 @@ function describeCert(cert: NaiveProxyCert, t: Translate, now: number): CertView
       };
     case 'failed':
       if (!expiry) {
-        return { type: 'error', message: t(key('naiveProxyCertFailed'), { error }), retry: true };
+        return {
+          type: 'error',
+          message: t(key('naiveProxyCertFailed'), { error }),
+          retry: true,
+          hint,
+        };
+      }
+      // The old certificate is the one state where the admin must hear it is already dead.
+      if (days <= 0) {
+        return {
+          type: 'error',
+          message: t(key('naiveProxyCertExpiredRenewalFailed'), { date, error }),
+          retry: true,
+          hint,
+        };
       }
       return {
         type: days <= CERT_ALARM_DAYS ? 'error' : 'warning',
-        message: t(key('naiveProxyCertRenewalFailed'), { date, days: Math.max(days, 0), error }),
+        message: t(key('naiveProxyCertRenewalFailed'), { date, days, error }),
         retry: true,
+        hint,
       };
     case 'obtained':
       return expiry ? inPlace() : waiting;
     default:
-      return waiting;
+      return cert.enable ? waiting : disabled;
   }
 }
 
@@ -166,6 +200,7 @@ function CertNotice({
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const { datepicker } = useDatepicker();
   const { data: certs, dataUpdatedAt } = useNaiveProxyCertsQuery(inboundId != null);
   const [retrying, setRetrying] = useState(false);
 
@@ -197,13 +232,14 @@ function CertNotice({
     ) : null;
   }
   // The time of the last fetch stands in for now: reading the clock during render is not pure.
-  const view = describeCert(cert, t as Translate, dataUpdatedAt);
+  const view = describeCert(cert, t as Translate, dataUpdatedAt, datepicker);
   return (
     <Alert
       type={view.type}
       showIcon
       style={{ marginBottom: 16 }}
       message={view.message}
+      description={view.hint}
       action={
         view.retry ? (
           <Button size="small" loading={retrying} onClick={retry}>
@@ -239,6 +275,9 @@ export default function NaiveProxyFields({ inboundId = null }: { inboundId?: num
       <FormField
         name={['settings', 'certMode']}
         label={t('pages.inbounds.form.naiveProxyCertMode')}
+        // An inbound saved before the mode existed has none and acts as manual: show that, or the
+        // first segment looks selected and clicking it does nothing.
+        transform={{ input: (v) => v ?? 'manual' }}
       >
         <Segmented
           options={[
