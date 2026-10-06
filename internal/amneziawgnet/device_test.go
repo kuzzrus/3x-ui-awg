@@ -40,7 +40,7 @@ func TestNewDeviceHandshakeForwarderAndIdentity(t *testing.T) {
 		t.Fatalf("generate client keypair: %v", err)
 	}
 
-	const listenPort = 58712 // fixed loopback test port, matches the validated Phase 0 spike approach
+	listenPort := freePort(t)
 	const wantEmail = "test-peer@example.com"
 
 	inst := amneziawg.Instance{
@@ -249,7 +249,7 @@ func TestNewDeviceHeaderProtectionAndContentPaddingRoundTrip(t *testing.T) {
 		t.Fatalf("generate header protection key: %v", err)
 	}
 
-	const listenPort = 58713 // fixed loopback test port, distinct from the handshake test above
+	listenPort := freePort(t)
 	const contentPaddingAddition = "20-40"
 
 	inst := amneziawg.Instance{
@@ -435,7 +435,7 @@ func TestNewDeviceRandomTrailersAndDisableCookiesRoundTrip(t *testing.T) {
 		t.Fatalf("generate client keypair: %v", err)
 	}
 
-	const listenPort = 58721 // fixed loopback test port, distinct from every other test in this package
+	listenPort := freePort(t)
 
 	inst := amneziawg.Instance{
 		Id:            3,
