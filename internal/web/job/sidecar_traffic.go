@@ -1,9 +1,34 @@
 package job
 
 import (
+	"maps"
+	"slices"
+
 	"github.com/mhsanaei/3x-ui/v3/internal/web/websocket"
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
+
+// clientTrafficByEmail sums per-inbound deltas into one row per client: AddTraffic keeps a single
+// row per email, so a client on several inbounds would lose all but one inbound's bytes.
+type clientTrafficByEmail map[string]*xray.ClientTraffic
+
+func (c clientTrafficByEmail) add(email string, up, down int64) {
+	row := c[email]
+	if row == nil {
+		row = &xray.ClientTraffic{Email: email}
+		c[email] = row
+	}
+	row.Up += up
+	row.Down += down
+}
+
+func (c clientTrafficByEmail) sortedRows() []*xray.ClientTraffic {
+	rows := make([]*xray.ClientTraffic, 0, len(c))
+	for _, email := range slices.Sorted(maps.Keys(c)) {
+		rows = append(rows, c[email])
+	}
+	return rows
+}
 
 // sidecarTrafficPayload builds the websocket broadcast map for one poll of a
 // sidecar protocol's traffic delta. "Sidecar" means a protocol that never
