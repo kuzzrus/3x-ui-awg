@@ -840,6 +840,174 @@ exports[`protocol capability predicates > mtproto-domain-fronting :: xhttp/tls 1
 }
 `;
 
+exports[`protocol capability predicates > naiveproxy-auto :: grpc/none 1`] = `
+{
+  "canEnableReality": false,
+  "canEnableStream": false,
+  "canEnableTls": false,
+  "canEnableTlsFlow": false,
+  "canEnableVisionSeed": false,
+  "isSS2022": false,
+  "isSSMultiUser": true,
+}
+`;
+
+exports[`protocol capability predicates > naiveproxy-auto :: grpc/reality 1`] = `
+{
+  "canEnableReality": false,
+  "canEnableStream": false,
+  "canEnableTls": false,
+  "canEnableTlsFlow": false,
+  "canEnableVisionSeed": false,
+  "isSS2022": false,
+  "isSSMultiUser": true,
+}
+`;
+
+exports[`protocol capability predicates > naiveproxy-auto :: grpc/tls 1`] = `
+{
+  "canEnableReality": false,
+  "canEnableStream": false,
+  "canEnableTls": false,
+  "canEnableTlsFlow": false,
+  "canEnableVisionSeed": false,
+  "isSS2022": false,
+  "isSSMultiUser": true,
+}
+`;
+
+exports[`protocol capability predicates > naiveproxy-auto :: httpupgrade/none 1`] = `
+{
+  "canEnableReality": false,
+  "canEnableStream": false,
+  "canEnableTls": false,
+  "canEnableTlsFlow": false,
+  "canEnableVisionSeed": false,
+  "isSS2022": false,
+  "isSSMultiUser": true,
+}
+`;
+
+exports[`protocol capability predicates > naiveproxy-auto :: httpupgrade/tls 1`] = `
+{
+  "canEnableReality": false,
+  "canEnableStream": false,
+  "canEnableTls": false,
+  "canEnableTlsFlow": false,
+  "canEnableVisionSeed": false,
+  "isSS2022": false,
+  "isSSMultiUser": true,
+}
+`;
+
+exports[`protocol capability predicates > naiveproxy-auto :: kcp/none 1`] = `
+{
+  "canEnableReality": false,
+  "canEnableStream": false,
+  "canEnableTls": false,
+  "canEnableTlsFlow": false,
+  "canEnableVisionSeed": false,
+  "isSS2022": false,
+  "isSSMultiUser": true,
+}
+`;
+
+exports[`protocol capability predicates > naiveproxy-auto :: tcp/none 1`] = `
+{
+  "canEnableReality": false,
+  "canEnableStream": false,
+  "canEnableTls": false,
+  "canEnableTlsFlow": false,
+  "canEnableVisionSeed": false,
+  "isSS2022": false,
+  "isSSMultiUser": true,
+}
+`;
+
+exports[`protocol capability predicates > naiveproxy-auto :: tcp/reality 1`] = `
+{
+  "canEnableReality": false,
+  "canEnableStream": false,
+  "canEnableTls": false,
+  "canEnableTlsFlow": false,
+  "canEnableVisionSeed": false,
+  "isSS2022": false,
+  "isSSMultiUser": true,
+}
+`;
+
+exports[`protocol capability predicates > naiveproxy-auto :: tcp/tls 1`] = `
+{
+  "canEnableReality": false,
+  "canEnableStream": false,
+  "canEnableTls": false,
+  "canEnableTlsFlow": false,
+  "canEnableVisionSeed": false,
+  "isSS2022": false,
+  "isSSMultiUser": true,
+}
+`;
+
+exports[`protocol capability predicates > naiveproxy-auto :: ws/none 1`] = `
+{
+  "canEnableReality": false,
+  "canEnableStream": false,
+  "canEnableTls": false,
+  "canEnableTlsFlow": false,
+  "canEnableVisionSeed": false,
+  "isSS2022": false,
+  "isSSMultiUser": true,
+}
+`;
+
+exports[`protocol capability predicates > naiveproxy-auto :: ws/tls 1`] = `
+{
+  "canEnableReality": false,
+  "canEnableStream": false,
+  "canEnableTls": false,
+  "canEnableTlsFlow": false,
+  "canEnableVisionSeed": false,
+  "isSS2022": false,
+  "isSSMultiUser": true,
+}
+`;
+
+exports[`protocol capability predicates > naiveproxy-auto :: xhttp/none 1`] = `
+{
+  "canEnableReality": false,
+  "canEnableStream": false,
+  "canEnableTls": false,
+  "canEnableTlsFlow": false,
+  "canEnableVisionSeed": false,
+  "isSS2022": false,
+  "isSSMultiUser": true,
+}
+`;
+
+exports[`protocol capability predicates > naiveproxy-auto :: xhttp/reality 1`] = `
+{
+  "canEnableReality": false,
+  "canEnableStream": false,
+  "canEnableTls": false,
+  "canEnableTlsFlow": false,
+  "canEnableVisionSeed": false,
+  "isSS2022": false,
+  "isSSMultiUser": true,
+}
+`;
+
+exports[`protocol capability predicates > naiveproxy-auto :: xhttp/tls 1`] = `
+{
+  "canEnableReality": false,
+  "canEnableStream": false,
+  "canEnableTls": false,
+  "canEnableTlsFlow": false,
+  "canEnableVisionSeed": false,
+  "isSS2022": false,
+  "isSSMultiUser": true,
+}
+`;
+
 exports[`protocol capability predicates > naiveproxy-basic :: grpc/none 1`] = `
 {
   "canEnableReality": false,

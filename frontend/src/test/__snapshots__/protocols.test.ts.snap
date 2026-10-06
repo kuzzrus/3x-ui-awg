@@ -114,11 +114,41 @@ exports[`InboundSettingsSchema fixtures > parses mtproto-domain-fronting byte-st
 }
 `;
 
+exports[`InboundSettingsSchema fixtures > parses naiveproxy-auto byte-stably 1`] = `
+{
+  "protocol": "naiveproxy",
+  "settings": {
+    "acmeEmail": "ops@example.com",
+    "certFile": "",
+    "certMode": "auto",
+    "clients": [
+      {
+        "comment": "",
+        "email": "naive-user",
+        "enable": true,
+        "expiryTime": 0,
+        "limitIp": 0,
+        "naiveProxyPassword": "0123456789abcdef",
+        "reset": 0,
+        "subId": "",
+        "tgId": 0,
+        "totalGB": 0,
+      },
+    ],
+    "domain": "naive.example.com",
+    "keyFile": "",
+    "publicPort": 443,
+  },
+}
+`;
+
 exports[`InboundSettingsSchema fixtures > parses naiveproxy-basic byte-stably 1`] = `
 {
   "protocol": "naiveproxy",
   "settings": {
+    "acmeEmail": "",
     "certFile": "/etc/ssl/naive.example.com/fullchain.pem",
+    "certMode": "manual",
     "clients": [
       {
         "comment": "",
@@ -144,7 +174,9 @@ exports[`InboundSettingsSchema fixtures > parses naiveproxy-routed byte-stably 1
 {
   "protocol": "naiveproxy",
   "settings": {
+    "acmeEmail": "",
     "certFile": "/etc/ssl/naive.example.com/fullchain.pem",
+    "certMode": "manual",
     "clients": [
       {
         "comment": "capped and expiring",

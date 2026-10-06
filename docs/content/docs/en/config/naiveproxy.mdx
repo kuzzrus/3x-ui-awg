@@ -23,7 +23,9 @@ ordinary website instead of a proxy error.
 | --- | --- |
 | **Port** | A free port on the server's **loopback** interface that this inbound's Caddy listens on. It is never exposed directly. |
 | **Domain** | The name clients connect to. The panel's reverse proxy relays connections with this TLS server name to the inbound, so it must be unique — not the panel's own domain and not another NaiveProxy inbound's. |
-| **Certificate file** / **Certificate key file** | Paths to a TLS certificate and private key for the domain, readable by the panel. Caddy never sees a direct connection, so it cannot obtain a certificate itself; see [SSL certificates](/docs/config/ssl-certificates). |
+| **Certificate** | **Automatic (Let's Encrypt)**, the default for a new inbound: the panel orders the certificate once the inbound is saved and keeps it renewed. Or **My own files**, kept up by you; see [The certificate](#the-certificate). |
+| **Let's Encrypt email** | Automatic mode only, optional. The contact address of the Let's Encrypt account; left empty, the email from the [reverse proxy](/docs/operations/reverse-proxy) settings is used. |
+| **Certificate file** / **Certificate key file** | My own files mode only: paths to a TLS certificate and private key for the domain, readable by the panel; see [SSL certificates](/docs/config/ssl-certificates). |
 | **Public port** | The port written into share links — where the panel's reverse proxy is reachable from outside, normally `443`. It does not change what the server listens on. |
 | **Route through Xray** | Optional. Sends the proxied traffic through Xray so it follows your [routing rules](/docs/operations/outbounds-routing); an outbound can be forced too. |
 
@@ -38,10 +40,36 @@ subscription, or the decoy. You therefore need
 - the built-in reverse proxy turned on and reachable on the public port
   (typically behind a REALITY inbound's fallback on `443`),
 - a DNS record for the domain pointing at the server, and
-- a certificate and key for that domain in files the panel can read.
+- a certificate for that domain: ordered by the panel, or in files it can read.
 
 A visitor or scanner without valid credentials is served a generic page
 generated from the domain, so the endpoint looks like a normal site.
+
+## The certificate
+
+Caddy never sees a direct connection, so it cannot obtain a certificate itself.
+With **Automatic (Let's Encrypt)** the panel does it for every enabled inbound in
+that mode and keeps it renewed.
+
+- **HTTP-01 on port 80.** Let's Encrypt has to reach the server on port 80, so the
+  domain's A record must point at it and nothing else may hold port 80. The panel
+  opens the port only while an order or a renewal is running.
+- **Renewal about 30 days before the certificate ends**, checked every ten minutes.
+  A renewed certificate restarts the inbound's Caddy, which cuts the tunnels open at
+  that moment.
+- **A notice in the inbound form** shows where the certificate stands: ordering,
+  valid until a date with the days left, or why an order failed, with a **Try again**
+  button. It turns yellow at 14 days and red at 3 days left: the renewal is not
+  happening, see the panel log. It also works for **My own files**, where it shows
+  when the file ends.
+- Only plain domain names qualify. An IP address or a wildcard is refused when you
+  save the inbound.
+- The certificate and the Let's Encrypt account are kept in `bin/naiveproxy-certs`,
+  which stays when you remove the engine.
+
+With **My own files** you keep the certificate yourself, for example with certbot or
+acme.sh. The panel restarts the inbound's Caddy when it sees the files change, so a
+renewal takes effect without any further action.
 
 ## Set it up in the panel
 
@@ -61,9 +89,10 @@ other platform the notice says the engine is unavailable.
 <Step>
 ### Add an inbound
 
-Pick a free loopback **Port**, enter the **Domain**, and give the **Certificate
-file** and **Certificate key file** paths. Leave **Public port** at `443` unless the reverse
-proxy is reachable elsewhere.
+Pick a free loopback **Port** and enter the **Domain**. Leave **Certificate** on
+**Automatic (Let's Encrypt)** once the domain's A record points at the server and port 80
+is free, or choose **My own files** and give the **Certificate file** and **Certificate key
+file** paths. Leave **Public port** at `443` unless the reverse proxy is reachable elsewhere.
 </Step>
 
 <Step>
