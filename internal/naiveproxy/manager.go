@@ -1,6 +1,7 @@
 package naiveproxy
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -49,6 +50,8 @@ type Manager struct {
 	// failing holds each inbound's last logged Reconcile failure, so one that lasts
 	// across ticks (a missing engine, most often) is reported once, not every tick.
 	failing map[int]string
+	// certs orders the certificates of CertAuto inbounds; the first SyncCerts creates it.
+	certs *certManager
 }
 
 var (
@@ -95,6 +98,10 @@ func (m *Manager) Ensure(inst Instance) error {
 	m.sweepOrphansLocked()
 	proc, err := m.ensureLocked(inst)
 	m.mu.Unlock()
+	// Not a failure the caller can act on: the job starts the inbound once the certificate lands.
+	if errors.Is(err, ErrCertPending) {
+		return nil
+	}
 	if err != nil || proc == nil {
 		return err
 	}
@@ -108,6 +115,17 @@ func (m *Manager) ensureLocked(inst Instance) (*Process, error) {
 		m.removeLocked(inst.Id)
 		return nil, nil
 	}
+
+	// Before the render, which needs the files. A running instance whose pair is momentarily
+	// unreadable (the two files are written one after the other) is left alone until the next tick.
+	if inst.CertMode == CertAuto {
+		certFile, keyFile, ok := m.certs.lookup(inst.Domain)
+		if !ok {
+			return nil, ErrCertPending
+		}
+		inst.CertFile, inst.KeyFile = certFile, keyFile
+	}
+	inst.CertDigest = certDigest(inst.CertFile, inst.KeyFile)
 
 	fp, err := renderCaddyfile(inst)
 	if err != nil {
@@ -227,7 +245,11 @@ func (m *Manager) Reconcile(desired []Instance) (changed bool) {
 		proc, err := m.ensureLocked(inst)
 		if err != nil {
 			if m.isNewFailureLocked(inst.Id, err) {
-				logger.Warningf("naiveproxy: reconcile failed for inbound %d: %v", inst.Id, err)
+				if errors.Is(err, ErrCertPending) {
+					logger.Infof("naiveproxy: inbound %d waits for the certificate of %s", inst.Id, inst.Domain)
+				} else {
+					logger.Warningf("naiveproxy: reconcile failed for inbound %d: %v", inst.Id, err)
+				}
 			}
 			continue
 		}
@@ -256,6 +278,10 @@ func (m *Manager) StopAll() {
 	defer m.mu.Unlock()
 	for id := range m.procs {
 		m.removeLocked(id)
+	}
+	if m.certs != nil {
+		m.certs.stop()
+		m.certs = nil
 	}
 }
 

@@ -73,3 +73,22 @@ func TestInstanceFromInboundOkWithNoEnabledClients(t *testing.T) {
 		t.Errorf("Clients = %+v, want empty", inst.Clients)
 	}
 }
+
+// Inbounds saved before the mode existed carry no certMode: they keep the files the admin set.
+func TestInstanceFromInboundReadsTheCertMode(t *testing.T) {
+	for _, tc := range []struct {
+		settings string
+		want     string
+	}{
+		{`{"domain":"d.example.com","certMode":"auto"}`, CertAuto},
+		{`{"domain":"d.example.com","certMode":"manual"}`, CertManual},
+		{`{"domain":"d.example.com"}`, CertManual},
+		{`{"domain":"d.example.com","certMode":"AUTO"}`, CertManual},
+		{`{"domain":"d.example.com","certMode":"letsencrypt"}`, CertManual},
+	} {
+		inst, ok := InstanceFromInbound(&model.Inbound{Protocol: model.NaiveProxy, Port: 1, Settings: tc.settings})
+		if !ok || inst.CertMode != tc.want {
+			t.Errorf("%s: CertMode = %q (ok %v), want %q", tc.settings, inst.CertMode, ok, tc.want)
+		}
+	}
+}

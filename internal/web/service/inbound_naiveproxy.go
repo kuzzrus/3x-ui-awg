@@ -2,11 +2,14 @@ package service
 
 import (
 	"context"
+	"net/mail"
+	"strings"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/naiveproxy"
+	"github.com/mhsanaei/3x-ui/v3/internal/util/common"
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
 
@@ -88,4 +91,51 @@ func (s *InboundService) applyLocalNaiveProxy(inboundId int) {
 	if err := rt.UpdateInbound(context.Background(), inbound, payload); err != nil {
 		logger.Debug("naiveproxy: immediate client apply failed for inbound", inboundId, ":", err)
 	}
+}
+
+// NaiveProxyCertTarget is the certificate setup of one local NaiveProxy inbound.
+type NaiveProxyCertTarget struct {
+	InboundId int
+	Enable    bool
+	naiveproxy.CertSettings
+}
+
+// NaiveProxyCertTargets lists the certificate setup of every local NaiveProxy
+// inbound, enabled or not, in inbound order so the first of two clashing domains always wins.
+func (s *InboundService) NaiveProxyCertTargets() ([]NaiveProxyCertTarget, error) {
+	var inbounds []*model.Inbound
+	err := database.GetDB().Model(model.Inbound{}).
+		Where("protocol = ? AND node_id IS NULL", model.NaiveProxy).
+		Order("id").
+		Find(&inbounds).Error
+	if err != nil {
+		return nil, err
+	}
+	targets := make([]NaiveProxyCertTarget, 0, len(inbounds))
+	for _, ib := range inbounds {
+		settings, ok := naiveproxy.CertSettingsFromInbound(ib)
+		if !ok {
+			continue
+		}
+		targets = append(targets, NaiveProxyCertTarget{InboundId: ib.Id, Enable: ib.Enable, CertSettings: settings})
+	}
+	return targets, nil
+}
+
+// validateNaiveProxyCert refuses an automatic-certificate inbound Let's Encrypt could never
+// serve: a domain it cannot validate over HTTP-01, or a contact address that is not one.
+func validateNaiveProxyCert(inbound *model.Inbound) error {
+	settings, ok := naiveproxy.CertSettingsFromInbound(inbound)
+	if !ok || settings.Mode != naiveproxy.CertAuto {
+		return nil
+	}
+	if err := naiveproxy.ValidCertDomain(settings.Domain); err != nil {
+		return common.NewErrorf("naiveproxy automatic certificate: %v", err)
+	}
+	if email := strings.TrimSpace(settings.Email); email != "" {
+		if addr, err := mail.ParseAddress(email); err != nil || addr.Address != email {
+			return common.NewErrorf("naiveproxy automatic certificate: %q is not an email address", settings.Email)
+		}
+	}
+	return nil
 }

@@ -1171,6 +1171,9 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 	if err := s.normalizeNaiveProxyXrayPort(inbound, ""); err != nil {
 		return inbound, false, err
 	}
+	if err := validateNaiveProxyCert(inbound); err != nil {
+		return inbound, false, err
+	}
 	if err := s.normalizeAmneziaWGSettings(inbound, ""); err != nil {
 		return inbound, false, err
 	}
@@ -1823,6 +1826,9 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 		return inbound, false, err
 	}
 	if err := s.normalizeNaiveProxyXrayPort(inbound, oldInbound.Settings); err != nil {
+		return inbound, false, err
+	}
+	if err := validateNaiveProxyCert(inbound); err != nil {
 		return inbound, false, err
 	}
 

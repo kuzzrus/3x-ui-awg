@@ -3,6 +3,7 @@ package job
 import (
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/naiveproxy"
@@ -26,6 +27,8 @@ func NewNaiveProxyJob() *NaiveProxyJob {
 // Run reconciles desired NaiveProxy inbounds with the running Caddy set, then
 // records per-client traffic deltas and online status.
 func (j *NaiveProxyJob) Run() {
+	j.syncCerts()
+
 	desired, err := j.inboundService.DesiredNaiveProxyInstances()
 	if err != nil {
 		logger.Warning("naiveproxy job: get desired instances failed:", err)
@@ -44,6 +47,35 @@ func (j *NaiveProxyJob) Run() {
 	if err := j.frontProxyService.Reload(); err != nil {
 		logger.Warning("naiveproxy job: reload front proxy failed:", err)
 	}
+}
+
+// syncCerts tells the manager which domains need a certificate it orders itself. It runs for
+// every enabled automatic inbound, with or without clients, so the certificate is ready when the first one is added.
+func (j *NaiveProxyJob) syncCerts() {
+	targets, err := j.inboundService.NaiveProxyCertTargets()
+	if err != nil {
+		logger.Warning("naiveproxy job: get certificate targets failed:", err)
+		return
+	}
+	var reqs []naiveproxy.CertRequest
+	seen := map[string]bool{}
+	fallback, fetched := "", false
+	for _, t := range targets {
+		if t.Mode != naiveproxy.CertAuto || !t.Enable || t.Domain == "" || seen[t.Domain] {
+			continue
+		}
+		seen[t.Domain] = true
+		email := strings.TrimSpace(t.Email)
+		if email == "" {
+			if !fetched {
+				fallback, _ = j.frontProxyService.GetFrontProxyEmail()
+				fetched = true
+			}
+			email = fallback
+		}
+		reqs = append(reqs, naiveproxy.CertRequest{Domain: t.Domain, Email: email})
+	}
+	naiveproxy.GetManager().SyncCerts(reqs)
 }
 
 // recordTraffic feeds the metered deltas to AddTraffic like MtprotoJob, but broadcasts no live

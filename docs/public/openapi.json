@@ -13909,19 +13909,38 @@
         "tags": [
           "Xray Settings"
         ],
-        "summary": "Manage the NaiveProxy engine binary (a Caddy build with the klzgrad forward_proxy plugin) that NaiveProxy inbounds run. The action parameter selects the operation.",
+        "summary": "Manage the NaiveProxy engine binary (a Caddy build with the klzgrad forward_proxy plugin) that NaiveProxy inbounds run, and the TLS certificates of their inbounds. The action parameter selects the operation.",
         "operationId": "post_panel_api_xray_naiveproxy_action",
         "parameters": [
           {
             "name": "action",
             "in": "path",
             "required": true,
-            "description": "status — return {installed, supported, platform}; supported is false on any host but linux/amd64, where no build is published. install — download the pinned release (verified against its sha256) into bin/naiveproxy; a no-op when already installed. NaiveProxy inbounds that were waiting for the engine start on the next reconcile tick, no restart needed.",
+            "description": "status — return {installed, supported, platform}; supported is false on any host but linux/amd64, where no build is published. install — download the pinned release (verified against its sha256) into bin/naiveproxy; a no-op when already installed. NaiveProxy inbounds that were waiting for the engine start on the next reconcile tick, no restart needed. certs — return one {inboundId, domain, mode, state, notAfter, error} per local NaiveProxy inbound. mode is auto (the panel orders and renews the certificate from Let's Encrypt over HTTP-01, about 30 days before it ends) or manual (the certificate file the admin set); state is obtaining, obtained or failed, and empty until the panel has picked an automatic inbound up; notAfter is when the certificate in place ends, still reported while a renewal runs or fails; error is the CA's reason after a failed order. certRetry — start a failed automatic order over now instead of at its next back-off (CertMagic retries after a minute, then every few minutes, then hourly); fails for an inbound that uses its own certificate files.",
             "schema": {
               "type": "string"
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "inboundId": {
+                    "type": "integer",
+                    "description": "The NaiveProxy inbound whose order to retry. Only used when action=certRetry."
+                  }
+                },
+                "required": [
+                  "inboundId"
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful response",

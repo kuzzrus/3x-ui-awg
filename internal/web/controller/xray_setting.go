@@ -342,8 +342,8 @@ func (a *XraySettingController) psiphon(c *gin.Context) {
 	jsonObj(c, resp, err)
 }
 
-// naiveProxy handles the NaiveProxy engine binary (internal/naiveproxy) based on
-// the action parameter. The engine runs per inbound, so there is no start/stop.
+// naiveProxy handles the NaiveProxy engine binary (internal/naiveproxy) and its certificates
+// by the action parameter. The engine runs per inbound, so there is no start/stop.
 func (a *XraySettingController) naiveProxy(c *gin.Context) {
 	action := c.Param("action")
 	var resp any
@@ -353,6 +353,13 @@ func (a *XraySettingController) naiveProxy(c *gin.Context) {
 		resp = a.NaiveProxyService.Status()
 	case "install":
 		err = a.NaiveProxyService.Install()
+	case "certs":
+		resp, err = a.NaiveProxyService.Certs()
+	case "certRetry":
+		var inboundId int
+		if inboundId, err = strconv.Atoi(c.PostForm("inboundId")); err == nil {
+			err = a.NaiveProxyService.RetryCert(inboundId)
+		}
 	}
 	jsonObj(c, resp, err)
 }
