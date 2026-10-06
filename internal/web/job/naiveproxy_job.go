@@ -68,30 +68,20 @@ func (j *NaiveProxyJob) recordTraffic(mgr *naiveproxy.Manager, desired []naivepr
 // naiveTrafficRows turns deltas into AddTraffic's rows: one per client email, as it keeps a single
 // row per email, and inbound totals without Routed bytes, which their Xray bridge already counts.
 func naiveTrafficRows(deltas []naiveproxy.Traffic) ([]*xray.Traffic, []*xray.ClientTraffic) {
-	clients := make(map[string]*xray.ClientTraffic)
+	clients := make(clientTrafficByEmail)
 	inboundUp := make(map[string]int64)
 	inboundDown := make(map[string]int64)
 	for _, d := range deltas {
-		row := clients[d.Email]
-		if row == nil {
-			row = &xray.ClientTraffic{Email: d.Email}
-			clients[d.Email] = row
-		}
-		row.Up += d.Up
-		row.Down += d.Down
+		clients.add(d.Email, d.Up, d.Down)
 		if !d.Routed {
 			inboundUp[d.Tag] += d.Up
 			inboundDown[d.Tag] += d.Down
 		}
 	}
 
-	clientTraffics := make([]*xray.ClientTraffic, 0, len(clients))
-	for _, email := range slices.Sorted(maps.Keys(clients)) {
-		clientTraffics = append(clientTraffics, clients[email])
-	}
 	traffics := make([]*xray.Traffic, 0, len(inboundUp))
 	for _, tag := range slices.Sorted(maps.Keys(inboundUp)) {
 		traffics = append(traffics, &xray.Traffic{IsInbound: true, Tag: tag, Up: inboundUp[tag], Down: inboundDown[tag]})
 	}
-	return traffics, clientTraffics
+	return traffics, clients.sortedRows()
 }

@@ -21,6 +21,32 @@ func NewMtprotoJob() *MtprotoJob {
 	return new(MtprotoJob)
 }
 
+// mtprotoTrafficRows turns deltas into AddTraffic's rows: one per client email, as it keeps a single
+// row per email, and inbound totals without routedTags, which their Xray bridge already counts.
+func mtprotoTrafficRows(deltas []mtproto.Traffic, routedTags map[string]bool) ([]*xray.Traffic, []*xray.ClientTraffic) {
+	clients := make(clientTrafficByEmail)
+	inboundUp := make(map[string]int64)
+	inboundDown := make(map[string]int64)
+	for _, d := range deltas {
+		clients.add(d.Email, d.Up, d.Down)
+		if !routedTags[d.Tag] {
+			inboundUp[d.Tag] += d.Up
+			inboundDown[d.Tag] += d.Down
+		}
+	}
+
+	traffics := make([]*xray.Traffic, 0, len(inboundUp))
+	for tag, up := range inboundUp {
+		traffics = append(traffics, &xray.Traffic{
+			IsInbound: true,
+			Tag:       tag,
+			Up:        up,
+			Down:      inboundDown[tag],
+		})
+	}
+	return traffics, clients.sortedRows()
+}
+
 // Run reconciles desired mtproto inbounds with running mtg processes and records
 // per-client traffic deltas and online status.
 func (j *MtprotoJob) Run() {
@@ -43,34 +69,7 @@ func (j *MtprotoJob) Run() {
 	mgr.Reconcile(desired)
 
 	deltas, onlineEmails := mgr.CollectTraffic()
-
-	// A routed inbound's total is already metered through the Xray bridge by
-	// xray_traffic_job, so only non-routed inbounds are rolled up here; per-client
-	// deltas are always kept, since the bridge cannot tell mtproto users apart.
-	clientTraffics := make([]*xray.ClientTraffic, 0, len(deltas))
-	inboundUp := make(map[string]int64)
-	inboundDown := make(map[string]int64)
-	for _, d := range deltas {
-		clientTraffics = append(clientTraffics, &xray.ClientTraffic{
-			Email: d.Email,
-			Up:    d.Up,
-			Down:  d.Down,
-		})
-		if !routedTags[d.Tag] {
-			inboundUp[d.Tag] += d.Up
-			inboundDown[d.Tag] += d.Down
-		}
-	}
-
-	traffics := make([]*xray.Traffic, 0, len(inboundUp))
-	for tag, up := range inboundUp {
-		traffics = append(traffics, &xray.Traffic{
-			IsInbound: true,
-			Tag:       tag,
-			Up:        up,
-			Down:      inboundDown[tag],
-		})
-	}
+	traffics, clientTraffics := mtprotoTrafficRows(deltas, routedTags)
 
 	if len(traffics) > 0 || len(clientTraffics) > 0 {
 		if _, _, err := j.inboundService.AddTraffic(traffics, clientTraffics); err != nil {
