@@ -1,0 +1,137 @@
+---
+title: NaiveProxy
+description: Set up a NaiveProxy inbound in 3x-ui — an HTTPS forward proxy that looks like an ordinary website, with per-client passwords, quotas, and optional egress through Xray.
+icon: Globe
+---
+
+**NaiveProxy** is a censorship-resistant proxy that speaks plain HTTPS. Its client
+uses Chromium's own network stack, so the connection looks like ordinary browser
+traffic, and the server answers anyone without valid credentials with an
+ordinary website instead of a proxy error.
+
+<Callout type="info">
+  Like MTProto and TUIC, NaiveProxy runs as a **managed sidecar process** rather
+  than inside Xray-core: a Caddy build with the `forward_proxy` plugin, one
+  process per inbound. The panel writes its configuration, restarts it when the
+  client list changes, meters each client's traffic, and serves a decoy page to
+  visitors and probes.
+</Callout>
+
+## Key settings
+
+| Field | Description |
+| --- | --- |
+| **Port** | A free port on the server's **loopback** interface that this inbound's Caddy listens on. It is never exposed directly. |
+| **Domain** | The name clients connect to. The panel's reverse proxy relays connections with this TLS server name to the inbound, so it must be unique — not the panel's own domain and not another NaiveProxy inbound's. |
+| **Certificate file** / **Certificate key file** | Paths to a TLS certificate and private key for the domain, readable by the panel. Caddy never sees a direct connection, so it cannot obtain a certificate itself; see [SSL certificates](/docs/config/ssl-certificates). |
+| **Public port** | The port written into share links — where the panel's reverse proxy is reachable from outside, normally `443`. It does not change what the server listens on. |
+| **Route through Xray** | Optional. Sends the proxied traffic through Xray so it follows your [routing rules](/docs/operations/outbounds-routing); an outbound can be forced too. |
+
+## How clients reach it
+
+NaiveProxy is served on **its own domain** through the panel's built-in
+[reverse proxy](/docs/operations/reverse-proxy): a connection whose TLS server
+name equals the inbound's **Domain** is relayed, byte for byte, to that
+inbound's Caddy, and everything else keeps going to the panel, the
+subscription, or the decoy. You therefore need
+
+- the built-in reverse proxy turned on and reachable on the public port
+  (typically behind a REALITY inbound's fallback on `443`),
+- a DNS record for the domain pointing at the server, and
+- a certificate and key for that domain in files the panel can read.
+
+A visitor or scanner without valid credentials is served a generic page
+generated from the domain, so the endpoint looks like a normal site.
+
+## Set it up in the panel
+
+<Steps>
+
+<Step>
+### Install the engine
+
+The Caddy binary is not bundled with the panel, and it is only published for
+**Linux amd64**. Choose protocol **NaiveProxy** in a new inbound: while the
+engine is missing the form shows a notice with an **Install** button. It
+downloads a pinned release (about 12 MB, 47 MB once unpacked) through the
+panel's own outbound proxy and verifies its SHA-256 before installing it. On any
+other platform the notice says the engine is unavailable.
+</Step>
+
+<Step>
+### Add an inbound
+
+Pick a free loopback **Port**, enter the **Domain**, and give the **Certificate
+file** and **Certificate key file** paths. Leave **Public port** at `443` unless the reverse
+proxy is reachable elsewhere.
+</Step>
+
+<Step>
+### Add clients
+
+Each client has an **Email** and a **Password**; the panel generates a random
+password. The email is also the username Caddy checks, so keep it free of
+characters that are awkward in a URL.
+</Step>
+
+<Step>
+### Export and connect
+
+Copy the client's share link or open its QR code:
+
+```text
+naive+https://<email>:<password>@<domain>:<public port>#<remark>
+```
+
+Emails are percent-encoded in the link (`@` becomes `%40`).
+</Step>
+
+</Steps>
+
+## Client configuration
+
+Import the link into a client that supports NaiveProxy, or copy the values into
+the reference client's `config.json`:
+
+```json title="config.json (klzgrad/naiveproxy)"
+{
+  "listen": "socks://127.0.0.1:1080",
+  "proxy": "https://user%40example.com:secure-random-password@naive.example.com:443"
+}
+```
+
+## Traffic, quotas, and status
+
+The panel meters each client from Caddy's access log, so **Total (GB)**, expiry
+(including *start after first use*), last-online time, and the inbound's own
+totals all work. When a client uses up its quota or expires, it is removed from
+the served set and the sidecar restarts without it.
+
+<Callout type="warn">
+  A tunnel is counted **when it closes**, not while it is open. A long-lived
+  connection therefore shows up late and all at once, the online indicator means
+  a connection closed recently, and there is no live speed for NaiveProxy. A
+  tunnel that is still open when the sidecar restarts is never counted.
+</Callout>
+
+## Architecture & notes
+
+<Callout type="info">
+  - **Client changes restart the sidecar.** Adding, removing, disabling, or
+    re-keying a client changes the Caddy configuration, so active connections
+    are dropped and reconnect.
+  - **Route through Xray** adds a loopback SOCKS inbound tagged with the
+    inbound's own tag; use that tag in the Routing tab for advanced rules. The
+    port is owned by the panel and preserved across edits. With routing on, the
+    inbound's total comes from Xray's own counters and per-client numbers from
+    Caddy, so nothing is counted twice.
+  - **Shared clients:** a client attached to several NaiveProxy inbounds has one
+    total, summed across them, so a quota covers all of its connections.
+  - **Not enforced:** the per-client **Limit IP** setting does not apply to
+    NaiveProxy — clients connect to Caddy, not to Xray, so the panel never sees
+    their addresses.
+  - **Subscriptions:** NaiveProxy links appear in the raw subscription only;
+    the JSON and Clash/Mihomo formats cannot express them.
+  - **Deployment:** the sidecar runs on the main panel, so NaiveProxy inbounds
+    are not available on remote nodes.
+</Callout>

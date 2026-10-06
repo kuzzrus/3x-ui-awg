@@ -1,0 +1,28 @@
+{
+  "protocol": "naiveproxy",
+  "settings": {
+    "domain": "naive.example.com",
+    "certFile": "/etc/ssl/naive.example.com/fullchain.pem",
+    "keyFile": "/etc/ssl/naive.example.com/privkey.pem",
+    "publicPort": 8443,
+    "routeThroughXray": true,
+    "outboundTag": "warp",
+    "routeXrayPort": 50123,
+    "clients": [
+      {
+        "email": "naive-quota-user",
+        "naiveProxyPassword": "fedcba9876543210",
+        "totalGB": 10737418240,
+        "expiryTime": 1893456000000,
+        "subId": "subnaive0000001",
+        "comment": "capped and expiring",
+        "enable": true
+      },
+      {
+        "email": "naive-off-user",
+        "naiveProxyPassword": "00112233aabbccdd",
+        "enable": false
+      }
+    ]
+  }
+}

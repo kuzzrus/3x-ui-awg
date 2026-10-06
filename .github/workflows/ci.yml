@@ -209,20 +209,9 @@ jobs:
       - name: Build Storybook
         run: npm run build-storybook
         working-directory: frontend
-      # --omit=dev: the one remaining high advisory (brace-expansion/minimatch
-      # via eslint-plugin-jsx-a11y's own pinned minimatch@^3.1.2,
-      # GHSA-mh99-v99m-4gvg) lives entirely in devDependencies -- jsx-a11y is
-      # lint-only tooling, never shipped in the built panel, and only ever
-      # runs against this repo's own hardcoded lint globs, never untrusted
-      # input. The eslint-core minimatch@10.x instance of the same advisory
-      # is already fixed via the "minimatch@^10" override below (brace-
-      # expansion 5.0.8); jsx-a11y's own minimatch is pinned to an old major
-      # with no patched release in that line, and forcing it to 10.x via
-      # override breaks npm's own dependency-tree validation (a genuine
-      # incompatibility, not an npm quirk) -- so it can only be fixed by an
-      # eslint-plugin-jsx-a11y release bumping its own minimatch. `--omit=dev`
-      # still audits runtime `dependencies` at high severity, so a real
-      # production vulnerability still fails this step.
+      # --omit=dev audits what ships: runtime `dependencies` fail this step at high severity.
+      # It once also exempted eslint-plugin-jsx-a11y's pinned minimatch@3 (GHSA-mh99-v99m-4gvg);
+      # that dev-only chain left with eslint (lint is oxlint now), so the flag only scopes the audit.
       - name: Audit
         run: npm audit --omit=dev --audit-level=high
         working-directory: frontend

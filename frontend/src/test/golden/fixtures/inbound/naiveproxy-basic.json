@@ -1,0 +1,15 @@
+{
+  "protocol": "naiveproxy",
+  "settings": {
+    "domain": "naive.example.com",
+    "certFile": "/etc/ssl/naive.example.com/fullchain.pem",
+    "keyFile": "/etc/ssl/naive.example.com/privkey.pem",
+    "clients": [
+      {
+        "email": "naive-user",
+        "naiveProxyPassword": "0123456789abcdef",
+        "enable": true
+      }
+    ]
+  }
+}
