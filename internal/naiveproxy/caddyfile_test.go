@@ -240,16 +240,43 @@ func TestRenderCaddyfileLogsAccessToStdoutWithoutRequestDetails(t *testing.T) {
 		t.Fatalf("renderCaddyfile: %v", err)
 	}
 	site := strings.Index(got, "https://:40100 {")
-	logBlock := strings.Index(got, "\tlog {\n")
-	route := strings.Index(got, "route {")
-	if site == -1 || logBlock == -1 || route == -1 || site >= logBlock || logBlock >= route {
+	if site == -1 {
+		t.Fatalf("expected the site block, got:\n%s", got)
+	}
+	// Past the site address: the global options carry a log block of their own.
+	inSite := got[site:]
+	logBlock := strings.Index(inSite, "\tlog {\n")
+	route := strings.Index(inSite, "route {")
+	if logBlock == -1 || route == -1 || logBlock >= route {
 		t.Fatalf("expected a site-level log block between the site address and route{}, got:\n%s", got)
 	}
-	block := got[logBlock:route]
+	block := inSite[logBlock:route]
 	for _, want := range []string{"output stdout", "format filter", "wrap json", "request delete", "resp_headers delete"} {
 		if !strings.Contains(block, want) {
 			t.Errorf("log block is missing %q, got:\n%s", want, block)
 		}
+	}
+}
+
+// Caddy's error lines embed the whole request (target host, headers) and the panel
+// logs everything on stderr, so the default logger must drop it -- and stay on stderr.
+func TestRenderCaddyfileFiltersTheRequestOutOfErrorLogs(t *testing.T) {
+	got, err := renderCaddyfile(testInstance())
+	if err != nil {
+		t.Fatalf("renderCaddyfile: %v", err)
+	}
+	end := strings.Index(got, "\n}\n")
+	if !strings.HasPrefix(got, "{\n") || end == -1 {
+		t.Fatalf("expected a global options block first, got:\n%s", got)
+	}
+	global := got[:end]
+	for _, want := range []string{"log {", "format filter", "wrap json", "request delete"} {
+		if !strings.Contains(global, want) {
+			t.Errorf("global options are missing %q, got:\n%s", want, global)
+		}
+	}
+	if strings.Contains(global, "output") {
+		t.Errorf("the default logger was redirected, but the panel reads its operational lines from stderr:\n%s", global)
 	}
 }
 

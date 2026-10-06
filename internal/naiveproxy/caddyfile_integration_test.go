@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -117,7 +118,7 @@ func TestRenderCaddyfileValidatesAgainstTheRealBinary(t *testing.T) {
 
 // startRealNaive installs the pinned Caddy and runs it on a self-signed cert with one
 // client, camo-user/camo-pass, whose tunnels feed access. Gated like the test above.
-func startRealNaive(t *testing.T) (ctx context.Context, inst Instance, access *meter) {
+func startRealNaive(t *testing.T) (ctx context.Context, inst Instance, access *meter, proc *Process) {
 	t.Helper()
 	if os.Getenv("XUI_NAIVE_E2E") == "" {
 		t.Skip("set XUI_NAIVE_E2E=1 to run (downloads the real Caddy release)")
@@ -156,7 +157,7 @@ func startRealNaive(t *testing.T) (ctx context.Context, inst Instance, access *m
 	}
 
 	access = newMeter("inbound-1")
-	proc := newProcess(cfgPath, inst.ListenAddr, "e2e-test", access)
+	proc = newProcess(cfgPath, inst.ListenAddr, "e2e-test", access)
 	if err := proc.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -164,13 +165,13 @@ func startRealNaive(t *testing.T) (ctx context.Context, inst Instance, access *m
 	if err := proc.WaitReady(); err != nil {
 		t.Fatalf("WaitReady: %v", err)
 	}
-	return ctx, inst, access
+	return ctx, inst, access, proc
 }
 
 // TestNaiveProxyMetersTunnelsAgainstTheRealBinary pins the access-log shape
 // accounting.go parses to what the pinned Caddy build really writes.
 func TestNaiveProxyMetersTunnelsAgainstTheRealBinary(t *testing.T) {
-	ctx, inst, access := startRealNaive(t)
+	ctx, inst, access, _ := startRealNaive(t)
 
 	proxyURL := fmt.Sprintf("https://camo-user:camo-pass@%s", inst.ListenAddr)
 	out, err := exec.CommandContext(ctx, "curl", "-s", "-x", proxyURL, "--proxy-insecure", "-o", "/dev/null", "-w", "%{size_download}", "https://example.com/").CombinedOutput()
@@ -206,10 +207,59 @@ func TestNaiveProxyMetersTunnelsAgainstTheRealBinary(t *testing.T) {
 	})
 }
 
+// resetServer resets every connection to this host's public address: Caddy logs an error only
+// for a tunnel torn down mid-flight, and forward_proxy refuses private targets, so it skips without one.
+func resetServer(t *testing.T) (host string, port int) {
+	t.Helper()
+	probe, err := net.Dial("udp", "1.1.1.1:53") // sends nothing, only picks the route
+	if err != nil {
+		t.Skipf("no outbound route: %v", err)
+	}
+	ip := probe.LocalAddr().(*net.UDPAddr).IP
+	probe.Close()
+	if !ip.IsGlobalUnicast() || ip.IsPrivate() {
+		t.Skipf("outbound address %s is not public, forward_proxy would refuse it as a target", ip)
+	}
+	ln, err := net.Listen("tcp", net.JoinHostPort(ip.String(), "0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.(*net.TCPConn).SetLinger(0)
+			c.Close()
+		}
+	}()
+	return ip.String(), ln.Addr().(*net.TCPAddr).Port
+}
+
+// TestNaiveProxyErrorLogsOmitTheRequestAgainstTheRealBinary pins the global log filter: the
+// error Caddy logs for a tunnel its target resets must not carry the request.
+func TestNaiveProxyErrorLogsOmitTheRequestAgainstTheRealBinary(t *testing.T) {
+	ctx, inst, _, proc := startRealNaive(t)
+	host, port := resetServer(t)
+
+	proxyURL := fmt.Sprintf("https://camo-user:camo-pass@%s", inst.ListenAddr)
+	target := fmt.Sprintf("https://%s:%d/", host, port)
+	// Whether Caddy sees a reset as an error or as a plain close is a race, so retry until it logs one.
+	waitUntil(t, "Caddy to log a reset tunnel", func() bool {
+		_, _ = exec.CommandContext(ctx, "curl", "-s", "--proxy-http2", "-x", proxyURL, "--proxy-insecure", target).CombinedOutput()
+		return strings.Contains(proc.logWriter.LastLine(), `"level":"error"`)
+	})
+	if line := proc.logWriter.LastLine(); strings.Contains(line, `"request"`) {
+		t.Errorf("an error line still carries the request:\n%s", line)
+	}
+}
+
 // TestNaiveProxyCamouflageAgainstTheRealBinary confirms an ordinary visitor
 // sees the decoy, not a proxy-revealing 407. Gated like the test above.
 func TestNaiveProxyCamouflageAgainstTheRealBinary(t *testing.T) {
-	ctx, inst, _ := startRealNaive(t)
+	ctx, inst, _, _ := startRealNaive(t)
 
 	t.Run("valid credentials still tunnel real traffic", func(t *testing.T) {
 		// A real external site: forward_proxy's default ACL denies CONNECT
