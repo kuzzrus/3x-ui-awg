@@ -12,12 +12,13 @@ import (
 )
 
 // killStrayCaddyProcesses ends the panel's own leftover sidecars from a previous run. "caddy" is a
-// common name, so only a process running binaryPath itself counts: a user's own Caddy must survive.
+// common name, so only the panel's own binary or folder counts: a user's own Caddy must survive.
 func killStrayCaddyProcesses(binaryPath string) int {
 	want := resolvedPath(binaryPath)
 	if want == "" {
 		return 0
 	}
+	cwd := resolvedPath(".")
 	self := os.Getpid()
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
@@ -29,7 +30,7 @@ func killStrayCaddyProcesses(binaryPath string) int {
 		if err != nil || pid == self {
 			continue
 		}
-		if procExe(pid) != want {
+		if !isOwnSidecar(pid, want, cwd) {
 			continue
 		}
 		if err := syscall.Kill(pid, syscall.SIGKILL); err == nil {
@@ -37,6 +38,16 @@ func killStrayCaddyProcesses(binaryPath string) int {
 		}
 	}
 	return killed
+}
+
+// isOwnSidecar is true for a process running want, or a caddy that runs from the panel's folder: a
+// reinstall renames bin/ aside and recreates the folder, which leaves a leftover with neither path.
+func isOwnSidecar(pid int, want, cwd string) bool {
+	exe := procLink(pid, "exe")
+	if exe == want {
+		return true
+	}
+	return exe != "" && cwd != "" && filepath.Base(exe) == filepath.Base(want) && procLink(pid, "cwd") == cwd
 }
 
 // resolvedPath is path the way /proc/<pid>/exe shows it: absolute, symlinks resolved.
@@ -55,11 +66,11 @@ func resolvedPath(path string) string {
 	return abs
 }
 
-// procExe is the file pid runs. A binary replaced since the process started reads as "<path> (deleted)".
-func procExe(pid int) string {
-	exe, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
+// procLink is where /proc/<pid>/<name> points; a removed target reads as "<path> (deleted)".
+func procLink(pid int, name string) string {
+	target, err := os.Readlink(fmt.Sprintf("/proc/%d/%s", pid, name))
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSuffix(exe, " (deleted)")
+	return strings.TrimSuffix(target, " (deleted)")
 }

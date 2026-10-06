@@ -11,13 +11,14 @@ import (
 	"time"
 )
 
-// fakeChild is a running copy of this test binary, in its fake-Caddy mode, installed at path.
+// fakeChild is a running copy of this test binary, in its fake-Caddy mode, installed at path and
+// started in dir (this process's own folder when empty).
 type fakeChild struct {
 	cmd  *exec.Cmd
 	done chan struct{}
 }
 
-func startFakeChildAt(t *testing.T, path string) *fakeChild {
+func startFakeChildAt(t *testing.T, path, dir string) *fakeChild {
 	t.Helper()
 	self, err := os.Executable()
 	if err != nil {
@@ -33,7 +34,13 @@ func startFakeChildAt(t *testing.T, path string) *fakeChild {
 	if err := os.WriteFile(path, payload, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
 	cmd := exec.Command(path)
+	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "NAIVE_FAKE_CHILD=1", "NAIVE_FAKE_PIDFILE="+filepath.Join(t.TempDir(), "pids"))
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
@@ -64,8 +71,8 @@ func (c *fakeChild) exited(within time.Duration) bool {
 func TestKillStrayCaddyProcessesSparesAnotherCaddy(t *testing.T) {
 	root := t.TempDir()
 	ours := filepath.Join(root, "bin", "naiveproxy", "caddy")
-	orphan := startFakeChildAt(t, ours)
-	foreign := startFakeChildAt(t, filepath.Join(root, "usr", "bin", "caddy"))
+	orphan := startFakeChildAt(t, ours, "")
+	foreign := startFakeChildAt(t, filepath.Join(root, "usr", "bin", "caddy"), filepath.Join(root, "srv", "site"))
 
 	if got := killStrayCaddyProcesses(ours); got != 1 {
 		t.Fatalf("killStrayCaddyProcesses killed %d processes, want only the panel's own leftover", got)
@@ -85,7 +92,7 @@ func TestKillStrayCaddyProcessesSparesAnotherCaddy(t *testing.T) {
 // A reinstall replaces the binary under a running sidecar, which /proc then reports as deleted.
 func TestKillStrayCaddyProcessesFindsALeftoverWhoseBinaryWasRemoved(t *testing.T) {
 	ours := filepath.Join(t.TempDir(), "bin", "naiveproxy", "caddy")
-	orphan := startFakeChildAt(t, ours)
+	orphan := startFakeChildAt(t, ours, "")
 	if err := os.Remove(ours); err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +108,7 @@ func TestKillStrayCaddyProcessesFindsALeftoverWhoseBinaryWasRemoved(t *testing.T
 // The bin folder is often reached through a symlink, while /proc shows the real path.
 func TestKillStrayCaddyProcessesResolvesASymlinkedBinFolder(t *testing.T) {
 	root := t.TempDir()
-	orphan := startFakeChildAt(t, filepath.Join(root, "real", "naiveproxy", "caddy"))
+	orphan := startFakeChildAt(t, filepath.Join(root, "real", "naiveproxy", "caddy"), "")
 	if err := os.Symlink(filepath.Join(root, "real"), filepath.Join(root, "bin")); err != nil {
 		t.Fatal(err)
 	}
@@ -111,5 +118,39 @@ func TestKillStrayCaddyProcessesResolvesASymlinkedBinFolder(t *testing.T) {
 	}
 	if !orphan.exited(3 * time.Second) {
 		t.Error("a leftover reached through a symlinked bin folder survived the sweep")
+	}
+}
+
+// install.sh moves bin/ aside, deletes the panel folder and puts a fresh one back, so a leftover
+// then runs a binary under the removed backup folder, from a folder that was replaced.
+func TestKillStrayCaddyProcessesFindsALeftoverAfterAReinstall(t *testing.T) {
+	root := t.TempDir()
+	panel := filepath.Join(root, "x-ui")
+	ours := filepath.Join(panel, "bin", "naiveproxy", "caddy")
+	orphan := startFakeChildAt(t, ours, panel)
+
+	backup := filepath.Join(root, "x-ui-bin-backup")
+	if err := os.Rename(filepath.Join(panel, "bin"), backup); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(panel); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(ours), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ours, []byte("a new inode, as cp -a leaves it"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(backup); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(panel)
+
+	if got := killStrayCaddyProcesses(ours); got != 1 {
+		t.Fatalf("killStrayCaddyProcesses killed %d processes after a reinstall, want the panel's leftover", got)
+	}
+	if !orphan.exited(3 * time.Second) {
+		t.Error("a leftover from before a reinstall survived the sweep")
 	}
 }
