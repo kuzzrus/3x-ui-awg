@@ -23,6 +23,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 )
 
 // writeSelfSignedCert writes a throwaway cert/key pair -- "caddy validate"
@@ -157,7 +159,7 @@ func startRealNaive(t *testing.T) (ctx context.Context, inst Instance, access *m
 	}
 
 	access = newMeter("inbound-1")
-	proc = newProcess(cfgPath, inst.ListenAddr, "e2e-test", access)
+	proc = newProcess(cfgPath, inst.ListenAddr, "e2e-"+t.Name(), access)
 	if err := proc.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -238,6 +240,18 @@ func resetServer(t *testing.T) (host string, port int) {
 	return ip.String(), ln.Addr().(*net.TCPAddr).Port
 }
 
+// caddyErrorLines returns every error line Caddy's HTTP error logger wrote for the process
+// labelled label, read back from the panel log, so a later stderr line cannot hide one.
+func caddyErrorLines(label string) []string {
+	var out []string
+	for _, line := range logger.GetLogs(10240, "info") {
+		if strings.Contains(line, "caddy "+label+" | ") && strings.Contains(line, `"logger":"http.log.error`) && strings.Contains(line, `"level":"error"`) {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
 // TestNaiveProxyErrorLogsOmitTheRequestAgainstTheRealBinary pins the global log filter: the
 // error Caddy logs for a tunnel its target resets must not carry the request.
 func TestNaiveProxyErrorLogsOmitTheRequestAgainstTheRealBinary(t *testing.T) {
@@ -247,12 +261,16 @@ func TestNaiveProxyErrorLogsOmitTheRequestAgainstTheRealBinary(t *testing.T) {
 	proxyURL := fmt.Sprintf("https://camo-user:camo-pass@%s", inst.ListenAddr)
 	target := fmt.Sprintf("https://%s:%d/", host, port)
 	// Whether Caddy sees a reset as an error or as a plain close is a race, so retry until it logs one.
+	var lines []string
 	waitUntil(t, "Caddy to log a reset tunnel", func() bool {
 		_, _ = exec.CommandContext(ctx, "curl", "-s", "--proxy-http2", "-x", proxyURL, "--proxy-insecure", target).CombinedOutput()
-		return strings.Contains(proc.logWriter.LastLine(), `"level":"error"`)
+		lines = caddyErrorLines(proc.logWriter.label)
+		return len(lines) > 0
 	})
-	if line := proc.logWriter.LastLine(); strings.Contains(line, `"request"`) {
-		t.Errorf("an error line still carries the request:\n%s", line)
+	for _, line := range lines {
+		if strings.Contains(line, `"request"`) {
+			t.Errorf("an error line still carries the request:\n%s", line)
+		}
 	}
 }
 
