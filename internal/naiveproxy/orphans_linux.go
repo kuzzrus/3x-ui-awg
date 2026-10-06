@@ -11,11 +11,11 @@ import (
 	"syscall"
 )
 
-// killStrayCaddyProcesses terminates orphaned Caddy sidecars from a previous
-// run, the same reason internal/mtproto's killStrayMtgProcesses exists.
+// killStrayCaddyProcesses ends the panel's own leftover sidecars from a previous run. "caddy" is a
+// common name, so only a process running binaryPath itself counts: a user's own Caddy must survive.
 func killStrayCaddyProcesses(binaryPath string) int {
-	base := filepath.Base(binaryPath)
-	if base == "" || base == "." || base == string(filepath.Separator) {
+	want := resolvedPath(binaryPath)
+	if want == "" {
 		return 0
 	}
 	self := os.Getpid()
@@ -29,7 +29,7 @@ func killStrayCaddyProcesses(binaryPath string) int {
 		if err != nil || pid == self {
 			continue
 		}
-		if procExeBase(pid) != base && cmdlineArgv0Base(pid) != base {
+		if procExe(pid) != want {
 			continue
 		}
 		if err := syscall.Kill(pid, syscall.SIGKILL); err == nil {
@@ -39,27 +39,27 @@ func killStrayCaddyProcesses(binaryPath string) int {
 	return killed
 }
 
-func procExeBase(pid int) string {
+// resolvedPath is path the way /proc/<pid>/exe shows it: absolute, symlinks resolved.
+func resolvedPath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return ""
+	}
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		return resolved
+	}
+	// The binary itself may be gone (a reinstall removed it under a running process); its directory still resolves.
+	if dir, err := filepath.EvalSymlinks(filepath.Dir(abs)); err == nil {
+		return filepath.Join(dir, filepath.Base(abs))
+	}
+	return abs
+}
+
+// procExe is the file pid runs. A binary replaced since the process started reads as "<path> (deleted)".
+func procExe(pid int) string {
 	exe, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
 	if err != nil {
 		return ""
 	}
-	return filepath.Base(exe)
-}
-
-// cmdlineArgv0Base is the fallback for when the binary has been replaced or
-// /proc/<pid>/exe is unreadable.
-func cmdlineArgv0Base(pid int) string {
-	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
-	if err != nil || len(data) == 0 {
-		return ""
-	}
-	argv0 := data
-	if i := strings.IndexByte(string(data), 0); i >= 0 {
-		argv0 = data[:i]
-	}
-	if len(argv0) == 0 {
-		return ""
-	}
-	return filepath.Base(string(argv0))
+	return strings.TrimSuffix(exe, " (deleted)")
 }
