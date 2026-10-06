@@ -62,7 +62,7 @@ Every fix below was found and confirmed against live infrastructure, not hypothe
 
 ## Features (full list)
 
-- **Multi-protocol inbounds** — VLESS, VMess, Trojan, Shadowsocks, WireGuard, **AmneziaWG**, MTProto, Hysteria2, TUIC, NaiveProxy, tproxy (a Telegram web proxy), HTTP, SOCKS (Mixed), Dokodemo-door / Tunnel, and TUN.
+- **Multi-protocol inbounds** — VLESS, VMess, Trojan, Shadowsocks, WireGuard, **AmneziaWG**, MTProto, Hysteria2, TUIC, NaiveProxy, tproxy (a Telegram web proxy), HTTP, SOCKS (Mixed), Dokodemo-door / Tunnel, and TUN. NaiveProxy and tproxy need `amd64`; TUIC is built for `amd64`, `arm64`, `armv7` and `386`.
 - **Modern transports & security** — TCP (Raw), mKCP, WebSocket, gRPC, HTTPUpgrade, and XHTTP, secured with TLS, XTLS, and REALITY.
 - **Fallbacks** — serve multiple protocols on one port (e.g. VLESS and Trojan on 443).
 - **Outbounds** — WARP, NordVPN, **Tor**, custom routing rules, load balancers, outbound proxy chaining.

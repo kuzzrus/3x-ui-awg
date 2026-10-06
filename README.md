@@ -62,7 +62,7 @@
 
 ## Возможности (полный список)
 
-- **Многопротокольные входящие** — VLESS, VMess, Trojan, Shadowsocks, WireGuard, **AmneziaWG**, MTProto, Hysteria2, TUIC, NaiveProxy, tproxy (веб-прокси для Telegram), HTTP, SOCKS (Mixed), Dokodemo-door / Tunnel и TUN.
+- **Многопротокольные входящие** — VLESS, VMess, Trojan, Shadowsocks, WireGuard, **AmneziaWG**, MTProto, Hysteria2, TUIC, NaiveProxy, tproxy (веб-прокси для Telegram), HTTP, SOCKS (Mixed), Dokodemo-door / Tunnel и TUN. NaiveProxy и tproxy требуют `amd64`; TUIC собирается под `amd64`, `arm64`, `armv7` и `386`.
 - **Современные транспорты и безопасность** — TCP (Raw), mKCP, WebSocket, gRPC, HTTPUpgrade и XHTTP, с TLS, XTLS и REALITY.
 - **Fallback** — несколько протоколов на одном порту (например, VLESS и Trojan на 443).
 - **Исходящие** — WARP, NordVPN, **Tor**, пользовательские правила маршрутизации, балансировщики, цепочки прокси.
