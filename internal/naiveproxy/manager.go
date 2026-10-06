@@ -46,6 +46,9 @@ type Manager struct {
 	// meters outlive their process, so bytes a stopped Caddy's last tunnels
 	// reported are still handed over by the next CollectTraffic.
 	meters map[int]*meter
+	// failing holds each inbound's last logged Reconcile failure, so one that lasts
+	// across ticks (a missing engine, most often) is reported once, not every tick.
+	failing map[int]string
 }
 
 var (
@@ -109,6 +112,11 @@ func (m *Manager) ensureLocked(inst Instance) (*Process, error) {
 	fp, err := renderCaddyfile(inst)
 	if err != nil {
 		return nil, err
+	}
+	// Before any write: with no engine nothing can start, and each Reconcile tick would create
+	// and delete the same files. Tracked instances skip this, a running one needs no engine.
+	if _, tracked := m.procs[inst.Id]; !tracked && !IsInstalled() {
+		return nil, ErrNotInstalled
 	}
 	mt := m.meterLocked(inst.Id, inst.Tag)
 	// Unconditional: the decoy dir is keyed by Id not Domain, so a
@@ -174,6 +182,20 @@ func (m *Manager) removeLocked(id int) {
 	logger.Infof("naiveproxy: stopped caddy for inbound %d", id)
 }
 
+// isNewFailureLocked reports whether err is news for inbound id -- its first failure
+// or a different one from the last it logged -- and remembers it.
+func (m *Manager) isNewFailureLocked(id int, err error) bool {
+	msg := err.Error()
+	if last, ok := m.failing[id]; ok && last == msg {
+		return false
+	}
+	if m.failing == nil {
+		m.failing = map[int]string{}
+	}
+	m.failing[id] = msg
+	return true
+}
+
 // Reconcile drives the running set toward desired -- spawns happen under
 // m.mu, readiness waits after releasing it, so one slow instance can't stall the rest.
 func (m *Manager) Reconcile(desired []Instance) (changed bool) {
@@ -190,6 +212,11 @@ func (m *Manager) Reconcile(desired []Instance) (changed bool) {
 			changed = true
 		}
 	}
+	for id := range m.failing {
+		if _, ok := want[id]; !ok {
+			delete(m.failing, id)
+		}
+	}
 
 	type pending struct {
 		id   int
@@ -199,9 +226,12 @@ func (m *Manager) Reconcile(desired []Instance) (changed bool) {
 	for _, inst := range desired {
 		proc, err := m.ensureLocked(inst)
 		if err != nil {
-			logger.Warningf("naiveproxy: reconcile failed for inbound %d: %v", inst.Id, err)
+			if m.isNewFailureLocked(inst.Id, err) {
+				logger.Warningf("naiveproxy: reconcile failed for inbound %d: %v", inst.Id, err)
+			}
 			continue
 		}
+		delete(m.failing, inst.Id)
 		if proc != nil {
 			toAwait = append(toAwait, pending{inst.Id, proc})
 		}

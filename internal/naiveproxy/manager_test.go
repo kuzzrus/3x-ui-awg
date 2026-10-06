@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 )
 
 // fakeChildListenPort reads the port renderCaddyfile wrote into configPath's
@@ -209,7 +211,7 @@ func TestEnsureStartsAProcess(t *testing.T) {
 }
 
 // Until the engine is installed every NaiveProxy inbound hits this: the error
-// must say so, and the files written ahead of the spawn must not be left behind.
+// must say so, and nothing may be written for an instance that cannot start.
 func TestEnsureReportsAMissingEngine(t *testing.T) {
 	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
 	m := newTestManager()
@@ -221,11 +223,74 @@ func TestEnsureReportsAMissingEngine(t *testing.T) {
 	if m.IsRunning(1) {
 		t.Fatal("IsRunning(1) = true although nothing could start")
 	}
+	if _, statErr := os.Stat(Dir()); !os.IsNotExist(statErr) {
+		t.Errorf("%s created for an instance that could not start: %v", Dir(), statErr)
+	}
+}
+
+// The engine check has to come before the first write: where the folder cannot even
+// be created, a missing engine must still be reported as that, not as a mkdir error.
+func TestEnsureReportsAMissingEngineBeforeTouchingTheDisk(t *testing.T) {
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XUI_BIN_FOLDER", filepath.Join(blocker, "bin"))
+	m := newTestManager()
+
+	if err := m.Ensure(testInst(t, 1, "alice")); !errors.Is(err, ErrNotInstalled) {
+		t.Fatalf("Ensure with an uncreatable bin folder = %v, want ErrNotInstalled", err)
+	}
+}
+
+// The files written ahead of a spawn must not be left behind when it fails:
+// nothing tracks them, so removeLocked would never clean them up.
+func TestEnsureCleansUpAfterAFailedStart(t *testing.T) {
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+	if err := os.MkdirAll(Dir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// A regular file is "installed" as far as IsInstalled can tell, but exec cannot run it.
+	if err := os.WriteFile(BinPath(), []byte("not an executable"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := newTestManager()
+
+	err := m.Ensure(testInst(t, 1, "alice"))
+	if err == nil || errors.Is(err, ErrNotInstalled) {
+		t.Fatalf("Ensure with an engine that cannot run = %v, want the start error", err)
+	}
 	if _, statErr := os.Stat(configPathForID(1)); !os.IsNotExist(statErr) {
 		t.Errorf("Caddyfile left behind after a failed start: %v", statErr)
 	}
 	if _, statErr := os.Stat(decoyDirForID(1)); !os.IsNotExist(statErr) {
 		t.Errorf("decoy dir left behind after a failed start: %v", statErr)
+	}
+}
+
+// The check only gates a spawn: an instance already running is left alone when the
+// binary goes missing, exactly as before the check existed.
+func TestEnsureLeavesARunningInstanceAloneWhenTheEngineVanishes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a running executable cannot be removed on Windows")
+	}
+	pidFile := installFakeCaddy(t)
+	m := newTestManager()
+	inst := testInst(t, 1, "alice")
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+	t.Cleanup(m.StopAll)
+	waitSpawnCount(t, pidFile, 1)
+
+	if err := os.Remove(BinPath()); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("Ensure of a running instance after the engine vanished = %v, want nil", err)
+	}
+	if !m.IsRunning(1) {
+		t.Error("the running instance was stopped when the engine vanished")
 	}
 }
 
@@ -444,6 +509,104 @@ func TestReconcileStopsWhatIsNoLongerDesired(t *testing.T) {
 	}
 	if m.IsRunning(2) {
 		t.Error("IsRunning(2) = true after a Reconcile that no longer wants it")
+	}
+}
+
+// warningCount counts the warnings in the panel log that contain needle.
+func warningCount(needle string) int {
+	n := 0
+	for _, line := range logger.GetLogs(1000, "warning") {
+		if strings.Contains(line, needle) {
+			n++
+		}
+	}
+	return n
+}
+
+// Reconcile runs every 10 s, so a failure that lasts (most often the engine not being
+// installed) must be logged once, not once a tick.
+func TestReconcileLogsAPersistentFailureOnce(t *testing.T) {
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+	m := newTestManager()
+	const id = 920001
+	inst := testInst(t, id, "alice")
+	needle := fmt.Sprintf("reconcile failed for inbound %d:", id)
+
+	for range 3 {
+		m.Reconcile([]Instance{inst})
+	}
+	if got := warningCount(needle); got != 1 {
+		t.Fatalf("a missing engine was logged %d times over three ticks, want once", got)
+	}
+}
+
+func TestReconcileLogsAChangedFailureAgain(t *testing.T) {
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+	m := newTestManager()
+	const id = 920002
+	inst := testInst(t, id, "alice")
+	needle := fmt.Sprintf("reconcile failed for inbound %d:", id)
+
+	m.Reconcile([]Instance{inst})
+	inst.ListenAddr = "not-a-valid-addr"
+	m.Reconcile([]Instance{inst})
+	m.Reconcile([]Instance{inst})
+	if got := warningCount(needle); got != 2 {
+		t.Fatalf("two different failures were logged %d times, want 2 (each once)", got)
+	}
+}
+
+// A failure that was fixed and then comes back is news again.
+func TestReconcileLogsAFailureAgainAfterItWasFixed(t *testing.T) {
+	pidFile := installFakeCaddy(t)
+	off := BinPath() + ".off"
+	if err := os.Rename(BinPath(), off); err != nil {
+		t.Fatal(err)
+	}
+	m := newTestManager()
+	const id = 920003
+	inst := testInst(t, id, "alice")
+	needle := fmt.Sprintf("reconcile failed for inbound %d:", id)
+
+	m.Reconcile([]Instance{inst})
+	if got := warningCount(needle); got != 1 {
+		t.Fatalf("missing engine logged %d times, want once", got)
+	}
+
+	if err := os.Rename(off, BinPath()); err != nil {
+		t.Fatal(err)
+	}
+	m.Reconcile([]Instance{inst})
+	t.Cleanup(m.StopAll)
+	waitSpawnCount(t, pidFile, 1)
+
+	m.StopAll()
+	if err := os.Rename(BinPath(), off); err != nil {
+		t.Fatal(err)
+	}
+	m.Reconcile([]Instance{inst})
+	if got := warningCount(needle); got != 2 {
+		t.Fatalf("the failure that came back was logged %d times in all, want 2", got)
+	}
+}
+
+// An inbound dropped from the desired set takes its failure with it, so one
+// added back later is reported afresh rather than silenced by a stale entry.
+func TestReconcileForgetsTheFailureOfADroppedInbound(t *testing.T) {
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+	m := newTestManager()
+	const id = 920004
+	inst := testInst(t, id, "alice")
+	needle := fmt.Sprintf("reconcile failed for inbound %d:", id)
+
+	m.Reconcile([]Instance{inst})
+	m.Reconcile(nil)
+	m.Reconcile([]Instance{inst})
+	if got := warningCount(needle); got != 2 {
+		t.Fatalf("an inbound removed and added back was logged %d times in all, want 2", got)
+	}
+	if len(m.failing) != 1 {
+		t.Errorf("failing = %v, want only the inbound that is still desired", m.failing)
 	}
 }
 

@@ -49,7 +49,9 @@ func renderCaddyfile(inst Instance) (string, error) {
 	slices.SortFunc(clients, func(a, b Client) int { return strings.Compare(a.Username, b.Username) })
 
 	var b strings.Builder
-	b.WriteString("{\n\tadmin off\n\tauto_https disable_redirects\n}\n\n")
+	// Caddy's error lines embed the whole request (target host, headers) and the panel
+	// logs all of stderr, so the default logger drops it. The access log is set up below.
+	b.WriteString("{\n\tadmin off\n\tauto_https disable_redirects\n\tlog {\n\t\tformat filter {\n\t\t\twrap json\n\t\t\tfields {\n\t\t\t\trequest delete\n\t\t\t}\n\t\t}\n\t}\n}\n\n")
 	// A bare ":port" address, no host: CONNECT's Host/authority is the
 	// client's *target*, not this server's name, so a host match would never see it.
 	fmt.Fprintf(&b, "https://:%s {\n", port)
