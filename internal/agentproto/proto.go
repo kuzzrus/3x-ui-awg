@@ -62,8 +62,8 @@ type Counter struct {
 	Down int64 `json:"down"`
 }
 
-// Stats counters are cumulative since XrayStartedAt (unix seconds, 0 when the
-// core is not running), so a changed start time marks a reset exactly.
+// Stats counters are cumulative since XrayStartedAt (unix milliseconds, 0 when
+// the core is not running), so a changed start time marks a reset exactly.
 type Stats struct {
 	XrayStartedAt int64              `json:"xrayStartedAt"`
 	Inbounds      map[string]Counter `json:"inbounds"`
