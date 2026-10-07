@@ -6,10 +6,42 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
 )
+
+// Two callers on a fresh node must not each mint an identity: the master would see two nodes.
+func TestGuidIsOneIdentityWhenFirstAskedForConcurrently(t *testing.T) {
+	state, err := OpenState(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const callers = 64
+	guids := make([]string, callers)
+	errs := make([]error, callers)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := range callers {
+		wg.Go(func() {
+			<-start
+			guids[i], errs[i] = state.Guid()
+		})
+	}
+	close(start)
+	wg.Wait()
+
+	stored, err := state.Guid()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range callers {
+		if errs[i] != nil || guids[i] != stored {
+			t.Fatalf("caller %d got %q, %v; the identity on disk is %q", i, guids[i], errs[i], stored)
+		}
+	}
+}
 
 func TestGuidIsStable(t *testing.T) {
 	dir := t.TempDir()

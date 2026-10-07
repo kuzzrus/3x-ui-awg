@@ -47,6 +47,22 @@ func TestPrepareConfigRefuses(t *testing.T) {
 		{"api inbound on the ipv6 loopback", edit(func(cfg map[string]any) { apiInbound(cfg)["listen"] = "::1" }), `must listen on 127.0.0.1, got "::1"`},
 		{"no stats section", edit(func(cfg map[string]any) { delete(cfg, "stats") }), `no "stats" section`},
 		{"null stats section", edit(func(cfg map[string]any) { cfg["stats"] = nil }), `no "stats" section`},
+		{"no policy", edit(func(cfg map[string]any) { delete(cfg, "policy") }), `statsUserUplink and statsUserDownlink for level 0`},
+		{"policy without levels", edit(func(cfg map[string]any) { cfg["policy"] = map[string]any{} }), `statsUserUplink and statsUserDownlink for level 0`},
+		{
+			"client uplink counted but not downlink",
+			edit(func(cfg map[string]any) {
+				cfg["policy"] = map[string]any{"levels": map[string]any{"0": map[string]any{"statsUserUplink": true}}}
+			}),
+			`statsUserUplink and statsUserDownlink for level 0`,
+		},
+		{
+			"counters switched on for another level only",
+			edit(func(cfg map[string]any) {
+				cfg["policy"] = map[string]any{"levels": map[string]any{"1": map[string]any{"statsUserUplink": true, "statsUserDownlink": true}}}
+			}),
+			`statsUserUplink and statsUserDownlink for level 0`,
+		},
 		{"no api section", edit(func(cfg map[string]any) { delete(cfg, "api") }), `no "api" section tagged "api"`},
 		{"api section with another tag", edit(func(cfg map[string]any) { cfg["api"] = map[string]any{"tag": "x"} }), `no "api" section tagged "api"`},
 		{
@@ -129,6 +145,36 @@ func TestPrepareConfigForcesLogPaths(t *testing.T) {
 			"neither key present",
 			map[string]any{"loglevel": "warning"},
 			map[string]string{"loglevel": "warning"},
+		},
+		{
+			"the operator's file names are kept",
+			map[string]any{"access": "/srv/xray/clients.log", "error": "C:/old/panel/problems.log"},
+			map[string]string{"access": filepath.Join(logDir, "clients.log"), "error": filepath.Join(logDir, "problems.log")},
+		},
+		{
+			"off however it is spelled",
+			map[string]any{"access": "None", "error": "  NONE "},
+			map[string]string{"access": "None", "error": "  NONE "},
+		},
+		{
+			"a path with padding",
+			map[string]any{"access": " /var/log/x-ui/padded.log "},
+			map[string]string{"access": filepath.Join(logDir, "padded.log")},
+		},
+		{
+			"a path that names no file",
+			map[string]any{"access": "/", "error": "/var/log/.."},
+			map[string]string{"access": filepath.Join(logDir, "access.log"), "error": filepath.Join(logDir, "error.log")},
+		},
+		{
+			"a key in another case reaches the same setting",
+			map[string]any{"Access": "/var/log/x-ui/access.log", "ERROR": "none"},
+			map[string]string{"access": filepath.Join(logDir, "access.log"), "error": "none"},
+		},
+		{
+			"the exact key wins over its case variants",
+			map[string]any{"access": "none", "Access": "/var/log/x-ui/access.log"},
+			map[string]string{"access": "none"},
 		},
 	}
 	for _, tt := range tests {
