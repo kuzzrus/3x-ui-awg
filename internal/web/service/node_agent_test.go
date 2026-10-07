@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +12,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/agent"
 	"github.com/mhsanaei/3x-ui/v3/internal/agentproto"
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
+	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 )
 
@@ -103,5 +106,81 @@ func TestProbeAgentReportsWhyItCannotReachTheAgent(t *testing.T) {
 				t.Fatalf("Probe = %+v, %v; want a LastError containing %q", patch, err, tt.want)
 			}
 		})
+	}
+}
+
+// Like the panel probe, an answer that is not a success still says how long it took, which
+// tells an agent that refused from one that never answered.
+func TestProbeAgentKeepsTheLatencyOfAnAnswerThatIsNotASuccess(t *testing.T) {
+	bundle, fingerprint, err := agentproto.NewBundle("127.0.0.1", 8443, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tlsConfig, err := bundle.ServerTLSConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const delay = 40 * time.Millisecond
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(delay)
+		http.NotFound(w, nil)
+	}))
+	srv.TLS = tlsConfig
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+	node := &model.Node{
+		Id: 9, Name: "agent-9", Kind: model.NodeKindAgent, Address: "127.0.0.1",
+		Port:     srv.Listener.Addr().(*net.TCPAddr).Port,
+		ApiToken: bundle.Secret, PinnedCertSha256: fingerprint, AllowPrivateAddress: true,
+	}
+
+	patch, err := (&NodeService{}).Probe(context.Background(), node)
+	if err == nil || patch.LastError == "" {
+		t.Fatalf("Probe = %+v, %v; want the refusal reported", patch, err)
+	}
+	if patch.LatencyMs < int(delay/time.Millisecond) {
+		t.Fatalf("LatencyMs = %d, want at least the %s the agent took to refuse", patch.LatencyMs, delay)
+	}
+
+	node.Port = 1
+	patch, err = (&NodeService{}).Probe(context.Background(), node)
+	if err == nil || patch.LatencyMs != 0 {
+		t.Fatalf("Probe of nothing listening = %+v, %v; want an error and no latency", patch, err)
+	}
+}
+
+// The request cannot say what kind of node it describes, so the stored kind has to survive
+// the overlay, or the Test button would probe an agent as if it were a panel.
+func TestRuntimeNodeFromRequestKeepsTheKindOfTheStoredNode(t *testing.T) {
+	setupConflictDB(t)
+	live, _ := startIdleAgent(t)
+	stored := *live
+	stored.Id = 0
+	if err := database.GetDB().Create(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	svc := &NodeService{}
+	n, err := svc.RuntimeNodeFromRequest(stored.Id, &NodeMutationRequest{
+		Name: "renamed", Scheme: "https", Address: live.Address, Port: live.Port, BasePath: "/",
+		Enable: true, AllowPrivateAddress: true, TlsVerifyMode: "pin", PinnedCertSha256: live.PinnedCertSha256,
+	})
+	if err != nil {
+		t.Fatalf("RuntimeNodeFromRequest: %v", err)
+	}
+	if n.Kind != model.NodeKindAgent {
+		t.Fatalf("Kind = %q, want %q", n.Kind, model.NodeKindAgent)
+	}
+	if patch, err := svc.Probe(context.Background(), n); err != nil {
+		t.Fatalf("Probe of the overlaid node = %+v, %v; want the agent reached", patch, err)
+	}
+
+	token := "token"
+	fresh, err := svc.RuntimeNodeFromRequest(0, &NodeMutationRequest{
+		Name: "new", Scheme: "https", Address: "203.0.113.5", Port: 2053, BasePath: "/",
+		ApiToken: &token, Enable: true,
+	})
+	if err != nil || fresh.Kind != "" {
+		t.Fatalf("a node that is not stored yet = %+v, %v; want the default kind", fresh, err)
 	}
 }

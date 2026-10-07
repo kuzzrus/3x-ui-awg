@@ -28,7 +28,10 @@ const (
 	agentStatsTimeout   = 10 * time.Second
 	agentPushTimeout    = 2 * time.Minute
 	agentRestartTimeout = time.Minute
-	maxAgentResponse    = 4 << 20
+	// Status, config and restart answers are a handful of scalars, and every heartbeat reads
+	// one; the stats hold a counter for every inbound and user.
+	maxAnswerBytes = 1 << 20
+	maxStatsBytes  = 4 << 20
 )
 
 // AgentError is an answer from the agent that is not a success. Status 422 is the agent
@@ -143,7 +146,7 @@ func buildAgentHTTPClient(n *model.Node, secret, proxyURL string) (*http.Client,
 
 func (c *AgentClient) Status(ctx context.Context) (*agentproto.Status, error) {
 	var out agentproto.Status
-	if err := c.do(ctx, http.MethodGet, agentproto.PathStatus, nil, nil, agentStatusTimeout, &out); err != nil {
+	if err := c.do(ctx, http.MethodGet, agentproto.PathStatus, nil, nil, agentStatusTimeout, maxAnswerBytes, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -151,7 +154,7 @@ func (c *AgentClient) Status(ctx context.Context) (*agentproto.Status, error) {
 
 func (c *AgentClient) Stats(ctx context.Context) (*agentproto.Stats, error) {
 	var out agentproto.Stats
-	if err := c.do(ctx, http.MethodGet, agentproto.PathStats, nil, nil, agentStatsTimeout, &out); err != nil {
+	if err := c.do(ctx, http.MethodGet, agentproto.PathStats, nil, nil, agentStatsTimeout, maxStatsBytes, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -162,7 +165,7 @@ func (c *AgentClient) Stats(ctx context.Context) (*agentproto.Stats, error) {
 func (c *AgentClient) PushConfig(ctx context.Context, body []byte, restartOnUserRemoval bool) (*agentproto.ConfigResponse, error) {
 	query := url.Values{agentproto.QueryRestartOnUserRemoval: {strconv.FormatBool(restartOnUserRemoval)}}
 	var out agentproto.ConfigResponse
-	if err := c.do(ctx, http.MethodPut, agentproto.PathConfig, query, body, agentPushTimeout, &out); err != nil {
+	if err := c.do(ctx, http.MethodPut, agentproto.PathConfig, query, body, agentPushTimeout, maxAnswerBytes, &out); err != nil {
 		return nil, err
 	}
 	if want := agentproto.RevisionOf(body, restartOnUserRemoval); out.Revision != want {
@@ -173,13 +176,13 @@ func (c *AgentClient) PushConfig(ctx context.Context, body []byte, restartOnUser
 
 func (c *AgentClient) Restart(ctx context.Context) (*agentproto.ConfigResponse, error) {
 	var out agentproto.ConfigResponse
-	if err := c.do(ctx, http.MethodPost, agentproto.PathRestart, nil, nil, agentRestartTimeout, &out); err != nil {
+	if err := c.do(ctx, http.MethodPost, agentproto.PathRestart, nil, nil, agentRestartTimeout, maxAnswerBytes, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
 }
 
-func (c *AgentClient) do(ctx context.Context, method, path string, query url.Values, body []byte, timeout time.Duration, out any) error {
+func (c *AgentClient) do(ctx context.Context, method, path string, query url.Values, body []byte, timeout time.Duration, limit int64, out any) error {
 	target := c.base + path
 	if len(query) > 0 {
 		target += "?" + query.Encode()
@@ -210,7 +213,7 @@ func (c *AgentClient) do(ctx context.Context, method, path string, query url.Val
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, errBodyDiagBytes))
 		return agentErrorFor(resp.StatusCode, snippet)
 	}
-	raw, err := readCappedBody(resp.Body, maxAgentResponse)
+	raw, err := readCappedBody(resp.Body, limit)
 	if err != nil {
 		return fmt.Errorf("read %s response: %w", path, err)
 	}

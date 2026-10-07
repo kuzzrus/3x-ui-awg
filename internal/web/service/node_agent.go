@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
@@ -19,11 +20,15 @@ func (s *NodeService) probeAgent(ctx context.Context, n *model.Node, proxyURL st
 	}
 	start := time.Now()
 	status, err := client.Status(ctx)
+	// Like the panel probe, an answer that is not a success still tells how fast it came.
+	var answered *runtime.AgentError
+	if err == nil || errors.As(err, &answered) {
+		patch.LatencyMs = int(time.Since(start) / time.Millisecond)
+	}
 	if err != nil {
 		patch.LastError = err.Error()
 		return patch, err
 	}
-	patch.LatencyMs = int(time.Since(start) / time.Millisecond)
 	patch.XrayVersion = status.XrayVersion
 	patch.PanelVersion = status.AgentVersion
 	patch.Guid = status.Guid

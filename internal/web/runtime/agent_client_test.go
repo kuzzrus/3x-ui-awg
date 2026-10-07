@@ -244,6 +244,27 @@ func TestAgentClientRefusesAnAnswerItCannotTrust(t *testing.T) {
 	}
 }
 
+// A heartbeat reads a status on a schedule from every agent, so its answer gets a tighter
+// cap than the stats, which hold a counter for every inbound and user.
+func TestAgentClientCapsStatusTighterThanStats(t *testing.T) {
+	body := `{"hostname":"` + strings.Repeat("a", 2<<20) + `","online":[]}`
+	agent := startStubAgent(t, func(w http.ResponseWriter, r *http.Request, _ []byte) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	})
+	client, err := NewAgentClient(agent.node, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := client.Status(context.Background()); err == nil || !strings.Contains(err.Error(), "exceeds size limit") {
+		t.Fatalf("a 2 MiB status = %v, want it refused as too large", err)
+	}
+	if _, err := client.Stats(context.Background()); err != nil {
+		t.Fatalf("a 2 MiB stats answer = %v, want it accepted", err)
+	}
+}
+
 // The node's address is an IP here, for which crypto/tls sends no server name on its own:
 // the gate only opens because the client names the one derived from the secret.
 func TestAgentClientTrustsOnlyThePinnedAgent(t *testing.T) {

@@ -646,7 +646,10 @@ func (s *NodeService) RuntimeNodeFromRequest(id int, req *NodeMutationRequest) (
 	if req.ClearApiToken {
 		overlay.ApiToken = ""
 	}
+	// The request cannot say what kind of node it describes, so the stored kind survives it.
+	kind := n.Kind
 	*n = *overlay
+	n.Kind = kind
 	if err := s.normalize(n); err != nil {
 		return nil, err
 	}
