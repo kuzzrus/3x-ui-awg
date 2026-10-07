@@ -97,7 +97,7 @@ HTTP status codes (no `{success,msg,obj}` envelope).
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `PUT /v1/config`   | Body: the rendered Xray config, byte for byte; `restartOnUserRemoval` is a query flag. The revision is a hash of the flag and the body bytes, computed by each side over exactly what was sent, so no JSON re-encoding can make them disagree. Validates with the core's own test (`xray -test -c`), then applies (no-op, hot, or restart). Answers `{revision, applied: noop\|hot\|restart, xrayState}`; on a bad config answers 422 and keeps the last good one. |
 | `GET /v1/status`   | Agent version, hostname, GUID, config revision, Xray version/state/error, CPU, memory, uptime, interface throughput. This is the heartbeat.                                                                                                                                                                                                                                                                                                                        |
-| `GET /v1/stats`    | Cumulative counters since Xray started: per inbound tag and per user email (up/down), online emails, `xrayStartedAt` so the master detects resets exactly instead of guessing from a drop.                                                                                                                                                                                                                                                                         |
+| `GET /v1/stats`    | Cumulative counters since Xray started: per inbound tag and per user email (up/down), online emails, `xrayStartedAt` so the master detects resets exactly instead of guessing from a drop, and `configRevision`, the revision of the config the agent holds, which tells the master whether a push is due.                                                                                                                                                         |
 | `POST /v1/restart` | Restart Xray with the last good config. Answers 409 before any config exists and 500 when the core does not come back; 422 only ever means a refused push.                                                                                                                                                                                                                                                                                                         |
 
 Any other path, wrong method, or failed auth answers the same bare 404, so a response
@@ -188,6 +188,18 @@ rendered config. So the per-inbound and per-user methods return nil (a per-user 
 no meaning when the whole config is re-rendered), `RestartXray` maps to
 `POST /v1/restart`, and the traffic resets are master-side baseline operations. A change
 therefore reaches an agent on the next sync tick (about five seconds), as for stock nodes.
+
+The sync job renders the node's config only when it has a reason to, and sends it only
+when it differs from what the agent holds:
+
+- A dirty node is rendered on the next tick. The render is deterministic (inbounds and
+  clients in id order), so its revision only changes when the config does.
+- Every 30 seconds each agent is compared anyway, because the template, the
+  subscriptions and the settings do not mark nodes dirty, and because an agent that was
+  reinstalled has lost its config. The agent's revision comes from `GET /v1/stats`.
+- A config the agent refuses (422) is not sent again until it changes, or for five
+  minutes at most; the node stays dirty and the agent's own error shows on the node. A
+  failure to reach the agent is retried on every tick.
 
 The master template (routing, outbounds, DNS, policy) is the same for every agent in
 v1, minus the local-only injections (sidecar bridges, panel egress, node egresses).

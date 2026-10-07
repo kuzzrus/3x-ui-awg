@@ -68,6 +68,9 @@ func TestCoreE2E(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Stats: %v", err)
 		}
+		if want := core.Snapshot().Revision; stats.ConfigRevision != want {
+			t.Fatalf("stats name revision %q, the core runs %q", stats.ConfigRevision, want)
+		}
 		return stats.XrayStartedAt
 	}
 
