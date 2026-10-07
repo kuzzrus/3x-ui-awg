@@ -685,6 +685,12 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
 
 var renameFile = os.Rename
 
+// WriteFileAtomic lets callers outside the package keep their own files with the
+// same crash-safe write the core's config gets.
+func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
+	return writeFileAtomic(path, data, perm)
+}
+
 func (p *process) startCommand(cmd *exec.Cmd) error {
 	p.mu.Lock()
 	p.cmd = cmd
