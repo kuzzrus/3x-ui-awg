@@ -18,14 +18,14 @@ const DAY = 24 * 60 * 60 * 1000;
 
 // Without an instance the toast goes through antd's static API, which mounts a React root that
 // no cleanup reaches and that keeps rendering after the file is torn down.
-const toast = { success: vi.fn() };
+const toast = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOW);
   // Also marks the setting as loaded, so the notice never asks the panel for it.
   setDatepicker('gregorian');
-  toast.success.mockReset();
+  Object.values(toast).forEach((method) => method.mockReset());
   setMessageInstance(toast as unknown as MessageInstance);
 });
 
