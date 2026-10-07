@@ -153,6 +153,7 @@ node heartbeat every 5s, periodic traffic resets (hourly/daily/weekly/monthly). 
 │   │   ├── process.go          # Spawn/supervise the Xray child process (~750 lines)
 │   │   ├── api.go              # gRPC client to a running Xray (add/remove user, stats) (~800 lines)
 │   │   ├── hot_diff.go         # ⭐ Compute minimal live changes to avoid full restart (~500 lines)
+│   │   ├── hot_apply.go        # Apply that diff to the running core over gRPC (ApplyHot)
 │   │   ├── config.go           # Xray config object model
 │   │   ├── inbound.go          # Inbound JSON shaping
 │   │   ├── client_traffic.go   # ClientTraffic model (persisted as client_traffics)
@@ -318,7 +319,8 @@ Restart is debounced via an atomic "need restart" flag (`SetToNeedRestart` /
 — any number of mutations inside the window causes at most one restart.
 
 **Key files:** `service/xray.go` (orchestration), `xray/hot_diff.go` (the diff algorithm),
-`xray/process.go` (process lifecycle), `xray/api.go` (gRPC calls), `xray/config.go` (config model).
+`xray/hot_apply.go` (applies the diff over gRPC), `xray/process.go` (process lifecycle),
+`xray/api.go` (gRPC calls), `xray/config.go` (config model).
 
 ### 5.2 Runtime abstraction — Local vs Remote (multi-node) ⭐ most important
 

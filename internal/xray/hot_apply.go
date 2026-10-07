@@ -6,8 +6,8 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 )
 
-// ApplyHot reconciles the running core with newCfg over its gRPC API; false means
-// the caller must restart, which also cleans up whatever a failed apply left behind.
+// ApplyHot reconciles the running core with newCfg over its gRPC API; false means the
+// caller must restart, which also cleans up a failed apply. Calls must not overlap.
 func ApplyHot(process *Process, newCfg *Config, restartToDropUsers func(*HotDiff) bool) bool {
 	oldCfg := process.GetConfig()
 	diff, ok := ComputeHotDiff(oldCfg, newCfg)
