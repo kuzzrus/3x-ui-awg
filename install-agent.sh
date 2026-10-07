@@ -12,6 +12,7 @@ INSTALL_DIR="/usr/local/x-ui-agent"
 STATE_DIR="/etc/x-ui-agent"
 LOG_DIR="/var/log/x-ui-agent"
 UNIT_FILE="/etc/systemd/system/x-ui-agent.service"
+STAGING_PARENT="/usr/local"
 
 red='\033[0;31m'
 green='\033[0;32m'
@@ -100,19 +101,32 @@ verify_checksum() {
     info "Checksum verified: ${actual}"
 }
 
+# Sets $archive to the file to unpack: the one given with --tarball, or a download into
+# the staging folder.
 fetch_archive() {
-    local archive="$1" url
+    local url
     if [[ -n "$tarball" ]]; then
         [[ -r "$tarball" ]] || die "Cannot read ${tarball}"
-        cp "$tarball" "$archive"
+        archive="$tarball"
         return 0
     fi
     [[ -n "$tag" ]] || tag=$(resolve_latest_tag || true)
     [[ -n "$tag" ]] || die "Could not work out the latest release"
     url="https://github.com/${REPO}/releases/download/${tag}/x-ui-linux-$(arch).tar.gz"
     info "Downloading ${tag} for $(arch)"
+    archive="$work/x-ui.tar.gz"
     curl -fLR --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1 --speed-time 300 -o "$archive" "$url"
     verify_checksum "$url" "$archive"
+}
+
+# The release carries the panel, sidecar binaries and more, but the agent needs three
+# kinds of entry: GNU tar unpacks only those, any other tar unpacks all.
+unpack_archive() {
+    if tar --version 2> /dev/null | grep -q 'GNU tar'; then
+        tar -xzf "$archive" -C "$work" --wildcards 'x-ui/x-ui-agent' "x-ui/bin/xray-linux-$(arch)" 'x-ui/bin/*.dat'
+    else
+        tar -xzf "$archive" -C "$work"
+    fi
 }
 
 # Puts the bundle in $1 with owner-only permissions: read it from the prompt, a file or stdin.
@@ -145,7 +159,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=${INSTALL_DIR}/x-ui-agent
+ExecStart=${INSTALL_DIR}/x-ui-agent -bundle-file ${STATE_DIR}/bundle -state-dir ${STATE_DIR} -bin-dir ${INSTALL_DIR}/bin -log-dir ${LOG_DIR}
 Restart=always
 RestartSec=3
 LimitNOFILE=1048576
@@ -171,13 +185,14 @@ cleanup() {
 }
 
 install_agent() {
-    local archive agent_bin address
-    work=$(mktemp -d)
+    local agent_bin address
+    # On the real filesystem, not /tmp: that is a RAM-backed tmpfs on many systemd distros,
+    # too small on a low-memory node for the release archive plus what it unpacks.
+    work=$(mktemp -d "${STAGING_PARENT}/.x-ui-agent-install.XXXXXX")
     trap cleanup EXIT
-    archive="$work/x-ui.tar.gz"
 
-    fetch_archive "$archive"
-    tar -xzf "$archive" -C "$work"
+    fetch_archive
+    unpack_archive || die "Could not unpack the release archive. It may not ship x-ui-agent: try --version dev-latest, or a newer release."
     agent_bin="$work/x-ui/x-ui-agent"
     [[ -s "$agent_bin" ]] || die "This release does not ship x-ui-agent. Try --version dev-latest, or a newer release."
     [[ -s "$work/x-ui/bin/xray-linux-$(arch)" ]] || die "The archive has no Xray core for $(arch)."
@@ -237,7 +252,7 @@ uninstall_agent() {
     info "The x-ui agent is removed. Delete the node on the master as well."
 }
 
-bundle_file="" tag="" tarball="" work="" do_uninstall=0 assume_yes=0
+bundle_file="" tag="" tarball="" archive="" work="" do_uninstall=0 assume_yes=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --bundle-file)

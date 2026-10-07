@@ -275,6 +275,81 @@ func TestApplyOfAFirstConfigThatDoesNotStartLeavesNothingRunning(t *testing.T) {
 	}
 }
 
+// The core opens the log files the agent chose, possibly while it is being tested, so the
+// folder has to exist before either.
+func TestApplyCreatesTheLogFolder(t *testing.T) {
+	f := newFixture(t)
+	logDir := filepath.Join(t.TempDir(), "not", "yet", "there")
+	core := NewCore(f.state, logDir)
+	t.Cleanup(core.Close)
+
+	if _, err := core.Apply(context.Background(), f.config("a").compact(t), false); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if info, err := os.Stat(logDir); err != nil || !info.IsDir() {
+		t.Fatalf("log folder = %v, %v; want it created", info, err)
+	}
+	raw, err := os.ReadFile(filepath.Join(f.binDir, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(logDir, "access.log"); !strings.Contains(string(raw), strings.ReplaceAll(want, `\`, `\\`)) {
+		t.Fatalf("the core's config does not point its access log at %s:\n%s", want, raw)
+	}
+}
+
+func TestBootReportsADamagedLastGoodConfig(t *testing.T) {
+	f := newFixture(t)
+	if err := os.WriteFile(filepath.Join(f.state.dir, lastGoodFile), []byte("{torn"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := f.core.Boot(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "unreadable") {
+		t.Fatalf("Boot = %v, want the unreadable file reported", err)
+	}
+	snap := f.core.Snapshot()
+	if snap.XrayState != agentproto.XrayStateError || !strings.Contains(snap.XrayError, "unreadable") {
+		t.Fatalf("snapshot = %+v, want an error state that says why the node is idle", snap)
+	}
+}
+
+// A config that runs but could not be stored is not a failed push: the status keeps saying
+// the core is running, and the next push of the same config stores it.
+func TestApplyOfAConfigThatRunsButCannotBeSaved(t *testing.T) {
+	f := newFixture(t)
+	body := f.config("a").compact(t)
+	blocker := filepath.Join(f.state.dir, lastGoodFile)
+	if err := os.Mkdir(blocker, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := f.apply(body)
+	var unsaved *SaveError
+	if !errors.As(err, &unsaved) {
+		t.Fatalf("Apply = %v, want a *SaveError", err)
+	}
+	snap := f.core.Snapshot()
+	if snap.XrayState != agentproto.XrayStateRunning || !strings.Contains(snap.XrayError, "is running but not saved as the last good config") {
+		t.Fatalf("snapshot = %+v, want the core running and the unsaved config reported", snap)
+	}
+	if strings.Contains(snap.XrayError, "not applied") {
+		t.Fatalf("XrayError = %q calls a live config not applied", snap.XrayError)
+	}
+
+	if err := os.Remove(blocker); err != nil {
+		t.Fatal(err)
+	}
+	resp := f.mustApply(body)
+	if resp.Applied != agentproto.AppliedNoop {
+		t.Fatalf("retry = %+v, want noop", resp)
+	}
+	f.wantSavedBody(body)
+	if snap := f.core.Snapshot(); snap.XrayError != "" {
+		t.Fatalf("XrayError = %q after the config was saved, want it cleared", snap.XrayError)
+	}
+}
+
 func TestBootStartsTheLastGoodConfig(t *testing.T) {
 	f := newFixture(t)
 	body := f.config("a").compact(t)
@@ -306,6 +381,23 @@ func TestBootWithNothingSavedDoesNothing(t *testing.T) {
 	}
 	if snap := f.core.Snapshot(); snap.XrayState != agentproto.XrayStateStopped {
 		t.Fatalf("state = %q, want stopped", snap.XrayState)
+	}
+}
+
+// The port opens before Boot runs, so a push can win the race for the core.
+func TestBootAfterAPushLeavesThePushedConfigAlone(t *testing.T) {
+	f := newFixture(t)
+	body := f.config("a").compact(t)
+	f.mustApply(body)
+
+	if err := f.core.Boot(context.Background()); err != nil {
+		t.Fatalf("Boot: %v", err)
+	}
+	if got := f.starts(); got != 1 {
+		t.Fatalf("core started %d times, want the push's start only", got)
+	}
+	if snap := f.core.Snapshot(); snap.XrayState != agentproto.XrayStateRunning || snap.Revision != agentproto.RevisionOf(body, false) {
+		t.Fatalf("snapshot after boot = %+v, want the pushed config running", snap)
 	}
 }
 

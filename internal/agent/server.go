@@ -22,11 +22,13 @@ import (
 // Server answers the master. Every request needs the pairing secret, and a wrong
 // path, method or secret all get the same bare 404, so a response never says which.
 type Server struct {
-	core   *Core
-	secret string
-	guid   string
-	sys    sysSampler
-	routes map[string]http.HandlerFunc
+	core     *Core
+	secret   string
+	guid     string
+	sys      sysSampler
+	routes   map[string]http.HandlerFunc
+	paths    map[string]bool
+	refusals refusalLog
 }
 
 func NewServer(core *Core, state *State, secret string) (*Server, error) {
@@ -35,18 +37,41 @@ func NewServer(core *Core, state *State, secret string) (*Server, error) {
 		return nil, err
 	}
 	s := &Server{core: core, secret: secret, guid: guid}
-	s.routes = map[string]http.HandlerFunc{
-		http.MethodPut + " " + agentproto.PathConfig:   s.putConfig,
-		http.MethodGet + " " + agentproto.PathStatus:   s.getStatus,
-		http.MethodGet + " " + agentproto.PathStats:    s.getStats,
-		http.MethodPost + " " + agentproto.PathRestart: s.postRestart,
+	s.routes = map[string]http.HandlerFunc{}
+	s.paths = map[string]bool{}
+	for _, route := range []struct {
+		method, path string
+		handler      http.HandlerFunc
+	}{
+		{http.MethodPut, agentproto.PathConfig, s.putConfig},
+		{http.MethodGet, agentproto.PathStatus, s.getStatus},
+		{http.MethodGet, agentproto.PathStats, s.getStats},
+		{http.MethodPost, agentproto.PathRestart, s.postRestart},
+	} {
+		s.routes[route.method+" "+route.path] = route.handler
+		s.paths[route.path] = true
 	}
+	// The first sample only sets the baseline the later ones are measured from.
+	s.sys.sample()
 	return s, nil
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	handler, ok := s.routes[r.Method+" "+r.URL.Path]
-	if !ok || !agentproto.CheckBearer(r.Header.Get("Authorization"), s.secret) {
+	handler, found := s.routes[r.Method+" "+r.URL.Path]
+	authorization := r.Header.Get("Authorization")
+	var reason string
+	switch {
+	case !found && s.paths[r.URL.Path]:
+		reason = "wrong method"
+	case !found:
+		reason = "unknown path"
+	case authorization == "":
+		reason = "no secret"
+	case !agentproto.CheckBearer(authorization, s.secret):
+		reason = "wrong secret"
+	}
+	if reason != "" {
+		s.refusals.note(r, reason)
 		http.NotFound(w, r)
 		return
 	}
@@ -120,6 +145,12 @@ func (s *Server) putConfig(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) postRestart(w http.ResponseWriter, r *http.Request) {
 	err := s.core.Restart(r.Context())
+	// No config came with this request, so a core that will not come back is the agent's
+	// failure, and 422 is left to mean a refused push.
+	var refused *ConfigError
+	if errors.As(err, &refused) {
+		err = errors.New(refused.Reason)
+	}
 	snap := s.core.Snapshot()
 	replyApplied(w, agentproto.ConfigResponse{
 		Revision:  snap.Revision,
