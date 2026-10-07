@@ -7,9 +7,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 
 	"github.com/op/go-logging"
@@ -36,6 +38,7 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 	binDir := flags.String("bin-dir", "/usr/local/x-ui-agent/bin", "folder with the xray binary and the geo files")
 	logDir := flags.String("log-dir", "/var/log/x-ui-agent", "folder for the logs")
 	showVersion := flags.Bool("version", false, "print the version and exit")
+	checkBundle := flags.Bool("check-bundle", false, "validate the pairing bundle, print the address it names and exit")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -50,6 +53,10 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 	}
 	bundle, err := agentproto.ParseBundle(string(raw))
 	if err != nil {
+		return err
+	}
+	if *checkBundle {
+		_, err := fmt.Fprintln(stdout, net.JoinHostPort(bundle.Address, strconv.Itoa(bundle.Port)))
 		return err
 	}
 	bin, err := filepath.Abs(*binDir)

@@ -28,6 +28,36 @@ func TestRunPrintsTheVersion(t *testing.T) {
 	}
 }
 
+func TestRunChecksABundleWithoutServing(t *testing.T) {
+	bundle, _, err := agentproto.NewBundle("2001:db8::7", 8443, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := bundle.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(t.TempDir(), "bundle")
+	if err := os.WriteFile(file, []byte(token), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := run(context.Background(), []string{"-check-bundle", "-bundle-file", file}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if want := "[2001:db8::7]:8443\n"; out.String() != want {
+		t.Fatalf("output = %q, want %q", out.String(), want)
+	}
+
+	if err := os.WriteFile(file, []byte(token[:len(token)-4]), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(context.Background(), []string{"-check-bundle", "-bundle-file", file}, &bytes.Buffer{}); err == nil {
+		t.Fatal("a truncated bundle was accepted")
+	}
+}
+
 func TestRunNeedsAUsableBundle(t *testing.T) {
 	dir := t.TempDir()
 	garbage := filepath.Join(dir, "garbage")
