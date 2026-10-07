@@ -98,13 +98,14 @@ HTTP status codes (no `{success,msg,obj}` envelope).
 | `PUT /v1/config`   | Body: the rendered Xray config, byte for byte; `restartOnUserRemoval` is a query flag. The revision is a hash of the flag and the body bytes, computed by each side over exactly what was sent, so no JSON re-encoding can make them disagree. Validates with the core's own test (`xray -test -c`), then applies (no-op, hot, or restart). Answers `{revision, applied: noop\|hot\|restart, xrayState}`; on a bad config answers 422 and keeps the last good one. |
 | `GET /v1/status`   | Agent version, hostname, GUID, config revision, Xray version/state/error, CPU, memory, uptime, interface throughput. This is the heartbeat.                                                                                                                                                                                                                                                                                                                        |
 | `GET /v1/stats`    | Cumulative counters since Xray started: per inbound tag and per user email (up/down), online emails, `xrayStartedAt` so the master detects resets exactly instead of guessing from a drop.                                                                                                                                                                                                                                                                         |
-| `POST /v1/restart` | Restart Xray with the last good config.                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `POST /v1/restart` | Restart Xray with the last good config. Answers 409 before any config exists and 500 when the core does not come back; 422 only ever means a refused push.                                                                                                                                                                                                                                                                                                         |
 
 Any other path, wrong method, or failed auth answers the same bare 404, so a response
 never says which part of the request was wrong. It does not hide that an HTTPS server
 answers: that is the SNI gate's job. The master only sends valid requests, so for it a 404
 means a wrong secret and a handshake failure means a wrong bundle; the agent logs the
-precise reason locally. Later phases add endpoints (sidecars, geo update, logs,
+precise reason locally, once a minute per reason so a scanner cannot flood the log. Later
+phases add endpoints (sidecars, geo update, logs,
 self-update) under the same prefix.
 
 ### Config apply
@@ -121,8 +122,10 @@ self-update) under the same prefix.
    Handler or Stats service, no routing rule for the api inbound, or client counters
    switched off for level 0.
 
-On boot the agent loads the last good config and starts Xray without waiting for the
-master, so a reboot with the master down does not take the node offline.
+On boot the agent opens its port, then loads the last good config and starts Xray without
+waiting for the master, so a reboot with the master down does not take the node offline.
+The port opens first so a stored config that will not start cannot lock the master out; a
+push made meanwhile waits for the start attempt to end.
 
 ## Pairing and transport security
 

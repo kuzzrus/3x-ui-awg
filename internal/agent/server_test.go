@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -193,6 +194,22 @@ func TestServerRestart(t *testing.T) {
 	}
 }
 
+// The config is the one already running, so a core that will not come back is not a refused push.
+func TestServerRestartOfACoreThatWillNotComeBackIsNot422(t *testing.T) {
+	s := newServerFixture(t)
+	if err := s.state.SaveLastGood(s.config(markerFailStart).compact(t), false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.core.Boot(context.Background()); err == nil {
+		t.Fatal("Boot started a config the core cannot run")
+	}
+
+	failure := decode[agentproto.ErrorBody](t, s.authed(http.MethodPost, agentproto.PathRestart, nil), http.StatusInternalServerError)
+	if !strings.Contains(failure.Error, "xray exited right after it started") {
+		t.Fatalf("error = %q, want why the core did not come back", failure.Error)
+	}
+}
+
 func TestServerStatsOfACoreThatIsNotRunning(t *testing.T) {
 	s := newServerFixture(t)
 	stats := decode[agentproto.Stats](t, s.authed(http.MethodGet, agentproto.PathStats, nil), http.StatusOK)
@@ -232,6 +249,45 @@ func TestServerAnswersEverythingElseWithTheSameBare404(t *testing.T) {
 	}
 	if got := s.starts(); got != 0 {
 		t.Fatalf("a request without the secret started the core %d times", got)
+	}
+}
+
+// The response never says why, so the log is the only place an operator can find out.
+func TestServerLogsWhyItRefusedARequest(t *testing.T) {
+	s := newServerFixture(t)
+	var lines []string
+	s.server.refusals.warnf = func(format string, args ...any) { lines = append(lines, fmt.Sprintf(format, args...)) }
+	wrong := "Bearer " + strings.Repeat("A", 43)
+	call := func(method, path, authorization string) {
+		req := httptest.NewRequest(method, path, nil)
+		if authorization != "" {
+			req.Header.Set("Authorization", authorization)
+		}
+		s.server.ServeHTTP(httptest.NewRecorder(), req)
+	}
+
+	call(http.MethodGet, "/v1/nothing", "Bearer "+s.bundle.Secret)
+	call(http.MethodGet, agentproto.PathConfig, "Bearer "+s.bundle.Secret)
+	call(http.MethodGet, agentproto.PathStatus, "")
+	call(http.MethodGet, agentproto.PathStatus, wrong)
+	call(http.MethodGet, agentproto.PathStatus, "Bearer "+s.bundle.Secret)
+
+	want := []string{
+		`agent: refused GET "/v1/nothing" from 192.0.2.1:1234: unknown path`,
+		`agent: refused GET "/v1/config" from 192.0.2.1:1234: wrong method`,
+		`agent: refused GET "/v1/status" from 192.0.2.1:1234: no secret`,
+		`agent: refused GET "/v1/status" from 192.0.2.1:1234: wrong secret`,
+	}
+	if len(lines) != len(want) {
+		t.Fatalf("logged %d lines, want %d (the repeat of a reason within the minute is held back, the valid call is not a refusal):\n%s", len(lines), len(want), strings.Join(lines, "\n"))
+	}
+	for i := range want {
+		if lines[i] != want[i] {
+			t.Fatalf("line %d = %q, want %q", i, lines[i], want[i])
+		}
+		if strings.Contains(lines[i], s.bundle.Secret) || strings.Contains(lines[i], wrong) {
+			t.Fatalf("line %d carries a secret: %q", i, lines[i])
+		}
 	}
 }
 

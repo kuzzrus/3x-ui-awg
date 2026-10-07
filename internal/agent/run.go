@@ -38,15 +38,26 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 
-	if err := core.Boot(ctx); err != nil {
-		logger.Warning("agent: the last good config did not start, waiting for the master:", err)
-	}
-	go core.Run(ctx)
-
 	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", net.JoinHostPort("", strconv.Itoa(opts.Bundle.Port)))
 	if err != nil {
 		return err
 	}
+	// The port is open before the core starts: a stored config that will not start must not
+	// keep the master out for the whole start-up wait. A push made meanwhile waits its turn.
+	ctx, stop := context.WithCancel(ctx)
+	supervised := make(chan struct{})
+	go func() {
+		defer close(supervised)
+		if err := core.Boot(ctx); err != nil {
+			logger.Warning("agent: the last good config did not start, waiting for the master:", err)
+		}
+		core.Run(ctx)
+	}()
+	defer func() {
+		stop()
+		<-supervised
+	}()
+
 	logger.Info("agent: serving the master on", ln.Addr())
 	return server.Serve(ctx, ln, tlsConfig)
 }

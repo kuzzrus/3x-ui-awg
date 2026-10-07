@@ -43,7 +43,8 @@ func TestMain(m *testing.M) {
 }
 
 // runFakeXray stands in for the core: it answers -version, tests a config, or serves the
-// api port until stopped. FAIL_TEST or FAIL_START in the config makes it refuse that step.
+// api port until stopped. FAIL_TEST or FAIL_START in the config makes it refuse that step,
+// and NO_API makes it run without ever opening the api port.
 func runFakeXray(args []string) int {
 	testOnly, path := false, ""
 	for i := 0; i < len(args); i++ {
@@ -76,6 +77,12 @@ func runFakeXray(args []string) int {
 	if bytes.Contains(raw, []byte(markerFailStart)) {
 		fmt.Fprintln(os.Stderr, "Failed to start: fake cannot bind")
 		return 1
+	}
+	if bytes.Contains(raw, []byte(markerNoAPI)) {
+		hang := make(chan os.Signal, 1)
+		signal.Notify(hang, syscall.SIGTERM, syscall.SIGINT)
+		<-hang
+		return 0
 	}
 
 	var cfg struct {

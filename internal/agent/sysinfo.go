@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"strings"
 	"sync"
 	"time"
 
@@ -9,6 +8,8 @@ import (
 	"github.com/shirou/gopsutil/v4/host"
 	"github.com/shirou/gopsutil/v4/mem"
 	psnet "github.com/shirou/gopsutil/v4/net"
+
+	"github.com/mhsanaei/3x-ui/v3/internal/util/sys"
 )
 
 // sysSample is the host's load as the master shows it on the node.
@@ -22,6 +23,7 @@ type sysSample struct {
 
 // sysSampler turns the host's counters into rates, so it needs to be asked regularly.
 type sysSampler struct {
+	cpu  sys.CPUSampler
 	mu   sync.Mutex
 	at   time.Time
 	sent uint64
@@ -30,8 +32,11 @@ type sysSampler struct {
 
 func (s *sysSampler) sample() sysSample {
 	var out sysSample
-	if pct, err := cpu.Percent(0, false); err == nil && len(pct) == 1 {
-		out.cpu = pct[0]
+	// The same figure the panel charts for itself, so a node's line is comparable to the master's.
+	if pct, err := s.cpu.Percent(); err == nil {
+		out.cpu = pct
+	} else if raw, err := cpu.Percent(0, false); err == nil && len(raw) == 1 {
+		out.cpu = raw[0]
 	}
 	if vm, err := mem.VirtualMemory(); err == nil {
 		out.mem = vm.UsedPercent
@@ -46,7 +51,7 @@ func (s *sysSampler) sample() sysSample {
 	}
 	var sent, recv uint64
 	for _, c := range counters {
-		if !virtualInterface(strings.ToLower(c.Name)) {
+		if !sys.IsVirtualInterface(c.Name) {
 			sent += c.BytesSent
 			recv += c.BytesRecv
 		}
@@ -60,18 +65,4 @@ func (s *sysSampler) sample() sysSample {
 	}
 	s.at, s.sent, s.recv = now, sent, recv
 	return out
-}
-
-// virtualInterface skips loopback and the tunnels, bridges and container links, which
-// would count the same bytes again.
-func virtualInterface(name string) bool {
-	if name == "lo" || name == "lo0" {
-		return true
-	}
-	for _, prefix := range []string{"loopback", "docker", "br-", "veth", "virbr", "tun", "tap", "wg", "tailscale", "zt"} {
-		if strings.HasPrefix(name, prefix) {
-			return true
-		}
-	}
-	return false
 }
