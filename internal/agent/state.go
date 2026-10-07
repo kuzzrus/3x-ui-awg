@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 
@@ -22,7 +23,10 @@ const (
 )
 
 // State is the agent's small memory on disk: its identity and the config that last ran.
-type State struct{ dir string }
+type State struct {
+	dir string
+	mu  sync.Mutex // makes the first Guid read-or-create exclusive
+}
 
 // OpenState creates the folder if needed; everything in it is private to the agent.
 func OpenState(dir string) (*State, error) {
@@ -35,6 +39,8 @@ func OpenState(dir string) (*State, error) {
 // Guid is the agent's stable identity, created on first use. The master learns it
 // from every status and uses it to tell nodes apart across address changes.
 func (s *State) Guid() (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	path := filepath.Join(s.dir, guidFile)
 	raw, err := os.ReadFile(path)
 	if err == nil {
