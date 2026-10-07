@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Form } from 'antd';
+import type { MessageInstance } from 'antd/es/message/interface';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,16 +10,23 @@ import { certsPollInterval, type NaiveProxyCert } from '@/api/queries/useNaivePr
 import { keys } from '@/api/queryKeys';
 import { setDatepicker } from '@/hooks/useDatepicker';
 import { HttpUtil, Msg } from '@/utils';
+import { setMessageInstance } from '@/utils/messageBus';
 import { makeTestQueryClient, renderWithProviders } from './test-utils';
 
 const NOW = new Date('2026-10-06T12:00:00Z').getTime();
 const DAY = 24 * 60 * 60 * 1000;
+
+// Without an instance the toast goes through antd's static API, which mounts a React root that
+// no cleanup reaches and that keeps rendering after the file is torn down.
+const toast = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOW);
   // Also marks the setting as loaded, so the notice never asks the panel for it.
   setDatepicker('gregorian');
+  Object.values(toast).forEach((method) => method.mockReset());
+  setMessageInstance(toast as unknown as MessageInstance);
 });
 
 afterEach(() => {
@@ -177,6 +185,7 @@ describe('NaiveProxy certificate notice', () => {
     expect(posts.find((p) => p.url.endsWith('/naiveproxy/certRetry'))?.data).toEqual({
       inboundId: 7,
     });
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Trying again...'));
   });
 
   it('shows a failed renewal next to the certificate that is still valid', async () => {
