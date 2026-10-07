@@ -131,6 +131,7 @@ node heartbeat every 5s, periodic traffic resets (hourly/daily/weekly/monthly). 
 ├── main.go                     # Entry point: CLI (run / migrate / migrate-db / setting / cert),
 │                               #   bootstrap, signal handling, restart loop
 ├── go.mod / go.sum             # Go deps (module path ends in /v3)
+├── cmd/x-ui-agent/             # The node agent binary: no DB, no web UI (docs/node-agent.md)
 │
 ├── internal/                   # ALL backend Go code (private packages)
 │   ├── config/                 # Env-var config: paths, DB kind/DSN, log level, version

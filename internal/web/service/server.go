@@ -152,7 +152,7 @@ type ServerService struct {
 	mu                 sync.Mutex
 	lastCPUTimes       cpu.TimesStat
 	hasLastCPUSample   bool
-	hasNativeCPUSample bool
+	nativeCPU          sys.CPUSampler
 	emaCPU             float64
 	cachedCpuSpeedMhz  float64
 	lastCpuInfoAttempt time.Time
@@ -583,8 +583,7 @@ func (s *ServerService) GetStatus(lastStatus *Status) *Status {
 	} else {
 		var totalSent, totalRecv, totalPktSent, totalPktRecv uint64
 		for _, iface := range ioStats {
-			name := strings.ToLower(iface.Name)
-			if isVirtualInterface(name) {
+			if sys.IsVirtualInterface(iface.Name) {
 				continue
 			}
 			totalSent += iface.BytesSent
@@ -725,24 +724,8 @@ func (s *ServerService) AppendStatusSample(t time.Time, status *Status) {
 
 func (s *ServerService) sampleCPUUtilization() (float64, error) {
 	// Try native platform-specific CPU implementation first (Windows, Linux, macOS)
-	if pct, err := sys.CPUPercentRaw(); err == nil {
-		s.mu.Lock()
-		// First call to native method returns 0 (initializes baseline)
-		if !s.hasNativeCPUSample {
-			s.hasNativeCPUSample = true
-			s.mu.Unlock()
-			return 0, nil
-		}
-		// Smooth with EMA
-		const alpha = 0.3
-		if s.emaCPU == 0 {
-			s.emaCPU = pct
-		} else {
-			s.emaCPU = alpha*pct + (1-alpha)*s.emaCPU
-		}
-		val := s.emaCPU
-		s.mu.Unlock()
-		return val, nil
+	if pct, err := s.nativeCPU.Percent(); err == nil {
+		return pct, nil
 	}
 	// If native call fails, fall back to gopsutil times
 	// Read aggregate CPU times (all CPUs combined)
@@ -1541,34 +1524,6 @@ func (s *ServerService) GetXrayLogs(
 	}
 
 	return entries
-}
-
-// isVirtualInterface returns true for loopback and virtual/tunnel interfaces
-// that should be excluded from network traffic statistics.
-func isVirtualInterface(name string) bool {
-	// Exact matches
-	if name == "lo" || name == "lo0" {
-		return true
-	}
-	// Prefix matches for virtual/tunnel interfaces
-	virtualPrefixes := []string{
-		"loopback",
-		"docker",
-		"br-",
-		"veth",
-		"virbr",
-		"tun",
-		"tap",
-		"wg",
-		"tailscale",
-		"zt",
-	}
-	for _, prefix := range virtualPrefixes {
-		if strings.HasPrefix(name, prefix) {
-			return true
-		}
-	}
-	return false
 }
 
 func logEntryContains(line string, suffixes []string) bool {
