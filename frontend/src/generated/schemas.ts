@@ -3297,6 +3297,14 @@ export const SCHEMAS: Record<string, unknown> = {
         },
         "type": "array"
       },
+      "kind": {
+        "enum": [
+          "panel",
+          "agent"
+        ],
+        "example": "panel",
+        "type": "string"
+      },
       "lastError": {
         "type": "string"
       },
@@ -3420,6 +3428,7 @@ export const SCHEMAS: Record<string, unknown> = {
       "inboundCount",
       "inboundSyncMode",
       "inboundTags",
+      "kind",
       "lastError",
       "lastHeartbeat",
       "latencyMs",
@@ -3616,6 +3625,10 @@ export const SCHEMAS: Record<string, unknown> = {
         },
         "type": "array"
       },
+      "kind": {
+        "example": "panel",
+        "type": "string"
+      },
       "lastError": {
         "type": "string"
       },
@@ -3729,6 +3742,7 @@ export const SCHEMAS: Record<string, unknown> = {
       "inboundCount",
       "inboundSyncMode",
       "inboundTags",
+      "kind",
       "lastError",
       "lastHeartbeat",
       "latencyMs",

@@ -102,7 +102,7 @@ func (j *NodeHeartbeatJob) probeOne(n *model.Node) *eventbus.Event {
 	// Learn the nodes this node manages so the panel can surface them as
 	// transitive sub-nodes (#4983). Fresh context — the probe budget above may
 	// be spent. Drop them when the node is unreachable.
-	if patch.Status == "online" {
+	if patch.Status == "online" && n.Kind != model.NodeKindAgent {
 		dctx, dcancel := context.WithTimeout(context.Background(), nodeHeartbeatRequestTimeout)
 		j.nodeService.RefreshDescendants(dctx, n)
 		dcancel()

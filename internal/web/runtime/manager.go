@@ -17,6 +17,7 @@ type Manager struct {
 
 	mu             sync.RWMutex
 	remotes        map[int]*Remote
+	agents         map[int]*AgentRuntime
 	overrides      map[int]Runtime // test-only: forces RuntimeFor to return a stub
 	localOverride  Runtime         // test-only: forces RuntimeFor(nil) to return a stub
 	egressResolver NodeEgressResolver
@@ -26,6 +27,7 @@ func NewManager(localDeps LocalDeps) *Manager {
 	return &Manager{
 		local:   NewLocal(localDeps),
 		remotes: make(map[int]*Remote),
+		agents:  make(map[int]*AgentRuntime),
 	}
 }
 
@@ -89,11 +91,18 @@ func (m *Manager) RuntimeFor(nodeID *int) (Runtime, error) {
 		m.mu.RUnlock()
 		return rt, nil
 	}
+	if rt, ok := m.agents[*nodeID]; ok {
+		m.mu.RUnlock()
+		return rt, nil
+	}
 	m.mu.RUnlock()
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if rt, ok := m.remotes[*nodeID]; ok {
+		return rt, nil
+	}
+	if rt, ok := m.agents[*nodeID]; ok {
 		return rt, nil
 	}
 	n, err := loadNode(*nodeID)
@@ -103,8 +112,38 @@ func (m *Manager) RuntimeFor(nodeID *int) (Runtime, error) {
 	if !n.Enable {
 		return nil, errors.New("node " + n.Name + " is disabled")
 	}
+	if n.Kind == model.NodeKindAgent {
+		rt := NewAgentRuntime(n, m.egressResolver)
+		if m.agents == nil {
+			m.agents = make(map[int]*AgentRuntime)
+		}
+		m.agents[*nodeID] = rt
+		return rt, nil
+	}
 	rt := NewRemote(n, m.egressResolver)
 	m.remotes[*nodeID] = rt
+	return rt, nil
+}
+
+// AgentFor is RemoteFor for an agent node: the runtime is rebuilt when the node's
+// address, secret or pin changes.
+func (m *Manager) AgentFor(node *model.Node) (*AgentRuntime, error) {
+	if node == nil {
+		return nil, errors.New("node is nil")
+	}
+	if node.Kind != model.NodeKindAgent {
+		return nil, errors.New("node " + node.Name + " is not an agent")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if rt, ok := m.agents[node.Id]; ok && sameRemoteIdentity(rt.node, node) {
+		return rt, nil
+	}
+	rt := NewAgentRuntime(cloneRemoteNode(node), m.egressResolver)
+	if m.agents == nil {
+		m.agents = make(map[int]*AgentRuntime)
+	}
+	m.agents[node.Id] = rt
 	return rt, nil
 }
 
@@ -113,6 +152,10 @@ func (m *Manager) Local() Runtime { return m.local }
 func (m *Manager) RemoteFor(node *model.Node) (*Remote, error) {
 	if node == nil {
 		return nil, errors.New("node is nil")
+	}
+	// An agent does not speak the panel API: fail here rather than send it panel requests.
+	if node.Kind == model.NodeKindAgent {
+		return nil, errors.New("node " + node.Name + " is an agent, not a panel")
 	}
 	m.mu.RLock()
 	if rt, ok := m.remotes[node.Id]; ok {
@@ -173,6 +216,7 @@ func sameRemoteIdentity(a, b *model.Node) bool {
 func (m *Manager) InvalidateNode(nodeID int) {
 	m.mu.Lock()
 	delete(m.remotes, nodeID)
+	delete(m.agents, nodeID)
 	m.mu.Unlock()
 	nodeClientsMu.Lock()
 	dropNodeClients(nodeID, "")

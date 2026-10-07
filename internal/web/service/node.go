@@ -1238,6 +1238,9 @@ func (s *NodeService) withOutboundBridge(nodeID int, outboundTag string, fn func
 const maxProbeBodyBytes = 1 << 20 // 1 MiB
 
 func (s *NodeService) probe(ctx context.Context, n *model.Node, proxyURL string) (HeartbeatPatch, error) {
+	if n.Kind == model.NodeKindAgent {
+		return s.probeAgent(ctx, n, proxyURL)
+	}
 	patch := HeartbeatPatch{LastHeartbeat: time.Now().Unix()}
 
 	addr, err := netsafe.NormalizeHost(n.Address)

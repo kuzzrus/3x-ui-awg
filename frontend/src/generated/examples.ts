@@ -848,6 +848,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "inboundTags": [
       ""
     ],
+    "kind": "panel",
     "lastError": "",
     "lastHeartbeat": 1700000000,
     "latencyMs": 42,
@@ -913,6 +914,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "inboundTags": [
       "in-443-tcp"
     ],
+    "kind": "panel",
     "lastError": "",
     "lastHeartbeat": 1700000000,
     "latencyMs": 42,
