@@ -133,7 +133,9 @@ curl -fsSL <raw install-agent.sh> | bash -s -- --bundle <base64url bundle>
 - **SNI gate.** The agent only completes a TLS handshake for one server name,
   derived from the secret (`HKDF-SHA256(secret, info="x-ui-agent-sni-v1")`, rendered
   as an ordinary-looking hostname). Any other SNI is aborted before a certificate is
-  produced, so a scanner sees a closed port. The comparison is constant time.
+  produced, so a scanner gets a handshake failure and never sees the certificate. The
+  derived name is visible on the wire (ClientHello), so it is a filter, not a secret:
+  the bearer secret is what authenticates. The comparison is constant time.
 - **Bearer secret** stored encrypted on the master with the existing `nodetoken`
   machinery (`Node.ApiToken`), compared in constant time on the agent.
 - The bundle is a credential: the UI shows it once, the installer accepts it from a
