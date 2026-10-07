@@ -66,12 +66,21 @@ func (c *fakeChild) exited(within time.Duration) bool {
 	}
 }
 
+// inFreshFolder runs the sweep from a folder of its own, as the panel runs from its own. The fake
+// children of other tests share the package folder, and a caddy-named one there would count as ours.
+func inFreshFolder(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	t.Chdir(root)
+	return root
+}
+
 // Caddy is a common name: the sweep exists for the panel's own leftovers, and a Caddy the admin
 // runs for a website, from another file, has to outlive the panel's start.
 func TestKillStrayCaddyProcessesSparesAnotherCaddy(t *testing.T) {
-	root := t.TempDir()
+	root := inFreshFolder(t)
 	ours := filepath.Join(root, "bin", "naiveproxy", "caddy")
-	orphan := startFakeChildAt(t, ours, "")
+	orphan := startFakeChildAt(t, ours, filepath.Join(root, "elsewhere"))
 	foreign := startFakeChildAt(t, filepath.Join(root, "usr", "bin", "caddy"), filepath.Join(root, "srv", "site"))
 
 	if got := killStrayCaddyProcesses(ours); got != 1 {
@@ -91,8 +100,9 @@ func TestKillStrayCaddyProcessesSparesAnotherCaddy(t *testing.T) {
 
 // A reinstall replaces the binary under a running sidecar, which /proc then reports as deleted.
 func TestKillStrayCaddyProcessesFindsALeftoverWhoseBinaryWasRemoved(t *testing.T) {
-	ours := filepath.Join(t.TempDir(), "bin", "naiveproxy", "caddy")
-	orphan := startFakeChildAt(t, ours, "")
+	root := inFreshFolder(t)
+	ours := filepath.Join(root, "bin", "naiveproxy", "caddy")
+	orphan := startFakeChildAt(t, ours, filepath.Join(root, "elsewhere"))
 	if err := os.Remove(ours); err != nil {
 		t.Fatal(err)
 	}
@@ -107,8 +117,8 @@ func TestKillStrayCaddyProcessesFindsALeftoverWhoseBinaryWasRemoved(t *testing.T
 
 // The bin folder is often reached through a symlink, while /proc shows the real path.
 func TestKillStrayCaddyProcessesResolvesASymlinkedBinFolder(t *testing.T) {
-	root := t.TempDir()
-	orphan := startFakeChildAt(t, filepath.Join(root, "real", "naiveproxy", "caddy"), "")
+	root := inFreshFolder(t)
+	orphan := startFakeChildAt(t, filepath.Join(root, "real", "naiveproxy", "caddy"), filepath.Join(root, "elsewhere"))
 	if err := os.Symlink(filepath.Join(root, "real"), filepath.Join(root, "bin")); err != nil {
 		t.Fatal(err)
 	}
