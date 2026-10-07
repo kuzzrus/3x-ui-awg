@@ -72,14 +72,13 @@ helpers, so none of the panel (and no SQLite/CGO) is linked in.
  master panel                                          agent host
  ------------                                          ----------
  Inbound/Client CRUD                                   x-ui-agent
-   -> runtime.Runtime                                    TLS server (SNI-gated)
-        AgentRuntime  --mark node dirty-->                auth (bearer)
- NodeTrafficSyncJob / heartbeat                           /v1/config  apply
-   -> render node config      --HTTPS PUT /v1/config-->   /v1/status
-   <- /v1/status, /v1/stats   <--------------------        /v1/stats
-                                                          xray-core (child process)
-                                                            hot-diff via gRPC, or restart
-                                                          last-good config on disk
+   marks the node dirty in its own transaction           TLS server (SNI-gated)
+ node sync job (about every 5 s)                         auth (bearer)
+   -> render node config      --HTTPS PUT /v1/config-->  /v1/config  apply
+   <- /v1/status, /v1/stats   <--------------------      /v1/status, /v1/stats
+                                                         xray-core (child process)
+                                                           hot-diff via gRPC, or restart
+                                                         last-good config on disk
 ```
 
 Reused as-is from the master: `internal/xray` (`Process`, `XrayAPI`, `ComputeHotDiff`),
@@ -92,16 +91,19 @@ and websocket broadcast, `nodetoken` encryption for the stored secret.
 All requests carry `Authorization: Bearer <secret>` and are JSON. Responses are JSON
 with plain HTTP status codes (no `{success,msg,obj}` envelope).
 
-| Endpoint           | Purpose                                                                                                                                                                                                                                |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PUT /v1/config`   | Body: `{revision, config, restartOnUserRemoval}`. Validates with `xray run -test`, then applies (no-op, hot, or restart). Answers `{applied: noop\|hot\|restart, xrayState}`; on a bad config answers 422 and keeps the last good one. |
-| `GET /v1/status`   | Agent version, hostname, GUID, config revision, Xray version/state/error, CPU, memory, uptime, interface throughput. This is the heartbeat.                                                                                            |
-| `GET /v1/stats`    | Cumulative counters since Xray started: per inbound tag and per user email (up/down), online emails, `xrayStartedAt` so the master detects resets exactly instead of guessing from a drop.                                             |
-| `POST /v1/restart` | Restart Xray with the last good config.                                                                                                                                                                                                |
+| Endpoint           | Purpose                                                                                                                                                                                                                                                     |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PUT /v1/config`   | Body: `{revision, config, restartOnUserRemoval}`. Validates with the core's own test (`xray -test -c`), then applies (no-op, hot, or restart). Answers `{applied: noop\|hot\|restart, xrayState}`; on a bad config answers 422 and keeps the last good one. |
+| `GET /v1/status`   | Agent version, hostname, GUID, config revision, Xray version/state/error, CPU, memory, uptime, interface throughput. This is the heartbeat.                                                                                                                 |
+| `GET /v1/stats`    | Cumulative counters since Xray started: per inbound tag and per user email (up/down), online emails, `xrayStartedAt` so the master detects resets exactly instead of guessing from a drop.                                                                  |
+| `POST /v1/restart` | Restart Xray with the last good config.                                                                                                                                                                                                                     |
 
-Any other path, wrong method, or failed auth answers the same bare 404 so a probe
-cannot tell the agent from nothing. Later phases add endpoints (sidecars, geo update,
-logs, self-update) under the same prefix.
+Any other path, wrong method, or failed auth answers the same bare 404, so a response
+never says which part of the request was wrong. It does not hide that an HTTPS server
+answers: that is the SNI gate's job. The master only sends valid requests, so for it a 404
+means a wrong secret and a handshake failure means a wrong bundle; the agent logs the
+precise reason locally. Later phases add endpoints (sidecars, geo update, logs,
+self-update) under the same prefix.
 
 ### Config apply
 
@@ -119,27 +121,35 @@ master, so a reboot with the master down does not take the node offline.
 ## Pairing and transport security
 
 The master creates the bundle when the admin adds an agent node. It contains the
-node address and port, a random 256-bit secret, a TLS key pair and the master's
-expectations for it. The admin runs one command on the node:
+node address and port, a random 256-bit secret and a TLS key pair. The admin runs one
+command on the node:
 
 ```
-curl -fsSL <raw install-agent.sh> | bash -s -- --bundle <base64url bundle>
+bash <(curl -fsSL <raw install-agent.sh>)
 ```
+
+The installer asks for the bundle at a silent prompt. The bundle holds the agent's
+private key and secret, so it is never a command-line argument (argv is world-readable
+through `/proc` and ends up in shell history); unattended installs read it from a file
+(`--bundle-file <path>`, or `-` for stdin). The installer stores it root-only (`0600`).
 
 - **Pinned certificate, no trust on first use.** The master generates the agent's
-  self-signed certificate and key, stores only the SHA-256 fingerprint
-  (`Node.PinnedCertSha256`, mode `pin`, the pin machinery that already exists), and
-  puts the key and certificate in the bundle. The private key is not retained.
+  self-signed certificate and key, stores only the SHA-256 fingerprint in
+  `Node.PinnedCertSha256` (the field and hex form stock `pin` nodes use), and puts the
+  key and certificate in the bundle. The private key is not retained.
 - **SNI gate.** The agent only completes a TLS handshake for one server name,
-  derived from the secret (`HKDF-SHA256(secret, info="x-ui-agent-sni-v1")`, rendered
+  derived from the secret (`HKDF-SHA256(secret, info="x-ui-agent sni v1")`, rendered
   as an ordinary-looking hostname). Any other SNI is aborted before a certificate is
   produced, so a scanner gets a handshake failure and never sees the certificate. The
   derived name is visible on the wire (ClientHello), so it is a filter, not a secret:
   the bearer secret is what authenticates. The comparison is constant time.
+- **The master sets the SNI itself.** The stock pin client leaves `ServerName` unset, and
+  crypto/tls sends no SNI at all when `Node.Address` is an IP, which the gate would
+  reject. Agents therefore use their own client config (`agentproto.ClientTLSConfig`:
+  derived `ServerName`, TLS 1.3, pinned fingerprint) and never `tlsConfigForNode`.
 - **Bearer secret** stored encrypted on the master with the existing `nodetoken`
   machinery (`Node.ApiToken`), compared in constant time on the agent.
-- The bundle is a credential: the UI shows it once, the installer accepts it from a
-  file or stdin as well as the command line, and re-pairing mints a new secret.
+- The bundle is a credential: the UI shows it once and re-pairing mints a new secret.
 - The agent trusts the master completely, like SSH: it applies whatever config it is
   sent. A compromised master means compromised agents, exactly as with stock nodes
   and their API tokens.
@@ -150,15 +160,25 @@ New code lives in new files. The stock files get small hooks guarded by `Kind`:
 
 | Hook                                                          | Change                                                                                                                                                          |
 | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `database/model` + `db.go`                                    | `Node.Kind` column (default `panel`) with a migration.                                                                                                          |
+| `database/model` + `db.go`                                    | `Node.Kind` (default `panel`) and one column for the last seen `xrayStartedAt`, with a migration.                                                               |
 | `runtime.Manager.RuntimeFor`                                  | `kind == agent` returns `AgentRuntime`.                                                                                                                         |
-| `AgentRuntime`                                                | Mutating methods mark the node dirty (`MarkNodeDirty`) and kick the sync; per-client methods are the same call.                                                 |
+| `AgentRuntime`                                                | Does not import `NodeService` (`service` already imports `runtime`). See below.                                                                                 |
+| Agent HTTP client (new file in `runtime`)                     | Built from `agentproto.ClientTLSConfig`: derived SNI, TLS 1.3, pinned fingerprint. Shared by `AgentRuntime` and `Probe`; stock `tls_client.go` is untouched.    |
 | `NodeService.Probe`                                           | `kind == agent` heartbeats through `/v1/status` and fills the same `HeartbeatPatch`.                                                                            |
 | `NodeHeartbeatJob.probeOne`                                   | Skip the descendants refresh for agents.                                                                                                                        |
 | `NodeTrafficSyncJob.syncOne` / `maybePushGlobals`             | Agents go to an agent sync (render, push if dirty, pull stats) and skip the stock snapshot merge and global-traffic push.                                       |
 | `NodeService.UpdatePanels`, `GetWebCertFiles`, `node_tree.go` | Not applicable to agents; skip or reject.                                                                                                                       |
 | `XrayService`                                                 | Extract the per-inbound rendering loop of `GetXrayConfig` into a helper both the local and the per-node renderer call, so inbound rendering fixes land in both. |
 | `xray` hot apply                                              | Move `tryHotApply` and its `*Reconciling` helpers into `internal/xray` so the agent shares them.                                                                |
+
+`AgentRuntime` has nothing to mark dirty itself. The stock mutation paths for
+node-attached inbounds and clients (`inbound.go`, `client_*.go`, `inbound_traffic*.go`)
+already call `MarkNodeDirtyTx` inside their own transaction, whatever the node kind,
+because the reconcile of stock nodes depends on it; the sync job then pushes the whole
+rendered config. So the per-inbound and per-user methods return nil (a per-user push has
+no meaning when the whole config is re-rendered), `RestartXray` maps to
+`POST /v1/restart`, and the traffic resets are master-side baseline operations. A change
+therefore reaches an agent on the next sync tick (about five seconds), as for stock nodes.
 
 The master template (routing, outbounds, DNS, policy) is the same for every agent in
 v1, minus the local-only injections (sidecar bridges, panel egress, node egresses).
@@ -169,13 +189,22 @@ then such a rule fails on an agent that lacks the sidecar. Per-node routing
 
 ## Traffic accounting
 
-The agent keeps no history. Each poll the master reads cumulative counters, subtracts
-the persisted baseline for that node and email, accumulates the delta into the central
-totals through the same path local traffic uses, and stores the new baseline. A counter
-that went down together with a new `xrayStartedAt` is a reset, so the new counter is the
-delta since the restart; a drop with the same `xrayStartedAt` is ignored. The most that
-a restart can lose is the traffic since the last poll (about five seconds). While the
-master is down the counters keep growing in the agent's Xray, so nothing is lost.
+The agent keeps no history. Each poll the master reads cumulative counters together with
+the `xrayStartedAt` of the core that produced them, and compares them with the persisted
+baseline for that node and email.
+
+- Same `xrayStartedAt`: the delta is `counter - baseline`.
+- A different `xrayStartedAt` is a new core whatever the counters say. Counters restart
+  from zero, so the whole new counter is the delta. A restart is not always visible as a
+  drop: a busy client can pass its old baseline within one poll, so a rule that waits
+  for a drop would under-count.
+- The same `xrayStartedAt` with a counter below its baseline cannot happen (the agent
+  never resets counters) and is treated as a reset too.
+
+Either way the delta goes into the central totals through the same path local traffic
+uses and the baseline is replaced. A restart loses at most the traffic since the last
+poll (about five seconds). While the master is down the counters keep growing in the
+agent's Xray, so nothing is lost.
 
 Depletion and expiry are enforced by the master: a disabled client disappears from the
 next rendered config. The stock global-traffic push to nodes is not used for agents.
