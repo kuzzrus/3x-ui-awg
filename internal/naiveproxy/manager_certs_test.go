@@ -4,15 +4,11 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 )
-
-// pendingLogID keeps the inbound ids of the log-counting test apart across -count runs, since the panel log is global.
-var pendingLogID atomic.Int64
 
 func autoInst(t *testing.T, id int, domain string) Instance {
 	t.Helper()
@@ -185,7 +181,7 @@ func TestReconcileReportsAPendingCertificateOnceAsInfo(t *testing.T) {
 	t.Cleanup(func() { close(issuer.gate) })
 	m := newTestManager()
 	m.certs = newTestCertManager(t, issuer, 0)
-	id := 920200 + int(pendingLogID.Add(1))
+	id := nextLogID()
 	domain := fmt.Sprintf("pending%d.example.com", id)
 	inst := autoInst(t, id, domain)
 
