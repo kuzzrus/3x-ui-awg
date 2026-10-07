@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -512,6 +513,13 @@ func TestReconcileStopsWhatIsNoLongerDesired(t *testing.T) {
 	}
 }
 
+// logTestID is the last inbound id handed out by nextLogID.
+var logTestID atomic.Int64
+
+// nextLogID is an inbound id no other run logged under. The panel log is global and outlives a test,
+// so a fixed id would count the lines of an earlier -count repetition too.
+func nextLogID() int { return 920000 + int(logTestID.Add(1)) }
+
 // warningCount counts the warnings in the panel log that contain needle.
 func warningCount(needle string) int {
 	n := 0
@@ -528,7 +536,7 @@ func warningCount(needle string) int {
 func TestReconcileLogsAPersistentFailureOnce(t *testing.T) {
 	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
 	m := newTestManager()
-	const id = 920001
+	id := nextLogID()
 	inst := testInst(t, id, "alice")
 	needle := fmt.Sprintf("reconcile failed for inbound %d:", id)
 
@@ -543,7 +551,7 @@ func TestReconcileLogsAPersistentFailureOnce(t *testing.T) {
 func TestReconcileLogsAChangedFailureAgain(t *testing.T) {
 	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
 	m := newTestManager()
-	const id = 920002
+	id := nextLogID()
 	inst := testInst(t, id, "alice")
 	needle := fmt.Sprintf("reconcile failed for inbound %d:", id)
 
@@ -564,7 +572,7 @@ func TestReconcileLogsAFailureAgainAfterItWasFixed(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := newTestManager()
-	const id = 920003
+	id := nextLogID()
 	inst := testInst(t, id, "alice")
 	needle := fmt.Sprintf("reconcile failed for inbound %d:", id)
 
@@ -595,7 +603,7 @@ func TestReconcileLogsAFailureAgainAfterItWasFixed(t *testing.T) {
 func TestReconcileForgetsTheFailureOfADroppedInbound(t *testing.T) {
 	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
 	m := newTestManager()
-	const id = 920004
+	id := nextLogID()
 	inst := testInst(t, id, "alice")
 	needle := fmt.Sprintf("reconcile failed for inbound %d:", id)
 
