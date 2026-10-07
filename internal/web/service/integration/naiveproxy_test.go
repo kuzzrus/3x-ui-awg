@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
+	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/naiveproxy"
 )
 
@@ -62,5 +63,41 @@ func TestNaiveProxyInstallIsANoOpWhenInstalled(t *testing.T) {
 	}
 	if string(got) != fakeNaiveProxyBinary {
 		t.Fatalf("Install replaced the engine that was already installed (%d bytes now)", len(got))
+	}
+}
+
+// A disabled automatic inbound is never ordered, so its idle state means "off", not "about to be
+// ordered": the form needs to know which inbounds are enabled.
+func TestNaiveProxyCertsReportsWhichInboundsAreEnabled(t *testing.T) {
+	if err := database.InitDB(filepath.Join(t.TempDir(), "x-ui.db")); err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	t.Cleanup(func() { _ = database.CloseDB() })
+	db := database.GetDB()
+	for _, in := range []model.Inbound{
+		{Tag: "np-on", Port: 46501, Protocol: model.NaiveProxy, Enable: true, Settings: `{"domain":"on.example.com","certMode":"auto"}`},
+		{Tag: "np-off", Port: 46502, Protocol: model.NaiveProxy, Enable: true, Settings: `{"domain":"off.example.com","certMode":"auto"}`},
+	} {
+		if err := db.Create(&in).Error; err != nil {
+			t.Fatalf("create inbound %s: %v", in.Tag, err)
+		}
+	}
+	// A zero Enable would be replaced by the column default on Create, so it is switched off afterwards.
+	if err := db.Model(&model.Inbound{}).Where("tag = ?", "np-off").Update("enable", false).Error; err != nil {
+		t.Fatalf("switch inbound off: %v", err)
+	}
+
+	certs, err := (&NaiveProxyService{}).Certs()
+	if err != nil {
+		t.Fatalf("Certs: %v", err)
+	}
+	if len(certs) != 2 {
+		t.Fatalf("got %d entries, want one per NaiveProxy inbound: %+v", len(certs), certs)
+	}
+	if got := certs[0]; got.Domain != "on.example.com" || !got.Enable || got.Mode != naiveproxy.CertAuto {
+		t.Errorf("first entry = %+v, want the enabled automatic inbound", got)
+	}
+	if got := certs[1]; got.Domain != "off.example.com" || got.Enable {
+		t.Errorf("second entry = %+v, want the disabled inbound reported as off", got)
 	}
 }

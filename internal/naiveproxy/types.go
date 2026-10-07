@@ -16,10 +16,13 @@ type Instance struct {
 	ListenAddr string // loopback "127.0.0.1:PORT" this Caddy binds to
 	Domain     string // the SNI frontproxy's SNI-relay matches to reach ListenAddr
 
-	// A manually supplied cert for Domain: Caddy never sees a direct,
-	// publicly reachable connection to complete its own ACME challenge on.
+	// The certificate Caddy serves for Domain. The admin supplies the files in CertManual;
+	// in CertAuto the Manager fills them in once the certificate has been issued.
+	CertMode string
 	CertFile string
 	KeyFile  string
+	// CertDigest changes whenever the pair does, so a renewal restarts Caddy (see renderCaddyfile).
+	CertDigest string
 
 	Clients []Client
 

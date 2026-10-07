@@ -297,3 +297,35 @@ func TestRenderCaddyfileIgnoresTag(t *testing.T) {
 		t.Errorf("the Caddyfile depends on Tag:\n%s\nvs\n%s", first, second)
 	}
 }
+
+// Caddy reads the certificate files once, at start: the digest line is the only thing in the
+// Caddyfile that changes when a renewal replaces them, and the Caddyfile is the restart fingerprint.
+func TestRenderCaddyfileCarriesTheCertificateDigest(t *testing.T) {
+	a, b := testInstance(), testInstance()
+	a.CertDigest, b.CertDigest = "aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"
+	first, err := renderCaddyfile(a)
+	if err != nil {
+		t.Fatalf("renderCaddyfile: %v", err)
+	}
+	second, err := renderCaddyfile(b)
+	if err != nil {
+		t.Fatalf("renderCaddyfile: %v", err)
+	}
+	if !strings.Contains(first, "# certificate aaaaaaaaaaaaaaaa\n") {
+		t.Errorf("Caddyfile lacks the digest line, got:\n%s", first)
+	}
+	if first == second {
+		t.Error("a different certificate digest left the Caddyfile unchanged, so Caddy would keep serving the old pair")
+	}
+	if strings.Index(first, "# certificate") > strings.Index(first, "https://:") {
+		t.Errorf("the digest line sits after the site block, got:\n%s", first)
+	}
+
+	none, err := renderCaddyfile(testInstance())
+	if err != nil {
+		t.Fatalf("renderCaddyfile: %v", err)
+	}
+	if strings.Contains(none, "# certificate") {
+		t.Errorf("an instance with no digest still renders a digest line:\n%s", none)
+	}
+}

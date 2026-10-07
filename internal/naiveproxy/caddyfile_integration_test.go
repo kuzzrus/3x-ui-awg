@@ -99,6 +99,7 @@ func TestRenderCaddyfileValidatesAgainstTheRealBinary(t *testing.T) {
 
 	inst := testInstance()
 	inst.CertFile, inst.KeyFile = writeSelfSignedCert(t)
+	inst.CertDigest = certDigest(inst.CertFile, inst.KeyFile)
 	inst.RouteThroughXray = true
 	inst.XrayRoutePort = 41200
 	caddyfile, err := renderCaddyfile(inst)

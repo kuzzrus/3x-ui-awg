@@ -1,6 +1,7 @@
 package naiveproxy
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -35,6 +36,7 @@ func writeDecoyContent(inst Instance) {
 type managed struct {
 	proc        *Process
 	fingerprint string
+	certDigest  string // of the certificate pair the process loaded, "" when it had none
 }
 
 // Manager owns every Naive-backed inbound's Caddy process, one per inbound,
@@ -49,6 +51,8 @@ type Manager struct {
 	// failing holds each inbound's last logged Reconcile failure, so one that lasts
 	// across ticks (a missing engine, most often) is reported once, not every tick.
 	failing map[int]string
+	// certs orders the certificates of CertAuto inbounds; the first SyncCerts creates it.
+	certs *certManager
 }
 
 var (
@@ -95,6 +99,10 @@ func (m *Manager) Ensure(inst Instance) error {
 	m.sweepOrphansLocked()
 	proc, err := m.ensureLocked(inst)
 	m.mu.Unlock()
+	// Not a failure the caller can act on: the job starts the inbound once the certificate lands.
+	if errors.Is(err, ErrCertPending) {
+		return nil
+	}
 	if err != nil || proc == nil {
 		return err
 	}
@@ -107,6 +115,22 @@ func (m *Manager) ensureLocked(inst Instance) (*Process, error) {
 	if len(inst.Clients) == 0 {
 		m.removeLocked(inst.Id)
 		return nil, nil
+	}
+
+	// Before the render, which needs the files. A running instance whose pair is momentarily
+	// unreadable (the two files are written one after the other) is left alone until the next tick.
+	if inst.CertMode == CertAuto {
+		certFile, keyFile, ok := m.certs.lookup(inst.Domain)
+		if !ok {
+			return nil, ErrCertPending
+		}
+		inst.CertFile, inst.KeyFile = certFile, keyFile
+	}
+	inst.CertDigest = certDigest(inst.CertFile, inst.KeyFile)
+	// A deploy hook replaces the pair file by file. Until the two match again the running Caddy keeps its
+	// digest, so the half-written pair restarts nothing, while changes to its clients or routing still apply.
+	if cur, ok := m.procs[inst.Id]; ok && inst.CertDigest == "" {
+		inst.CertDigest = cur.certDigest
 	}
 
 	fp, err := renderCaddyfile(inst)
@@ -148,7 +172,7 @@ func (m *Manager) ensureLocked(inst Instance) (*Process, error) {
 		_ = os.RemoveAll(decoyDirForID(inst.Id))
 		return nil, err
 	}
-	m.procs[inst.Id] = &managed{proc: proc, fingerprint: fp}
+	m.procs[inst.Id] = &managed{proc: proc, fingerprint: fp, certDigest: inst.CertDigest}
 	return proc, nil
 }
 
@@ -227,7 +251,11 @@ func (m *Manager) Reconcile(desired []Instance) (changed bool) {
 		proc, err := m.ensureLocked(inst)
 		if err != nil {
 			if m.isNewFailureLocked(inst.Id, err) {
-				logger.Warningf("naiveproxy: reconcile failed for inbound %d: %v", inst.Id, err)
+				if errors.Is(err, ErrCertPending) {
+					logger.Infof("naiveproxy: inbound %d waits for the certificate of %s", inst.Id, inst.Domain)
+				} else {
+					logger.Warningf("naiveproxy: reconcile failed for inbound %d: %v", inst.Id, err)
+				}
 			}
 			continue
 		}
@@ -256,6 +284,10 @@ func (m *Manager) StopAll() {
 	defer m.mu.Unlock()
 	for id := range m.procs {
 		m.removeLocked(id)
+	}
+	if m.certs != nil {
+		m.certs.stop()
+		m.certs = nil
 	}
 }
 
