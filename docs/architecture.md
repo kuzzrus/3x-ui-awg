@@ -296,6 +296,7 @@ node heartbeat every 5s, periodic traffic resets (hourly/daily/weekly/monthly). 
 ├── media/                    # README images
 │
 ├── install.sh / update.sh / x-ui.sh                        # VPS install + management CLI
+├── install-agent.sh                                        # Node agent installer (docs/node-agent.md)
 ├── x-ui.service.*  / x-ui.rc                               # systemd units (debian/rhel/arch) + rc script
 ├── windows_files/                                          # Windows service support
 └── .github/workflows/        # CI: ci.yml, codeql.yml, docs-ci.yml, release.yml, smoke.yml,

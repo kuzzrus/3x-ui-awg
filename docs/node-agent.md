@@ -1,8 +1,9 @@
 # Node agent (`x-ui-agent`)
 
 Design for an optional third kind of node: a thin, DB-less agent that only runs
-Xray-core for a master panel. Nothing here is implemented yet; each phase in
-[Phasing](#phasing) lands as its own PR and this file is updated as they do.
+Xray-core for a master panel. The agent and its installer exist (phases 1 to 3); the
+master side (phases 4 and 5) does not yet. Each phase in [Phasing](#phasing) lands as
+its own PR and this file is updated as they do.
 
 ## Problem
 
@@ -133,7 +134,7 @@ node address and port, a random 256-bit secret and a TLS key pair. The admin run
 command on the node:
 
 ```
-bash <(curl -fsSL <raw install-agent.sh>)
+bash <(curl -fsSL https://raw.githubusercontent.com/kuzzrus/3x-ui-awg/main/install-agent.sh)
 ```
 
 The installer asks for the bundle at a silent prompt. The bundle holds the agent's
@@ -177,7 +178,7 @@ New code lives in new files. The stock files get small hooks guarded by `Kind`:
 | `NodeTrafficSyncJob.syncOne` / `maybePushGlobals`             | Agents go to an agent sync (render, push if dirty, pull stats) and skip the stock snapshot merge and global-traffic push.                                       |
 | `NodeService.UpdatePanels`, `GetWebCertFiles`, `node_tree.go` | Not applicable to agents; skip or reject.                                                                                                                       |
 | `XrayService`                                                 | Extract the per-inbound rendering loop of `GetXrayConfig` into a helper both the local and the per-node renderer call, so inbound rendering fixes land in both. |
-| `xray` hot apply                                              | Move `tryHotApply` and its `*Reconciling` helpers into `internal/xray` so the agent shares them.                                                                |
+| `xray` hot apply                                              | Done: `xray.ApplyHot` (`internal/xray/hot_apply.go`) is shared by the master and the agent.                                                                     |
 
 `AgentRuntime` has nothing to mark dirty itself. The stock mutation paths for
 node-attached inbounds and clients (`inbound.go`, `client_*.go`, `inbound_traffic*.go`)
@@ -227,14 +228,44 @@ next rendered config. The stock global-traffic push to nodes is not used for age
 - Master restart: the rendered config is deterministic and sent byte for byte, so its
   revision is unchanged and the push is a no-op on the agent.
 
+## Install and operate
+
+On the node, as root, on a systemd host, with the pairing bundle the master shows:
+
+```
+bash <(curl -fsSL https://raw.githubusercontent.com/kuzzrus/3x-ui-awg/main/install-agent.sh)
+```
+
+The installer asks for the bundle, checks it before it touches anything, downloads the
+release archive for the node's CPU (verifying its SHA-256), installs the agent and the
+Xray core, and starts `x-ui-agent.service`. Options: `--bundle-file`, `--version <tag>`
+(`dev-latest` follows the per-commit builds), `--tarball <path>` for a node that cannot
+reach GitHub, and `--uninstall` (`--yes` skips the question).
+
+| What                                                      | Where                                              |
+| --------------------------------------------------------- | -------------------------------------------------- |
+| Agent binary                                              | `/usr/local/x-ui-agent/x-ui-agent`                 |
+| Xray core and geo files                                   | `/usr/local/x-ui-agent/bin/`                       |
+| Pairing bundle (`0600`), agent identity, last good config | `/etc/x-ui-agent/`                                 |
+| Agent log and the core's access and error logs            | `/var/log/x-ui-agent/`, `journalctl -u x-ui-agent` |
+
+- Open the agent's TCP port, printed at the end of the install, in the host firewall. It
+  is the only port the master needs.
+- To update, run the installer again without a bundle: the bundle, the identity and the
+  last good config stay, and the agent comes back up on that config.
+- A reboot starts the agent and its core from the last good config without the master.
+- `x-ui-agent -check-bundle -bundle-file <path>` validates a bundle and prints the
+  address it names.
+
 ## Phasing
 
 1. **Protocol package** (`internal/agentproto`): request/response types, bundle
-   encoding, SNI derivation, token helpers. Pure Go, inert.
+   encoding, SNI derivation, token helpers. Pure Go. Done.
 2. **Agent library and binary** (`internal/agent`, `cmd/x-ui-agent`): TLS server with
    the SNI gate and auth, `/v1/*` handlers, Xray runner (validate, hot/restart,
-   rollback, supervision), stats and status. Release build of the binary.
-3. **Installer** (`install-agent.sh`, systemd unit) and operator docs.
+   rollback, supervision), stats and status. Release build of the binary. Done: the
+   release archive carries `x-ui-agent` next to `x-ui`.
+3. **Installer** (`install-agent.sh`, systemd unit) and operator docs. Done.
 4. **Master core**: `Node.Kind` and migration, `AgentRuntime`, per-node rendering,
    agent sync (heartbeat, push, stats), accounting.
 5. **UI**: agent kind in the add-node flow, bundle display, live connection check,
