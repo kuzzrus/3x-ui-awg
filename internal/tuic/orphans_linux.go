@@ -12,11 +12,14 @@ import (
 	"time"
 )
 
+// killStrayTuicProcesses ends the panel's own leftover sidecars from a previous run. "tuic-server" is a name
+// standalone servers use too: only the panel's own binary or folder, running one of its configs, counts.
 func killStrayTuicProcesses(binaryPath string) int {
-	base := filepath.Base(binaryPath)
-	if base == "" || base == "." || base == string(filepath.Separator) {
+	want := resolvedPath(binaryPath)
+	if want == "" {
 		return 0
 	}
+	cwd := resolvedPath(".")
 	configDir := filepath.Clean(ConfigDir())
 	self := os.Getpid()
 	entries, err := os.ReadDir("/proc")
@@ -29,10 +32,7 @@ func killStrayTuicProcesses(binaryPath string) int {
 		if err != nil || pid == self {
 			continue
 		}
-		if procExeBase(pid) != base && cmdlineArgv0Base(pid) != base {
-			continue
-		}
-		if !isManagedTuicCmdline(pid, configDir) {
+		if !isOwnSidecar(pid, want, cwd) || !isManagedTuicCmdline(pid, configDir) {
 			continue
 		}
 		if err := syscall.Kill(pid, syscall.SIGTERM); err == nil {
@@ -44,6 +44,16 @@ func killStrayTuicProcesses(binaryPath string) int {
 		}
 	}
 	return killed
+}
+
+// isOwnSidecar is true for a process running want, or a tuic-server that runs from the panel's folder: a
+// reinstall renames bin/ aside and recreates the folder, which leaves a leftover with neither path.
+func isOwnSidecar(pid int, want, cwd string) bool {
+	exe := procLink(pid, "exe")
+	if exe == want {
+		return true
+	}
+	return exe != "" && cwd != "" && filepath.Base(exe) == filepath.Base(want) && procLink(pid, "cwd") == cwd
 }
 
 func isManagedTuicCmdline(pid int, configDir string) bool {
@@ -63,25 +73,27 @@ func isManagedTuicCmdline(pid int, configDir string) bool {
 	return false
 }
 
-func procExeBase(pid int) string {
-	exe, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
+// resolvedPath is path the way /proc/<pid>/exe shows it: absolute, symlinks resolved.
+func resolvedPath(path string) string {
+	abs, err := filepath.Abs(path)
 	if err != nil {
 		return ""
 	}
-	return filepath.Base(exe)
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		return resolved
+	}
+	// The binary itself may be gone (a reinstall removed it under a running process); its directory still resolves.
+	if dir, err := filepath.EvalSymlinks(filepath.Dir(abs)); err == nil {
+		return filepath.Join(dir, filepath.Base(abs))
+	}
+	return abs
 }
 
-func cmdlineArgv0Base(pid int) string {
-	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
-	if err != nil || len(data) == 0 {
+// procLink is where /proc/<pid>/<name> points; a removed target reads as "<path> (deleted)".
+func procLink(pid int, name string) string {
+	target, err := os.Readlink(fmt.Sprintf("/proc/%d/%s", pid, name))
+	if err != nil {
 		return ""
 	}
-	first := data
-	for i, b := range data {
-		if b == 0 {
-			first = data[:i]
-			break
-		}
-	}
-	return filepath.Base(string(first))
+	return strings.TrimSuffix(target, " (deleted)")
 }
