@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// fakeChild is a running copy of this test binary, in its fake-Caddy mode, installed at path and
-// started in dir (this process's own folder when empty).
+// fakeChild is a running copy of this test binary, in its fake-Caddy mode, installed at path and started in
+// dir, which it creates: never in the test process's own folder, where every other test's fake Caddy runs.
 type fakeChild struct {
 	cmd  *exec.Cmd
 	done chan struct{}
@@ -34,10 +34,8 @@ func startFakeChildAt(t *testing.T, path, dir string) *fakeChild {
 	if err := os.WriteFile(path, payload, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if dir != "" {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
 	}
 	cmd := exec.Command(path)
 	cmd.Dir = dir
