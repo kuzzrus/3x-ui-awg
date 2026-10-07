@@ -153,6 +153,7 @@ node heartbeat every 5s, periodic traffic resets (hourly/daily/weekly/monthly). 
 │   │   ├── process.go          # Spawn/supervise the Xray child process (~750 lines)
 │   │   ├── api.go              # gRPC client to a running Xray (add/remove user, stats) (~800 lines)
 │   │   ├── hot_diff.go         # ⭐ Compute minimal live changes to avoid full restart (~500 lines)
+│   │   ├── hot_apply.go        # Apply that diff to the running core over gRPC (ApplyHot)
 │   │   ├── config.go           # Xray config object model
 │   │   ├── inbound.go          # Inbound JSON shaping
 │   │   ├── client_traffic.go   # ClientTraffic model (persisted as client_traffics)
@@ -307,7 +308,7 @@ The panel never edits Xray's running config directly from controllers. The flow 
 1. A service mutates DB state (inbound/client/setting).
 2. `XrayService` (`service/xray.go`) builds a fresh `xray.Config` from DB state
    (`GetXrayConfig`).
-3. It tries a **hot apply** (`tryHotApply` → `xray/hot_diff.go`): diff old vs new config and
+3. It tries a **hot apply** (`xray.ApplyHot` → `xray/hot_diff.go`): diff old vs new config and
    push only the deltas over the Xray gRPC API (add/remove inbound, add/remove user) — **no
    process restart**, so live connections survive.
 4. If the diff isn't hot-applicable (structural change), it falls back to a **full restart**
@@ -318,7 +319,8 @@ Restart is debounced via an atomic "need restart" flag (`SetToNeedRestart` /
 — any number of mutations inside the window causes at most one restart.
 
 **Key files:** `service/xray.go` (orchestration), `xray/hot_diff.go` (the diff algorithm),
-`xray/process.go` (process lifecycle), `xray/api.go` (gRPC calls), `xray/config.go` (config model).
+`xray/hot_apply.go` (applies the diff over gRPC), `xray/process.go` (process lifecycle),
+`xray/api.go` (gRPC calls), `xray/config.go` (config model).
 
 ### 5.2 Runtime abstraction — Local vs Remote (multi-node) ⭐ most important
 
@@ -485,7 +487,7 @@ for AutoMigrate in `internal/database/db.go`.
 | **Inbound** create/update/delete behavior                                         | `service/inbound.go`, `service/inbound_clients.go`                           | `runtime/*`, `service/xray.go`                                                                      |
 | **Client** CRUD / limits / expiry                                                 | `service/client_crud.go`, `service/client_inbound_apply.go`                  | model `ClientRecord`, `service/inbound_traffic.go`                                                  |
 | **Bulk** client operations slow/wrong                                             | `service/client_bulk.go`                                                     | `service/client_paging.go`                                                                          |
-| Xray **won't apply** a config change                                              | `service/xray.go` (`RestartXray`, `tryHotApply`)                             | `xray/hot_diff.go`, `xray/process.go`                                                               |
+| Xray **won't apply** a config change                                              | `service/xray.go` (`RestartXray`)                                            | `xray/hot_apply.go`, `xray/hot_diff.go`, `xray/process.go`                                          |
 | Xray **restarts when it shouldn't** (kills connections)                           | `xray/hot_diff.go` (diff not classified as hot)                              | `service/xray.go`                                                                                   |
 | **Traffic** counts wrong / reset behavior                                         | `service/inbound_traffic.go`, `job/xray_traffic_job.go`                      | `service/traffic_writer.go`, `job/periodic_traffic_reset_job.go`                                    |
 | **Node** operation not propagating                                                | `runtime/remote.go`, `runtime/manager.go`                                    | `service/inbound_node.go`                                                                           |
