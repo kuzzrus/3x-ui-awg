@@ -296,6 +296,9 @@ export function generateNaiveProxyPassword(): string {
 export function createDefaultNaiveProxyInboundSettings(): NaiveproxyInboundSettings {
   return {
     domain: '',
+    // A new inbound gets its certificate from the panel; the file fields only matter in 'manual'.
+    certMode: 'auto',
+    acmeEmail: '',
     certFile: '',
     keyFile: '',
     publicPort: 443,

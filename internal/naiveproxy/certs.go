@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -56,6 +57,23 @@ func certHint(msg string) string {
 		}
 	}
 	return ""
+}
+
+// acmeProblem is the CA's own answer inside CertMagic's wrapping, which reads "[domain] solving
+// challenge: domain: [domain] authorization failed: HTTP 403 urn:ietf:params:acme:error:...".
+var acmeProblem = regexp.MustCompile(`HTTP \d{3} urn:ietf:params:acme:error:\w+ - .*`)
+
+// certReason is what the form shows of a failed order: the CA's answer without CertMagic's wrapping and
+// without its " (ca=...)" tail, which names the test server for most retries and only confuses.
+func certReason(msg string) string {
+	reason := acmeProblem.FindString(msg)
+	if reason == "" {
+		return msg
+	}
+	if i := strings.LastIndex(reason, " (ca="); i >= 0 {
+		reason = reason[:i]
+	}
+	return reason
 }
 
 // CertRequest asks for an automatically managed certificate for Domain.
@@ -174,7 +192,7 @@ func (m *certManager) onEvent(_ context.Context, event string, data map[string]a
 		if strings.Contains(msg, "context canceled") {
 			return nil
 		}
-		m.setActivity(domain, certActivity{state: CertStateFailed, err: msg, hint: certHint(msg)})
+		m.setActivity(domain, certActivity{state: CertStateFailed, err: certReason(msg), hint: certHint(msg)})
 		logger.Warningf("naiveproxy: ordering the certificate for %s failed: %s", domain, msg)
 	}
 	return nil
