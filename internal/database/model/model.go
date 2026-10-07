@@ -789,6 +789,13 @@ type Setting struct {
 	Value string `json:"value" form:"value"`
 }
 
+// The two kinds of node: a full x-ui install the master replicates into, or a thin
+// x-ui-agent that only runs Xray for the master. A node's kind never changes.
+const (
+	NodeKindPanel = "panel"
+	NodeKindAgent = "agent"
+)
+
 // Node represents a remote 3x-ui panel registered with the central panel.
 // The central panel polls each node's existing /panel/api/server/status
 // endpoint over HTTP using the per-node ApiToken to populate the runtime
@@ -797,6 +804,7 @@ type Node struct {
 	Id                  int      `json:"id" form:"id" gorm:"primaryKey;autoIncrement" example:"1"`
 	Name                string   `json:"name" form:"name" gorm:"uniqueIndex" validate:"required" example:"de-fra-1"`
 	Remark              string   `json:"remark" form:"remark"`
+	Kind                string   `json:"kind" form:"kind" gorm:"column:kind;default:panel" validate:"omitempty,oneof=panel agent" example:"panel"`
 	Scheme              string   `json:"scheme" form:"scheme" validate:"omitempty,oneof=http https" example:"https"`
 	Address             string   `json:"address" form:"address" validate:"required" example:"node1.example.com"`
 	Port                int      `json:"port" form:"port" validate:"gte=1,lte=65535" example:"2053"`

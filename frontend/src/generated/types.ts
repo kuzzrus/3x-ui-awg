@@ -764,6 +764,7 @@ export interface Node {
   inboundCount: number;
   inboundSyncMode: string;
   inboundTags: string[];
+  kind: string;
   lastError: string;
   lastHeartbeat: number;
   latencyMs: number;
@@ -827,6 +828,7 @@ export interface NodeView {
   inboundCount: number;
   inboundSyncMode: string;
   inboundTags: string[];
+  kind: string;
   lastError: string;
   lastHeartbeat: number;
   latencyMs: number;

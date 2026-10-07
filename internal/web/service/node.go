@@ -646,7 +646,10 @@ func (s *NodeService) RuntimeNodeFromRequest(id int, req *NodeMutationRequest) (
 	if req.ClearApiToken {
 		overlay.ApiToken = ""
 	}
+	// The request cannot say what kind of node it describes, so the stored kind survives it.
+	kind := n.Kind
 	*n = *overlay
+	n.Kind = kind
 	if err := s.normalize(n); err != nil {
 		return nil, err
 	}
@@ -1238,6 +1241,9 @@ func (s *NodeService) withOutboundBridge(nodeID int, outboundTag string, fn func
 const maxProbeBodyBytes = 1 << 20 // 1 MiB
 
 func (s *NodeService) probe(ctx context.Context, n *model.Node, proxyURL string) (HeartbeatPatch, error) {
+	if n.Kind == model.NodeKindAgent {
+		return s.probeAgent(ctx, n, proxyURL)
+	}
 	patch := HeartbeatPatch{LastHeartbeat: time.Now().Unix()}
 
 	addr, err := netsafe.NormalizeHost(n.Address)

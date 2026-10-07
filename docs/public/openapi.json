@@ -3323,6 +3323,14 @@
             },
             "type": "array"
           },
+          "kind": {
+            "enum": [
+              "panel",
+              "agent"
+            ],
+            "example": "panel",
+            "type": "string"
+          },
           "lastError": {
             "type": "string"
           },
@@ -3446,6 +3454,7 @@
           "inboundCount",
           "inboundSyncMode",
           "inboundTags",
+          "kind",
           "lastError",
           "lastHeartbeat",
           "latencyMs",
@@ -3642,6 +3651,10 @@
             },
             "type": "array"
           },
+          "kind": {
+            "example": "panel",
+            "type": "string"
+          },
           "lastError": {
             "type": "string"
           },
@@ -3755,6 +3768,7 @@
           "inboundCount",
           "inboundSyncMode",
           "inboundTags",
+          "kind",
           "lastError",
           "lastHeartbeat",
           "latencyMs",
@@ -10912,6 +10926,7 @@
                       "inboundTags": [
                         "in-443-tcp"
                       ],
+                      "kind": "panel",
                       "lastError": "",
                       "lastHeartbeat": 1700000000,
                       "latencyMs": 42,
@@ -11113,6 +11128,7 @@
                     "inboundTags": [
                       "in-443-tcp"
                     ],
+                    "kind": "panel",
                     "lastError": "",
                     "lastHeartbeat": 1700000000,
                     "latencyMs": 42,
@@ -11263,6 +11279,7 @@
                     "inboundTags": [
                       "in-443-tcp"
                     ],
+                    "kind": "panel",
                     "lastError": "",
                     "lastHeartbeat": 1700000000,
                     "latencyMs": 42,
@@ -16876,6 +16893,7 @@
                   "inboundTags": [
                     "in-443-tcp"
                   ],
+                  "kind": "panel",
                   "lastError": "",
                   "lastHeartbeat": 1700000000,
                   "latencyMs": 42,
