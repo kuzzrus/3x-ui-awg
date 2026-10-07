@@ -55,7 +55,7 @@ func TestCoreE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	logDir := t.TempDir()
+	logDir := filepath.Join(t.TempDir(), "logs") // does not exist yet, as on a fresh node
 	core := NewCore(state, logDir)
 	t.Cleanup(core.Close)
 	ctx := context.Background()

@@ -19,6 +19,8 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
 
+const logDirMode = 0o750
+
 // Variables so tests can shorten them.
 var (
 	startTimeout   = 10 * time.Second
@@ -100,8 +102,12 @@ func (c *Core) runningLocked() bool {
 // returned for the log, and the supervisor keeps trying.
 func (c *Core) Boot(ctx context.Context) error {
 	saved, err := c.state.LastGood()
-	if err != nil || saved == nil {
+	if err != nil {
+		c.setError(err.Error())
 		return err
+	}
+	if saved == nil {
+		return nil
 	}
 	c.applyMu.Lock()
 	defer c.applyMu.Unlock()
@@ -130,7 +136,12 @@ func (c *Core) Apply(ctx context.Context, body []byte, restartOnUserRemoval bool
 
 	revision := agentproto.RevisionOf(body, restartOnUserRemoval)
 	mode, err := c.apply(ctx, body, restartOnUserRemoval, revision)
-	if err != nil {
+	var unsaved *SaveError
+	switch {
+	case errors.As(err, &unsaved):
+		c.setError(fmt.Sprintf("config %.8s is %v", revision, unsaved))
+		return agentproto.ConfigResponse{}, err
+	case err != nil:
 		c.setError(fmt.Sprintf("config %.8s not applied: %v", revision, err))
 		return agentproto.ConfigResponse{}, err
 	}
@@ -164,6 +175,10 @@ func (c *Core) build(body []byte, restartOnUserRemoval bool) (*applied, error) {
 	cfg, err := prepareConfig(body, c.logDir)
 	if err != nil {
 		return nil, err
+	}
+	// The core opens the log files, which prepareConfig pointed here, when it is tested.
+	if err := os.MkdirAll(c.logDir, logDirMode); err != nil {
+		return nil, fmt.Errorf("create the log folder: %w", err)
 	}
 	return &applied{
 		revision: agentproto.RevisionOf(body, restartOnUserRemoval),
@@ -328,6 +343,16 @@ func waitReady(ctx context.Context, p *xray.Process) error {
 	return nil
 }
 
+// SaveError is a config the core runs but that could not be stored as the last good
+// one, so a reboot would bring the previous config back.
+type SaveError struct{ Err error }
+
+func (e *SaveError) Error() string {
+	return "running but not saved as the last good config: " + e.Err.Error()
+}
+
+func (e *SaveError) Unwrap() error { return e.Err }
+
 func (c *Core) persist(a *applied) error {
 	c.mu.Lock()
 	saved := c.savedRev == a.revision
@@ -336,7 +361,7 @@ func (c *Core) persist(a *applied) error {
 		return nil
 	}
 	if err := c.state.SaveLastGood(a.body, a.restart); err != nil {
-		return fmt.Errorf("save the last good config: %w", err)
+		return &SaveError{Err: err}
 	}
 	c.mu.Lock()
 	c.savedRev = a.revision

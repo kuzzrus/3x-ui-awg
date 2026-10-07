@@ -114,8 +114,11 @@ self-update) under the same prefix.
    diff is applied through gRPC; anything else restarts the core.
 3. If the core fails to come up after a restart, restore the previous config and
    restart again; report the failure in the response and in `GET /v1/status`.
-4. The agent forces log paths into its own directory regardless of what the config
-   says, and always injects the stats and API sections it depends on.
+4. The agent confines the access and error log files to its own log folder (keeping the
+   file names, creating the folder; empty and `none` stay off), and refuses with a 422 a
+   config it could not drive: no `api` inbound on 127.0.0.1, no stats section, no
+   Handler or Stats service, no routing rule for the api inbound, or client counters
+   switched off for level 0.
 
 On boot the agent loads the last good config and starts Xray without waiting for the
 master, so a reboot with the master down does not take the node offline.
