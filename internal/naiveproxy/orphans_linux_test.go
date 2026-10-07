@@ -90,9 +90,11 @@ func TestKillStrayCaddyProcessesSparesAnotherCaddy(t *testing.T) {
 }
 
 // A reinstall replaces the binary under a running sidecar, which /proc then reports as deleted.
+// It runs from another folder, so only its binary path can find it.
 func TestKillStrayCaddyProcessesFindsALeftoverWhoseBinaryWasRemoved(t *testing.T) {
-	ours := filepath.Join(t.TempDir(), "bin", "naiveproxy", "caddy")
-	orphan := startFakeChildAt(t, ours, "")
+	root := t.TempDir()
+	ours := filepath.Join(root, "bin", "naiveproxy", "caddy")
+	orphan := startFakeChildAt(t, ours, filepath.Join(root, "elsewhere"))
 	if err := os.Remove(ours); err != nil {
 		t.Fatal(err)
 	}
@@ -106,9 +108,10 @@ func TestKillStrayCaddyProcessesFindsALeftoverWhoseBinaryWasRemoved(t *testing.T
 }
 
 // The bin folder is often reached through a symlink, while /proc shows the real path.
+// The leftover runs from another folder, so only the resolved binary path can find it.
 func TestKillStrayCaddyProcessesResolvesASymlinkedBinFolder(t *testing.T) {
 	root := t.TempDir()
-	orphan := startFakeChildAt(t, filepath.Join(root, "real", "naiveproxy", "caddy"), "")
+	orphan := startFakeChildAt(t, filepath.Join(root, "real", "naiveproxy", "caddy"), filepath.Join(root, "elsewhere"))
 	if err := os.Symlink(filepath.Join(root, "real"), filepath.Join(root, "bin")); err != nil {
 		t.Fatal(err)
 	}
