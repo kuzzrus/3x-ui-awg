@@ -149,6 +149,10 @@ node heartbeat every 5s, periodic traffic resets (hourly/daily/weekly/monthly). 
 │   ├── tunnelmonitor/          # Optional tunnel health probe (XUI_TUNNEL_HEALTH_* env vars):
 │   │                           #   HTTP probe (default Cloudflare trace); repeated failures
 │   │                           #   trigger an Xray restart hook. Independent of panel settings.
+│   ├── agentproto/             # Master <-> node-agent contract: /v1 types, pairing bundle,
+│   │                           #   TLS identity (see docs/node-agent.md)
+│   ├── agent/                  # Node agent runtime: applies the configs a master pushes (test,
+│   │                           #   hot/restart, rollback), supervises the core, HTTPS server
 │   ├── xray/                   # Xray-core integration (the proxy engine wrapper)
 │   │   ├── process.go          # Spawn/supervise the Xray child process (~750 lines)
 │   │   ├── api.go              # gRPC client to a running Xray (add/remove user, stats) (~800 lines)
@@ -158,6 +162,7 @@ node heartbeat every 5s, periodic traffic resets (hourly/daily/weekly/monthly). 
 │   │   ├── inbound.go          # Inbound JSON shaping
 │   │   ├── client_traffic.go   # ClientTraffic model (persisted as client_traffics)
 │   │   ├── traffic.go          # Traffic type helpers
+│   │   ├── counters.go         # Cumulative per-tag / per-email counters (the agent's stats)
 │   │   ├── log_writer.go       # Pipe Xray stdout/stderr into the panel logger
 │   │   └── geodata/            # Browse geosite/geoip .dat: streaming protowire reader,
 │   │                           #   cached category index, routing-token parsing (token.go)
