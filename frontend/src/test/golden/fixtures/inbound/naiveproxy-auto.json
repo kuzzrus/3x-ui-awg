@@ -1,0 +1,15 @@
+{
+  "protocol": "naiveproxy",
+  "settings": {
+    "domain": "naive.example.com",
+    "certMode": "auto",
+    "acmeEmail": "ops@example.com",
+    "clients": [
+      {
+        "email": "naive-user",
+        "naiveProxyPassword": "0123456789abcdef",
+        "enable": true
+      }
+    ]
+  }
+}

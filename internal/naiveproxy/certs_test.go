@@ -216,9 +216,29 @@ func TestCertHint(t *testing.T) {
 	}
 }
 
+// CertMagic wraps the CA's answer in a chain of "[domain] solving challenge: ..." and ends it with the
+// directory it asked, which is the test server for most retries. Both messages are captured from live orders.
+func TestCertReason(t *testing.T) {
+	const dns = "HTTP 400 urn:ietf:params:acme:error:dns - DNS problem: NXDOMAIN looking up A for gone.example.com - check that a DNS record exists for this domain"
+	const busy = "HTTP 403 urn:ietf:params:acme:error:unauthorized - 203.0.113.7: Invalid response from http://app.example.com/.well-known/acme-challenge/tok: 403"
+	cases := []struct {
+		name, msg, want string
+	}{
+		{"a retry that went through the test CA", "[gone.example.com] solving challenge: gone.example.com: [gone.example.com] authorization failed: " + dns + " (ca=https://acme-staging-v02.api.letsencrypt.org/directory)", dns},
+		{"another program answers on port 80", "[app.example.com] solving challenge: app.example.com: [app.example.com] authorization failed: " + busy + " (ca=https://acme-v02.api.letsencrypt.org/directory)", busy},
+		{"the CA's answer alone", busy, busy},
+		{"not an ACME problem", "could not start listener for challenge server at :80: listen tcp :80: bind: permission denied", "could not start listener for challenge server at :80: listen tcp :80: bind: permission denied"},
+	}
+	for _, tc := range cases {
+		if got := certReason(tc.msg); got != tc.want {
+			t.Errorf("%s: certReason = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
 func TestCertManagerHintsAtAnUnreachablePort80(t *testing.T) {
 	issuer := newFakeIssuer(t, time.Hour)
-	issuer.setErr(errors.New("HTTP 403 urn:ietf:params:acme:error:unauthorized - 203.0.113.7: Invalid response from http://naive.example.com/.well-known/acme-challenge/tok: 403"))
+	issuer.setErr(errors.New("[naive.example.com] solving challenge: naive.example.com: [naive.example.com] authorization failed: HTTP 403 urn:ietf:params:acme:error:unauthorized - 203.0.113.7: Invalid response from http://naive.example.com/.well-known/acme-challenge/tok: 403 (ca=https://acme-staging-v02.api.letsencrypt.org/directory)"))
 	m := newTestCertManager(t, issuer, 0)
 
 	m.request(CertRequest{Domain: "naive.example.com"})
@@ -226,6 +246,12 @@ func TestCertManagerHintsAtAnUnreachablePort80(t *testing.T) {
 
 	if st.Hint != CertHintReach {
 		t.Errorf("hint = %q after a failure of Let's Encrypt reaching the panel, want %q", st.Hint, CertHintReach)
+	}
+	if !strings.Contains(st.Error, "Invalid response from http://naive.example.com") {
+		t.Errorf("error = %q, want the CA's answer", st.Error)
+	}
+	if strings.Contains(st.Error, "staging") || strings.Contains(st.Error, "solving challenge") {
+		t.Errorf("error = %q, want CertMagic's wrapping and its test-server tail left out", st.Error)
 	}
 }
 

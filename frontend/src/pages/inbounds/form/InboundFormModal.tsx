@@ -1105,7 +1105,9 @@ export default function InboundFormModal({
 
       {protocol === Protocols.MTPROTO && <MtprotoFields />}
 
-      {protocol === Protocols.NAIVEPROXY && <NaiveProxyFields />}
+      {protocol === Protocols.NAIVEPROXY && (
+        <NaiveProxyFields inboundId={mode === 'edit' && dbInbound ? dbInbound.id : null} />
+      )}
 
       {protocol === Protocols.TPROXY && <TproxyFields />}
 
