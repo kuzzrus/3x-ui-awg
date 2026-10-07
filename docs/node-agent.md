@@ -88,15 +88,16 @@ and websocket broadcast, `nodetoken` encryption for the stored secret.
 
 ## Wire protocol v1
 
-All requests carry `Authorization: Bearer <secret>` and are JSON. Responses are JSON
-with plain HTTP status codes (no `{success,msg,obj}` envelope).
+All requests carry `Authorization: Bearer <secret>`. Bodies and responses are JSON,
+except that a config push sends the Xray config itself as the body. Responses use plain
+HTTP status codes (no `{success,msg,obj}` envelope).
 
-| Endpoint           | Purpose                                                                                                                                                                                                                                                     |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PUT /v1/config`   | Body: `{revision, config, restartOnUserRemoval}`. Validates with the core's own test (`xray -test -c`), then applies (no-op, hot, or restart). Answers `{applied: noop\|hot\|restart, xrayState}`; on a bad config answers 422 and keeps the last good one. |
-| `GET /v1/status`   | Agent version, hostname, GUID, config revision, Xray version/state/error, CPU, memory, uptime, interface throughput. This is the heartbeat.                                                                                                                 |
-| `GET /v1/stats`    | Cumulative counters since Xray started: per inbound tag and per user email (up/down), online emails, `xrayStartedAt` so the master detects resets exactly instead of guessing from a drop.                                                                  |
-| `POST /v1/restart` | Restart Xray with the last good config.                                                                                                                                                                                                                     |
+| Endpoint           | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PUT /v1/config`   | Body: the rendered Xray config, byte for byte; `restartOnUserRemoval` is a query flag. The revision is a hash of the flag and the body bytes, computed by each side over exactly what was sent, so no JSON re-encoding can make them disagree. Validates with the core's own test (`xray -test -c`), then applies (no-op, hot, or restart). Answers `{revision, applied: noop\|hot\|restart, xrayState}`; on a bad config answers 422 and keeps the last good one. |
+| `GET /v1/status`   | Agent version, hostname, GUID, config revision, Xray version/state/error, CPU, memory, uptime, interface throughput. This is the heartbeat.                                                                                                                                                                                                                                                                                                                        |
+| `GET /v1/stats`    | Cumulative counters since Xray started: per inbound tag and per user email (up/down), online emails, `xrayStartedAt` so the master detects resets exactly instead of guessing from a drop.                                                                                                                                                                                                                                                                         |
+| `POST /v1/restart` | Restart Xray with the last good config.                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 Any other path, wrong method, or failed auth answers the same bare 404, so a response
 never says which part of the request was wrong. It does not hide that an HTTPS server
@@ -107,7 +108,8 @@ self-update) under the same prefix.
 
 ### Config apply
 
-1. Write the candidate next to the live config and run the core's own config test.
+1. Apply the agent's own overrides to the body (step 4), write the candidate next to
+   the live config and run the core's own config test.
 2. Compare with the running config via `ComputeHotDiff`: an empty or API-applicable
    diff is applied through gRPC; anything else restarts the core.
 3. If the core fails to come up after a restart, restore the previous config and
@@ -216,8 +218,8 @@ next rendered config. The stock global-traffic push to nodes is not used for age
   keep the node dirty and the next successful tick pushes the final state.
 - Config rejected by the core: 422 from `PUT /v1/config`, last good config kept, the
   node stays dirty and the error is shown on the node.
-- Master restart: the rendered config is deterministic, so a push of an unchanged config
-  is a no-op on the agent.
+- Master restart: the rendered config is deterministic and sent byte for byte, so its
+  revision is unchanged and the push is a no-op on the agent.
 
 ## Phasing
 
