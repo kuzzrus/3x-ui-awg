@@ -384,6 +384,23 @@ func TestBootWithNothingSavedDoesNothing(t *testing.T) {
 	}
 }
 
+// The port opens before Boot runs, so a push can win the race for the core.
+func TestBootAfterAPushLeavesThePushedConfigAlone(t *testing.T) {
+	f := newFixture(t)
+	body := f.config("a").compact(t)
+	f.mustApply(body)
+
+	if err := f.core.Boot(context.Background()); err != nil {
+		t.Fatalf("Boot: %v", err)
+	}
+	if got := f.starts(); got != 1 {
+		t.Fatalf("core started %d times, want the push's start only", got)
+	}
+	if snap := f.core.Snapshot(); snap.XrayState != agentproto.XrayStateRunning || snap.Revision != agentproto.RevisionOf(body, false) {
+		t.Fatalf("snapshot after boot = %+v, want the pushed config running", snap)
+	}
+}
+
 func TestSupervisorStartsACrashedCoreAgain(t *testing.T) {
 	f := newFixture(t)
 	body := f.config("a").compact(t)

@@ -9,6 +9,7 @@ import (
 const (
 	markerFailTest  = "FAIL_TEST"
 	markerFailStart = "FAIL_START"
+	markerNoAPI     = "NO_API"
 )
 
 func freePort(t *testing.T) int {

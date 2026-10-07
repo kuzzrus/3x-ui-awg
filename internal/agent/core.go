@@ -99,8 +99,17 @@ func (c *Core) runningLocked() bool {
 }
 
 // Boot starts the last good config without waiting for the master. A failure is
-// returned for the log, and the supervisor keeps trying.
+// returned for the log, and the supervisor keeps trying. A push that got in first wins.
 func (c *Core) Boot(ctx context.Context) error {
+	c.applyMu.Lock()
+	defer c.applyMu.Unlock()
+
+	c.mu.Lock()
+	pushed := c.current != nil
+	c.mu.Unlock()
+	if pushed {
+		return nil
+	}
 	saved, err := c.state.LastGood()
 	if err != nil {
 		c.setError(err.Error())
@@ -109,8 +118,6 @@ func (c *Core) Boot(ctx context.Context) error {
 	if saved == nil {
 		return nil
 	}
-	c.applyMu.Lock()
-	defer c.applyMu.Unlock()
 
 	next, err := c.build(saved.Body, saved.RestartOnUserRemoval)
 	if err != nil {
