@@ -3,17 +3,20 @@
 package agentproto
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 )
 
 const (
+	// PathConfig takes the rendered Xray config as the raw request body.
 	PathConfig  = "/v1/config"
 	PathStatus  = "/v1/status"
 	PathStats   = "/v1/stats"
 	PathRestart = "/v1/restart"
+
+	// QueryRestartOnUserRemoval is the PathConfig query flag (a bool) that makes
+	// the agent restart the core instead of dropping a removed client's credential.
+	QueryRestartOnUserRemoval = "restartOnUserRemoval"
 
 	// MaxConfigBytes caps a PUT /v1/config body on the agent.
 	MaxConfigBytes = 32 << 20
@@ -32,12 +35,6 @@ const (
 	XrayStateStopped = "stop"
 	XrayStateError   = "error"
 )
-
-type ConfigRequest struct {
-	Revision             string          `json:"revision"`
-	Config               json.RawMessage `json:"config"`
-	RestartOnUserRemoval bool            `json:"restartOnUserRemoval"`
-}
 
 type ConfigResponse struct {
 	Revision  string `json:"revision"`
@@ -78,19 +75,15 @@ type ErrorBody struct {
 	Error string `json:"error"`
 }
 
-// RevisionOf identifies a push by its content. The config is compacted first
-// because encoding/json compacts a RawMessage on the wire.
-func RevisionOf(config json.RawMessage, restartOnUserRemoval bool) (string, error) {
-	var compact bytes.Buffer
-	if err := json.Compact(&compact, config); err != nil {
-		return "", err
+// RevisionOf identifies a push by the exact bytes sent, so no JSON re-encoding
+// on either end can make the master's and the agent's values disagree.
+func RevisionOf(config []byte, restartOnUserRemoval bool) string {
+	flag := byte(0)
+	if restartOnUserRemoval {
+		flag = 1
 	}
 	h := sha256.New()
-	h.Write(compact.Bytes())
-	if restartOnUserRemoval {
-		h.Write([]byte{1})
-	} else {
-		h.Write([]byte{0})
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	h.Write([]byte{flag})
+	h.Write(config)
+	return hex.EncodeToString(h.Sum(nil))
 }

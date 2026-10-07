@@ -2,64 +2,97 @@ package agentproto
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 )
 
+// bs is a single backslash and lineSeps are U+2028 and U+2029, spelled with \x
+// escapes so the source stays readable.
+const (
+	bs       = "\x5c"
+	lineSeps = "\xe2\x80\xa8\xe2\x80\xa9"
+)
+
 func TestRevisionOf(t *testing.T) {
-	compact := json.RawMessage(`{"a":1,"b":[1,2]}`)
-	indented := json.RawMessage("{\n  \"a\": 1,\n  \"b\": [1, 2]\n}")
-	base, err := RevisionOf(compact, false)
-	if err != nil {
-		t.Fatalf("RevisionOf: %v", err)
-	}
+	base := RevisionOf([]byte(`{"a":1,"b":[1,2]}`), false)
 
 	tests := []struct {
 		name    string
-		config  json.RawMessage
+		config  []byte
 		restart bool
 		same    bool
 	}{
-		{"whitespace does not change the revision", indented, false, true},
-		{"restart policy is part of the revision", compact, true, false},
-		{"different content differs", json.RawMessage(`{"a":2,"b":[1,2]}`), false, false},
+		{"same bytes", []byte(`{"a":1,"b":[1,2]}`), false, true},
+		{"restart policy is part of the revision", []byte(`{"a":1,"b":[1,2]}`), true, false},
+		{"whitespace is part of the bytes", []byte(`{"a": 1,"b":[1,2]}`), false, false},
+		{"different content", []byte(`{"a":2,"b":[1,2]}`), false, false},
+		{"empty body differs from a config", nil, false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := RevisionOf(tt.config, tt.restart)
-			if err != nil {
-				t.Fatalf("RevisionOf: %v", err)
-			}
-			if (got == base) != tt.same {
+			if got := RevisionOf(tt.config, tt.restart); (got == base) != tt.same {
 				t.Fatalf("revision equal to base = %v, want %v", got == base, tt.same)
 			}
 		})
 	}
 
-	if _, err := RevisionOf(json.RawMessage(`{"a":`), false); err == nil {
-		t.Fatal("RevisionOf accepted invalid JSON")
+	if RevisionOf(nil, false) != RevisionOf([]byte{}, false) {
+		t.Fatal("a nil and an empty body must share a revision")
+	}
+	if RevisionOf([]byte{1}, false) == RevisionOf(nil, true) {
+		t.Fatal("a content byte must not be able to stand in for the restart flag")
 	}
 }
 
+// The agent hashes what it reads off the connection, so the revision has to
+// survive a real request for the bytes JSON encoders rewrite (& < > U+2028/9).
 func TestRevisionSurvivesTheWire(t *testing.T) {
-	config := json.RawMessage("{\n  \"inbounds\": [\n    {\"tag\": \"in-1\"}\n  ]\n}")
-	want, err := RevisionOf(config, true)
-	if err != nil {
-		t.Fatalf("RevisionOf: %v", err)
+	tests := []struct {
+		name   string
+		config string
+	}{
+		{"indented", "{\n  \"inbounds\": [\n    {\"tag\": \"in-1\"}\n  ]\n}"},
+		{"html sensitive bytes", `{"path":"/ws?ed=2048&x=1","host":"<h>","sep":"` + lineSeps + `"}`},
+		{"escape sequences", `{"path":"/ws?ed=2048` + bs + `u0026x=1","host":"` + bs + `u003ch` + bs + `u003e","sep":"` + bs + `u2028"}`},
 	}
-	body, err := json.Marshal(ConfigRequest{Revision: want, Config: config, RestartOnUserRemoval: true})
-	if err != nil {
-		t.Fatalf("Marshal: %v", err)
-	}
-	var got ConfigRequest
-	if err := json.Unmarshal(body, &got); err != nil {
-		t.Fatalf("Unmarshal: %v", err)
-	}
-	gotRev, err := RevisionOf(got.Config, got.RestartOnUserRemoval)
-	if err != nil {
-		t.Fatalf("RevisionOf after the wire: %v", err)
-	}
-	if gotRev != want || got.Revision != want {
-		t.Fatalf("revision after the wire = %q (field %q), want %q", gotRev, got.Revision, want)
+	for _, tt := range tests {
+		for _, restart := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s, restart=%v", tt.name, restart), func(t *testing.T) {
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxConfigBytes))
+					if err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
+					flag, _ := strconv.ParseBool(r.URL.Query().Get(QueryRestartOnUserRemoval))
+					_ = json.NewEncoder(w).Encode(ConfigResponse{Revision: RevisionOf(body, flag), Applied: AppliedNoop})
+				}))
+				defer srv.Close()
+
+				url := srv.URL + PathConfig + "?" + QueryRestartOnUserRemoval + "=" + strconv.FormatBool(restart)
+				req, err := http.NewRequest(http.MethodPut, url, strings.NewReader(tt.config))
+				if err != nil {
+					t.Fatalf("NewRequest: %v", err)
+				}
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					t.Fatalf("Do: %v", err)
+				}
+				defer resp.Body.Close()
+				var out ConfigResponse
+				if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+					t.Fatalf("Decode: %v", err)
+				}
+				if want := RevisionOf([]byte(tt.config), restart); out.Revision != want {
+					t.Fatalf("agent revision = %q, master revision = %q", out.Revision, want)
+				}
+			})
+		}
 	}
 }
 
@@ -69,11 +102,6 @@ func TestWireFieldNames(t *testing.T) {
 		v    any
 		want string
 	}{
-		{
-			"config request",
-			ConfigRequest{Revision: "r", Config: json.RawMessage(`{"a":1}`), RestartOnUserRemoval: true},
-			`{"revision":"r","config":{"a":1},"restartOnUserRemoval":true}`,
-		},
 		{
 			"config response",
 			ConfigResponse{Revision: "r", Applied: AppliedHot, XrayState: XrayStateRunning},
