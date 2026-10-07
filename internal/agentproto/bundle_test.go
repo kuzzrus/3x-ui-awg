@@ -60,6 +60,34 @@ func TestBundleRoundTrip(t *testing.T) {
 	}
 }
 
+// The installer reads the bundle from one terminal line, which the kernel caps at 4095
+// bytes, so the longest address a bundle can name must still fit under it.
+func TestEncodedBundleFitsATerminalLine(t *testing.T) {
+	tests := []struct {
+		name    string
+		address string
+	}{
+		{"ipv4", "203.0.113.7"},
+		{"ipv6", "2001:db8:85a3:8d3:1319:8a2e:370:7348"},
+		{"longest host name", strings.Repeat(strings.Repeat("a", 61)+".", 3) + strings.Repeat("b", 56) + ".com"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, _, err := NewBundle(tt.address, 65535, time.Now())
+			if err != nil {
+				t.Fatalf("NewBundle(%q): %v", tt.address, err)
+			}
+			token, err := b.Encode()
+			if err != nil {
+				t.Fatalf("Encode: %v", err)
+			}
+			if len(token) >= 4000 {
+				t.Fatalf("token is %d bytes, want under 4000", len(token))
+			}
+		})
+	}
+}
+
 func TestNewBundleRejectsBadEndpoint(t *testing.T) {
 	tests := []struct {
 		name    string
