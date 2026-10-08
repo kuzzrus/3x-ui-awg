@@ -251,7 +251,9 @@ what was accounted of the counter alone, so the agent's whole counter does not c
 
 Depletion and expiry are enforced by the master: the traffic sync job runs the usual check
 after every tick, a client that passed its quota is switched off and its node marked
-dirty, and it disappears from the next rendered config. Neither the stock global-traffic
+dirty, and it disappears from the next rendered config. The same goes for the traffic
+quota and the expiry of an inbound of an agent node, which has no panel to enforce them
+(a panel node still does it itself). Neither the stock global-traffic
 push to nodes nor a restart on disable is used for agents: the push carries the restart
 policy.
 
