@@ -32,9 +32,8 @@ type AgentPairing struct {
 	Bundle string    `json:"bundle" example:"xab1.eyJ2IjoxLCJhZGRyZXNzIjoibm9kZS5leGFtcGxlLmNvbSJ9"`
 }
 
-// CreateAgent adds an agent node: it mints the secret and the certificate the agent will
-// serve with, stores the secret and the certificate's pin, and marks the node dirty so the
-// first config goes out as soon as the agent is up.
+// CreateAgent adds an agent node: it mints the agent's secret and certificate, stores the secret and
+// the pin, and marks the node dirty so the first config goes out as soon as the agent is up.
 func (s *NodeService) CreateAgent(req *AgentNodeRequest) (*AgentPairing, error) {
 	if req == nil {
 		return nil, common.NewError("node request is required")
@@ -115,6 +114,14 @@ func (s *NodeService) RepairAgent(id int) (*AgentPairing, error) {
 		return nil, err
 	}
 	return &AgentPairing{Node: view, Bundle: token}, nil
+}
+
+// refuseAgentSecret rejects a request that carries a secret for an agent node, which only pairing changes.
+func refuseAgentSecret(req *NodeMutationRequest) error {
+	if req.ApiToken != nil || req.ClearApiToken {
+		return common.NewError("an agent's secret changes only by pairing it again")
+	}
+	return nil
 }
 
 // keepAgentTransport puts back what a request cannot change on an agent node: how it is

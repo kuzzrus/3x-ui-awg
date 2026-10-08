@@ -257,3 +257,24 @@ func TestRuntimeNodeFromRequestKeepsTheTransportOfAnAgent(t *testing.T) {
 		t.Fatalf("Probe of the overlaid node = %+v, %v; want the agent reached", patch, err)
 	}
 }
+
+// The reachability check runs before the update, so it has to give the same answer: a secret
+// that only pairing changes is refused, not probed into a decode or handshake error.
+func TestRuntimeNodeFromRequestRefusesASecretForAnAgent(t *testing.T) {
+	setupConflictDB(t)
+	svc := &NodeService{}
+	pairing, err := svc.CreateAgent(&AgentNodeRequest{Name: "edge", Address: "203.0.113.7", Port: 8443})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	typo := "typo"
+	for name, bad := range map[string]*NodeMutationRequest{
+		"a new secret":  {Name: "edge", Address: "203.0.113.7", Port: 8443, Enable: true, ApiToken: &typo},
+		"a cleared one": {Name: "edge", Address: "203.0.113.7", Port: 8443, ClearApiToken: true},
+	} {
+		if n, err := svc.RuntimeNodeFromRequest(pairing.Node.Id, bad); err == nil || !strings.Contains(err.Error(), "pairing it again") {
+			t.Fatalf("%s: RuntimeNodeFromRequest = %+v, %v; want a refusal that points to pairing", name, n, err)
+		}
+	}
+}

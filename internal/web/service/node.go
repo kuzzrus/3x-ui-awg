@@ -572,8 +572,8 @@ func (s *NodeService) UpdateFromRequest(id int, req *NodeMutationRequest) error 
 		return err
 	}
 	if existing.Kind == model.NodeKindAgent {
-		if req.ApiToken != nil || req.ClearApiToken {
-			return common.NewError("an agent's secret changes only by pairing it again")
+		if err := refuseAgentSecret(req); err != nil {
+			return err
 		}
 		keepAgentTransport(existing, in)
 	}
@@ -655,6 +655,11 @@ func (s *NodeService) RuntimeNodeFromRequest(id int, req *NodeMutationRequest) (
 	// The request cannot say what kind of node it describes, so the stored kind survives it,
 	// and an agent keeps the transport and pin that came with its bundle.
 	stored := *n
+	if stored.Kind == model.NodeKindAgent {
+		if err := refuseAgentSecret(req); err != nil {
+			return nil, err
+		}
+	}
 	*n = *overlay
 	n.Kind = stored.Kind
 	if stored.Kind == model.NodeKindAgent {

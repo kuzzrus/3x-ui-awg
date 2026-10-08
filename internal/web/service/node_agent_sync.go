@@ -53,12 +53,8 @@ func (s *AgentSyncService) stateFor(nodeID int) *agentSyncState {
 	return st
 }
 
-// Sync pushes the config the agent should run when a mutation has made the node dirty, or
-// when the periodic comparison finds the agent running another one. stats is what the
-// agent reported this tick, nil when it could not be read. A config the agent refused is
-// not pushed again until it changes or agentRefusalRetryAfter has passed, and the node
-// stays dirty. Any other failure is returned and tried again after agentRetryAfter, so an
-// agent that keeps failing is not rendered for and pushed to on every tick.
+// Sync pushes the config an agent should run when its node is dirty or the periodic comparison
+// finds another one; stats is the agent's report this tick, nil if unreadable. See the constants.
 func (s *AgentSyncService) Sync(ctx context.Context, rt *runtime.AgentRuntime, n *model.Node, stats *agentproto.Stats) error {
 	now := time.Now()
 	s.mu.Lock()

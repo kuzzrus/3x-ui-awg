@@ -9,9 +9,8 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
 
-// GetAgentConfig builds the whole Xray config an agent node runs: the panel's template and
-// subscription outbounds with the node's own enabled inbounds. The injections that only
-// the master's host can serve (sidecar bridges, panel egress, node egresses) are left out.
+// GetAgentConfig is the whole Xray config an agent node runs: the panel's template and subscription
+// outbounds with the node's own enabled inbounds, and none of the injections only the master can serve.
 func (s *XrayService) GetAgentConfig(nodeID int) (*xray.Config, error) {
 	xrayConfig, err := s.newConfigFromTemplate()
 	if err != nil {
@@ -47,10 +46,8 @@ func (s *XrayService) RenderAgentConfig(nodeID int) ([]byte, error) {
 	return json.MarshalIndent(xrayConfig, "", "  ")
 }
 
-// inertAmneziaWGOutbounds swaps each amneziawg outbound for a blackhole of the same tag, so
-// the rules that name it stay valid. The socks bridge the master uses for these would
-// point at a sidecar an agent does not have, and carries a password that is new with every
-// master process, which would make every render differ from the last.
+// inertAmneziaWGOutbounds swaps each amneziawg outbound for a same-tag blackhole: the master's socks
+// bridge needs a sidecar an agent lacks and a password that is new with every master process.
 func inertAmneziaWGOutbounds(cfg *xray.Config) error {
 	if len(cfg.OutboundConfigs) == 0 {
 		return nil
