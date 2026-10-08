@@ -193,19 +193,27 @@ The sync job renders the node's config only when it has a reason to, and sends i
 when it differs from what the agent holds:
 
 - A dirty node is rendered on the next tick. The render is deterministic (inbounds and
-  clients in id order), so its revision only changes when the config does.
+  clients in id order, and no value that is new with every master process), so its
+  revision only changes when the config does.
 - Every 30 seconds each agent is compared anyway, because the template, the
   subscriptions and the settings do not mark nodes dirty, and because an agent that was
   reinstalled has lost its config. The agent's revision comes from `GET /v1/stats`.
 - A config the agent refuses (422) is not sent again until it changes, or for five
-  minutes at most; the node stays dirty and the agent's own error shows on the node. A
-  failure to reach the agent is retried on every tick.
+  minutes at most; the node stays dirty and the agent's own error shows on the node. Any
+  other failed push is retried after 15 seconds, or at once when a mutation asks for one,
+  so a failure that persists costs a render every 15 seconds and not every tick. A push
+  is given 30 seconds, like the reconcile of a stock node; the agent finishes what it
+  started either way.
+- The restart a stock node gets when a client is disabled is skipped for agents: the push
+  that drops the client carries the restart policy.
 
 The master template (routing, outbounds, DNS, policy) is the same for every agent in
 v1, minus the local-only injections (sidecar bridges, panel egress, node egresses).
 Outbounds that point at a loopback sidecar port (Tor, WARP) resolve to the agent's own
 loopback once sidecars exist on the node, so the shared template keeps working; until
-then such a rule fails on an agent that lacks the sidecar. Per-node routing
+then such a rule fails on an agent that lacks the sidecar; an amneziawg outbound of the
+template, whose master-side bridge points at a sidecar an agent does not have, becomes a
+blackhole with the same tag. Per-node routing
 (`nodeTags` on a rule) is its own phase.
 
 ## Traffic accounting

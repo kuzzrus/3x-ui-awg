@@ -29,7 +29,11 @@ func (j *NodeTrafficSyncJob) syncAgent(mgr *runtime.Manager, n *model.Node) {
 		logger.Debugf("node traffic sync: stats from agent %s failed: %v", n.Name, err)
 		stats = nil
 	}
-	if err := j.agentSync.Sync(context.Background(), rt, n, stats); err != nil {
+	// The tick waits for every node, so one agent applying a config cannot hold it past the
+	// bound a stock node's reconcile gets. The agent finishes what it started either way.
+	pushCtx, cancelPush := context.WithTimeout(context.Background(), nodeReconcileTimeout)
+	defer cancelPush()
+	if err := j.agentSync.Sync(pushCtx, rt, n, stats); err != nil {
 		logger.Warningf("node traffic sync: agent %s: %v", n.Name, err)
 	}
 }
