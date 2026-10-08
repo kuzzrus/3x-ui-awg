@@ -13,6 +13,7 @@ import {
   EyeInvisibleOutlined,
   EyeOutlined,
   InfoCircleOutlined,
+  KeyOutlined,
   MoreOutlined,
   PlusOutlined,
   RightOutlined,
@@ -35,8 +36,10 @@ interface NodeListProps {
   selectedIds: number[];
   onSelectionChange: (ids: number[]) => void;
   onAdd: () => void;
+  onAddAgent: () => void;
   onMtls: () => void;
   onEdit: (node: NodeRecord) => void;
+  onRepair: (node: NodeRecord) => void;
   onDelete: (node: NodeRecord) => void;
   onProbe: (node: NodeRecord) => void;
   onToggleEnable: (node: NodeRecord, next: boolean) => void;
@@ -44,8 +47,9 @@ interface NodeListProps {
   onUpdateSelected: () => void;
 }
 
+// An agent has no panel to update: it is reinstalled from the release, not updated by the master.
 function isUpdateEligible(n: NodeRecord): boolean {
-  return !!n.enable && n.status === 'online';
+  return !!n.enable && n.status === 'online' && n.kind !== 'agent';
 }
 
 interface NodeRow extends NodeRecord {
@@ -171,8 +175,10 @@ export default function NodeList({
   selectedIds,
   onSelectionChange,
   onAdd,
+  onAddAgent,
   onMtls,
   onEdit,
+  onRepair,
   onDelete,
   onProbe,
   onToggleEnable,
@@ -290,6 +296,18 @@ export default function NodeList({
                   onClick={() => onEdit(record)}
                 />
               </Tooltip>
+              {record.kind === 'agent' && (
+                <Tooltip title={t('pages.nodes.agent.repair')}>
+                  <Button
+                    type="text"
+                    size="small"
+                    style={{ fontSize: 16 }}
+                    icon={<KeyOutlined />}
+                    aria-label={t('pages.nodes.agent.repair')}
+                    onClick={() => onRepair(record)}
+                  />
+                </Tooltip>
+              )}
               <Tooltip title={t('delete')}>
                 <Button
                   type="text"
@@ -334,6 +352,11 @@ export default function NodeList({
                 <ApartmentOutlined style={{ marginInlineEnd: 6, opacity: 0.6 }} />
               )}
               {record.name}
+              {record.kind === 'agent' && (
+                <Tag className="agent-tag" style={{ marginInlineStart: 8, marginInlineEnd: 0 }}>
+                  {t('pages.nodes.agent.tag')}
+                </Tag>
+              )}
             </span>
             {record.remark && <span className="remark">{record.remark}</span>}
           </div>
@@ -529,6 +552,7 @@ export default function NodeList({
       onToggleEnable,
       onProbe,
       onEdit,
+      onRepair,
       onDelete,
       onUpdateNode,
       nameByGuid,
@@ -581,6 +605,9 @@ export default function NodeList({
       <div className="toolbar">
         <Button type="primary" icon={<PlusOutlined />} onClick={onAdd}>
           {t('pages.nodes.addNode')}
+        </Button>
+        <Button icon={<PlusOutlined />} onClick={onAddAgent}>
+          {t('pages.nodes.agent.add')}
         </Button>
         <Button icon={<SafetyCertificateOutlined />} onClick={onMtls}>
           {t('pages.nodes.mtls.title')}
@@ -639,6 +666,11 @@ export default function NodeList({
                       />
                       <StatusDot status={record.status} xrayState={record.xrayState} />
                       <span className="node-name">{record.name}</span>
+                      {record.kind === 'agent' && (
+                        <Tag className="agent-tag" style={{ margin: 0 }}>
+                          {t('pages.nodes.agent.tag')}
+                        </Tag>
+                      )}
                       <div className="card-actions">
                         <Tooltip title={t('info')}>
                           <InfoCircleOutlined
@@ -691,6 +723,19 @@ export default function NodeList({
                                 ),
                                 onClick: () => onEdit(record),
                               },
+                              ...(record.kind === 'agent'
+                                ? [
+                                    {
+                                      key: 'repair',
+                                      label: (
+                                        <>
+                                          <KeyOutlined /> {t('pages.nodes.agent.repair')}
+                                        </>
+                                      ),
+                                      onClick: () => onRepair(record),
+                                    },
+                                  ]
+                                : []),
                               {
                                 key: 'delete',
                                 danger: true,

@@ -68,6 +68,66 @@ certificate instead of an API token.
 
 </Steps>
 
+## Agent nodes
+
+An **agent node** runs a small program, `x-ui-agent`, that only runs Xray-core. It has no
+panel, database or login of its own: the master keeps all inbounds and clients,
+renders the node's whole Xray config and pushes it, and the agent applies it (hot when
+it can, with a restart when it must) and reports status and traffic back. The node
+keeps serving from its last good config while the master is down, and a config that
+does not start is rolled back.
+
+An agent node runs Xray-native inbounds only (VLESS, VMess, Trojan, Shadowsocks,
+Hysteria, WireGuard). Protocols that need a sidecar on the node (MTProto, AmneziaWG,
+TUIC, tproxy, NaiveProxy) stay on full-panel nodes.
+
+<Steps>
+
+<Step>
+### Add the agent on the master
+
+On the Nodes page choose **Add agent** and give a name, the server's address and a TCP
+port (8443 by default). The panel creates the node and shows a **pairing bundle**
+once. The bundle holds the agent's private key and secret and is never stored, so copy
+it before you close the window.
+</Step>
+
+<Step>
+### Install it on the server
+
+Open the port in the server's firewall, then run this on the server as root:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/kuzzrus/3x-ui-awg/main/install-agent.sh)
+```
+
+Paste the bundle when asked (nothing is echoed). For an unattended install save it to a
+file and add `--bundle-file <path>`. The installer needs systemd, checks the bundle
+before it touches anything, downloads the release for the server's CPU and starts
+`x-ui-agent.service`. Run it again without a bundle to update, or with `--uninstall` to
+remove everything.
+</Step>
+
+<Step>
+### Watch it come online
+
+The node shows **online** after the first heartbeat and the master pushes its config
+within seconds. Inbounds you attach to the node reach it on the next sync.
+</Step>
+
+</Steps>
+
+**Pair again** (the key icon on the node row) creates a new secret and certificate when
+the server was reinstalled or the bundle was lost. The agent that holds the old bundle is
+cut off at once, so install the new bundle to bring the node back. An agent node's
+secret, certificate pin and transport cannot be edited: they come with the bundle.
+
+<Callout type="info">
+  Traffic is counted on the master from the cumulative counters the agent reports, so a
+  restart of the agent or of the master neither loses nor double counts usage, and a
+  client that passes its quota is dropped from the agent's config by the next push.
+</Callout>
+
 ## Managed hosts
 
 A **managed host** is an override endpoint attached to an inbound. At

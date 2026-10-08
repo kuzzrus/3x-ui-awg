@@ -5,6 +5,8 @@ export const NodeRecordSchema = z
     id: z.number(),
     name: z.string().optional(),
     remark: z.string().optional(),
+    // A thin x-ui-agent node; a response without it is a full panel.
+    kind: z.enum(['panel', 'agent']).optional(),
     scheme: z.string().optional(),
     address: z.string().optional(),
     port: z.number().optional(),
@@ -97,6 +99,28 @@ export const NodeFormSchema = z
     }
   });
 
+// An agent node is added by where it will be reachable: its secret and certificate are minted by
+// the panel and come back once, in the pairing bundle.
+export const AgentFormSchema = z.object({
+  id: z.number().optional(),
+  name: z.string().trim().min(1, 'pages.nodes.toasts.fillRequired'),
+  remark: z.string().optional(),
+  address: z.string().trim().min(1, 'pages.nodes.toasts.fillRequired'),
+  port: z.number().int().min(1).max(65535),
+  enable: z.boolean(),
+  allowPrivateAddress: z.boolean(),
+  outboundTag: z.string().optional(),
+});
+
+export const AgentPairingSchema = z
+  .object({
+    node: NodeRecordSchema.nullish(),
+    bundle: z.string(),
+  })
+  .loose();
+
 export type NodeRecord = z.infer<typeof NodeRecordSchema>;
 export type ProbeResult = z.infer<typeof ProbeResultSchema>;
 export type NodeFormValues = z.infer<typeof NodeFormSchema>;
+export type AgentFormValues = z.infer<typeof AgentFormSchema>;
+export type AgentPairing = z.infer<typeof AgentPairingSchema>;

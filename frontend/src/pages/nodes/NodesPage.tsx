@@ -33,6 +33,9 @@ import { useNodeMutations } from '@/api/queries/useNodeMutations';
 import AppSidebar from '@/layouts/AppSidebar';
 import NodeList from './NodeList';
 import NodeFormModal from './NodeFormModal';
+import AgentNodeFormModal from './AgentNodeFormModal';
+import AgentBundleModal, { type AgentPairingView } from './AgentBundleModal';
+import type { AgentFormValues } from '@/schemas/node';
 import { setMessageInstance } from '@/utils/messageBus';
 import { HttpUtil } from '@/utils';
 import type { PanelUpdateInfo } from '../index/PanelUpdateModal';
@@ -80,6 +83,8 @@ export default function NodesPage() {
   const { nodes, loading, fetched, fetchError, refetch, totals } = useNodesQuery();
   const {
     create,
+    createAgent,
+    repairAgent,
     update,
     remove,
     setEnable,
@@ -102,6 +107,9 @@ export default function NodesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<'add' | 'edit'>('add');
   const [formNode, setFormNode] = useState<NodeRecord | null>(null);
+  const [agentFormOpen, setAgentFormOpen] = useState(false);
+  const [agentFormNode, setAgentFormNode] = useState<NodeRecord | null>(null);
+  const [pairing, setPairing] = useState<AgentPairingView | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [mtlsOpen, setMtlsOpen] = useState(false);
   const [trustCa, setTrustCa] = useState('');
@@ -149,11 +157,61 @@ export default function NodesPage() {
     setFormOpen(true);
   }, []);
 
+  const onAddAgent = useCallback(() => {
+    setAgentFormNode(null);
+    setAgentFormOpen(true);
+  }, []);
+
   const onEdit = useCallback((node: NodeRecord) => {
+    if (node.kind === 'agent') {
+      setAgentFormNode({ ...node });
+      setAgentFormOpen(true);
+      return;
+    }
     setFormMode('edit');
     setFormNode({ ...node });
     setFormOpen(true);
   }, []);
+
+  const onSaveAgent = useCallback(
+    async (values: AgentFormValues) => {
+      const endpoint = {
+        name: values.name,
+        remark: values.remark,
+        address: values.address,
+        port: values.port,
+        allowPrivateAddress: values.allowPrivateAddress,
+        outboundTag: values.outboundTag,
+      };
+      if (agentFormNode?.id)
+        return update(agentFormNode.id, { ...endpoint, enable: values.enable });
+      const msg = await createAgent(endpoint);
+      if (msg?.success && msg.obj) {
+        setPairing({ name: values.name, port: values.port, bundle: msg.obj.bundle });
+      }
+      return msg;
+    },
+    [agentFormNode, update, createAgent],
+  );
+
+  const onRepair = useCallback(
+    (node: NodeRecord) => {
+      modal.confirm({
+        title: t('pages.nodes.agent.repairConfirmTitle', { name: node.name }),
+        content: t('pages.nodes.agent.repairConfirmContent'),
+        okText: t('pages.nodes.agent.repair'),
+        okType: 'danger',
+        cancelText: t('cancel'),
+        onOk: async () => {
+          const msg = await repairAgent(node.id);
+          if (msg?.success && msg.obj) {
+            setPairing({ name: node.name ?? '', port: node.port ?? 0, bundle: msg.obj.bundle });
+          }
+        },
+      });
+    },
+    [modal, t, repairAgent],
+  );
 
   const onSave = useCallback(
     async (payload: Partial<NodeRecord>) => {
@@ -252,7 +310,10 @@ export default function NodesPage() {
 
   const onUpdateSelected = useCallback(() => {
     const eligible = nodes
-      .filter((n) => selectedIds.includes(n.id) && n.enable && n.status === 'online')
+      .filter(
+        (n) =>
+          selectedIds.includes(n.id) && n.enable && n.status === 'online' && n.kind !== 'agent',
+      )
       .map((n) => n.id);
     if (eligible.length === 0) {
       messageApi.warning(t('pages.nodes.toasts.updateNoneEligible'));
@@ -354,8 +415,10 @@ export default function NodesPage() {
                       selectedIds={selectedIds}
                       onSelectionChange={setSelectedIds}
                       onAdd={onAdd}
+                      onAddAgent={onAddAgent}
                       onMtls={() => setMtlsOpen(true)}
                       onEdit={onEdit}
+                      onRepair={onRepair}
                       onDelete={onDelete}
                       onProbe={onProbe}
                       onToggleEnable={onToggleEnable}
@@ -379,6 +442,15 @@ export default function NodesPage() {
           save={onSave}
           onOpenChange={setFormOpen}
         />
+
+        <AgentNodeFormModal
+          open={agentFormOpen}
+          node={agentFormNode}
+          save={onSaveAgent}
+          onOpenChange={setAgentFormOpen}
+        />
+
+        <AgentBundleModal pairing={pairing} onClose={() => setPairing(null)} />
 
         <Modal
           open={mtlsOpen}

@@ -4,9 +4,20 @@ import { HttpUtil, Msg } from '@/utils';
 import { parseMsg } from '@/utils/zodValidate';
 import { keys } from '@/api/queryKeys';
 import type { NodeRecord } from '@/api/queries/useNodesQuery';
-import { ProbeResultSchema, type ProbeResult } from '@/schemas/node';
+import {
+  AgentPairingSchema,
+  ProbeResultSchema,
+  type AgentFormValues,
+  type AgentPairing,
+  type ProbeResult,
+} from '@/schemas/node';
 
-export type { ProbeResult };
+export type { AgentPairing, ProbeResult };
+
+export type AgentNodePayload = Pick<
+  AgentFormValues,
+  'name' | 'remark' | 'address' | 'port' | 'allowPrivateAddress' | 'outboundTag'
+>;
 
 export interface NodeUpdateResult {
   id: number;
@@ -31,6 +42,26 @@ export function useNodeMutations() {
 
   const createMut = useMutation({
     mutationFn: (payload: Partial<NodeRecord>) => HttpUtil.post('/panel/api/nodes/add', payload),
+    onSuccess: (msg) => {
+      if (msg?.success) invalidate();
+    },
+  });
+
+  const createAgentMut = useMutation({
+    mutationFn: async (payload: AgentNodePayload): Promise<Msg<AgentPairing>> => {
+      const raw = await HttpUtil.post('/panel/api/nodes/addAgent', payload);
+      return parseMsg(raw, AgentPairingSchema, 'nodes/addAgent');
+    },
+    onSuccess: (msg) => {
+      if (msg?.success) invalidate();
+    },
+  });
+
+  const repairAgentMut = useMutation({
+    mutationFn: async (id: number): Promise<Msg<AgentPairing>> => {
+      const raw = await HttpUtil.post(`/panel/api/nodes/repairAgent/${id}`);
+      return parseMsg(raw, AgentPairingSchema, 'nodes/repairAgent');
+    },
     onSuccess: (msg) => {
       if (msg?.success) invalidate();
     },
@@ -85,6 +116,8 @@ export function useNodeMutations() {
 
   return {
     create: (payload: Partial<NodeRecord>) => createMut.mutateAsync(payload),
+    createAgent: (payload: AgentNodePayload) => createAgentMut.mutateAsync(payload),
+    repairAgent: (id: number) => repairAgentMut.mutateAsync(id),
     update: (id: number, payload: Partial<NodeRecord>) => updateMut.mutateAsync({ id, payload }),
     remove: (id: number) => removeMut.mutateAsync(id),
     setEnable: (id: number, enable: boolean) => setEnableMut.mutateAsync({ id, enable }),
