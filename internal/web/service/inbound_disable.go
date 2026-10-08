@@ -11,21 +11,30 @@ import (
 	"gorm.io/gorm"
 )
 
+// ownedInboundsCond matches the inbounds this panel enforces the limits of: its own, and those
+// of an agent node, which has no panel of its own to do it. Placeholder: the agent kind.
+const ownedInboundsCond = "(node_id IS NULL OR node_id IN (SELECT id FROM nodes WHERE kind = ?))"
+
 func (s *InboundService) disableInvalidInbounds(tx *gorm.DB, mutationBatch *trafficMutationBatch) (bool, int64, error) {
 	now := time.Now().Unix() * 1000
+	cond := "((total > 0 and up + down >= total) or (expiry_time > 0 and expiry_time <= ?)) and enable = ? and " + ownedInboundsCond
 	var inbounds []model.Inbound
-	if err := tx.Where("((total > 0 and up + down >= total) or (expiry_time > 0 and expiry_time <= ?)) and enable = ? and node_id IS NULL", now, true).
-		Find(&inbounds).Error; err != nil {
+	if err := tx.Where(cond, now, true, model.NodeKindAgent).Find(&inbounds).Error; err != nil {
 		return false, 0, err
 	}
 	for i := range inbounds {
+		if inbounds[i].NodeID != nil {
+			// The next push to the agent leaves the inbound out.
+			mutationBatch.addNode(*inbounds[i].NodeID)
+			continue
+		}
 		mutationBatch.localPlans = append(mutationBatch.localPlans, trafficLocalApplyPlan{
 			action: trafficDisableInbound, inbound: inbounds[i],
 		})
 	}
 
 	result := tx.Model(model.Inbound{}).
-		Where("((total > 0 and up + down >= total) or (expiry_time > 0 and expiry_time <= ?)) and enable = ? and node_id IS NULL", now, true).
+		Where(cond, now, true, model.NodeKindAgent).
 		Update("enable", false)
 	err := result.Error
 	count := result.RowsAffected

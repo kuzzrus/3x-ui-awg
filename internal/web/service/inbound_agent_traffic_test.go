@@ -1,6 +1,7 @@
 package service
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -236,5 +237,52 @@ func TestDeletingAnAgentNodeDropsWhatWasAccountedOfIt(t *testing.T) {
 	}
 	if err := database.GetDB().Model(&model.AgentCounter{}).Where("node_id = ?", nodeID).Count(&count).Error; err != nil || count != 0 {
 		t.Fatalf("%d counters left after the node was deleted (%v)", count, err)
+	}
+}
+
+// A panel node enforces the limits of its inbounds itself; an agent has no panel to, so the
+// master does, and the next push leaves the inbound out.
+func TestAddAgentTrafficDisablesAnInboundThatPassedItsQuota(t *testing.T) {
+	f := newAgentTrafficFixture(t)
+	panelNode := &model.Node{Name: "panel", Kind: model.NodeKindPanel, Scheme: "https", Address: "192.0.2.20", Port: 2053, Enable: true}
+	if err := database.GetDB().Create(panelNode).Error; err != nil {
+		t.Fatal(err)
+	}
+	seedInboundOn(t, &panelNode.Id, "n2-vless", model.VLESS, true, nil)
+	db := database.GetDB()
+	for _, tag := range []string{f.tag, "n2-vless"} {
+		if err := db.Model(&model.Inbound{}).Where("tag = ?", tag).Updates(map[string]any{"total": 100, "up": 80, "down": 70}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	f.poll(1000, counters(), agentproto.Counter{})
+	if _, _, err := f.svc.AddTraffic(nil, nil); err != nil {
+		t.Fatalf("AddTraffic: %v", err)
+	}
+
+	var agentInbound, panelInbound model.Inbound
+	if err := db.Where("tag = ?", f.tag).First(&agentInbound).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Where("tag = ?", "n2-vless").First(&panelInbound).Error; err != nil {
+		t.Fatal(err)
+	}
+	if agentInbound.Enable {
+		t.Fatal("the agent's inbound is still on after passing its quota, and nothing else would switch it off")
+	}
+	if !panelInbound.Enable {
+		t.Fatal("the master switched off an inbound of a panel node, which enforces its own limits")
+	}
+	var node model.Node
+	if err := db.First(&node, f.nodeID).Error; err != nil || !node.ConfigDirty {
+		t.Fatalf("agent node dirty = %v (%v), want it marked so the push drops the inbound", node.ConfigDirty, err)
+	}
+	cfg, err := (&XrayService{}).GetAgentConfig(f.nodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(inboundTags(cfg), f.tag) {
+		t.Fatalf("the rendered config still carries the inbound that passed its quota: %v", inboundTags(cfg))
 	}
 }
