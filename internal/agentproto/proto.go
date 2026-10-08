@@ -62,13 +62,14 @@ type Counter struct {
 	Down int64 `json:"down"`
 }
 
-// Stats counters are cumulative since XrayStartedAt (unix milliseconds, 0 when
-// the core is not running), so a changed start time marks a reset exactly.
+// Counters are cumulative since XrayStartedAt (unix ms, 0 when the core is down), so a
+// changed start time marks a reset. ConfigRevision tells the master whether a push is due.
 type Stats struct {
-	XrayStartedAt int64              `json:"xrayStartedAt"`
-	Inbounds      map[string]Counter `json:"inbounds"`
-	Users         map[string]Counter `json:"users"`
-	Online        []string           `json:"online"`
+	ConfigRevision string             `json:"configRevision"`
+	XrayStartedAt  int64              `json:"xrayStartedAt"`
+	Inbounds       map[string]Counter `json:"inbounds"`
+	Users          map[string]Counter `json:"users"`
+	Online         []string           `json:"online"`
 }
 
 type ErrorBody struct {

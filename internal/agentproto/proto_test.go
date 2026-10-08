@@ -121,12 +121,13 @@ func TestWireFieldNames(t *testing.T) {
 		{
 			"stats",
 			Stats{
-				XrayStartedAt: 7,
-				Inbounds:      map[string]Counter{"in-1": {Up: 1, Down: 2}},
-				Users:         map[string]Counter{"a@x": {Up: 3, Down: 4}},
-				Online:        []string{"a@x"},
+				ConfigRevision: "r",
+				XrayStartedAt:  7,
+				Inbounds:       map[string]Counter{"in-1": {Up: 1, Down: 2}},
+				Users:          map[string]Counter{"a@x": {Up: 3, Down: 4}},
+				Online:         []string{"a@x"},
 			},
-			`{"xrayStartedAt":7,"inbounds":{"in-1":{"up":1,"down":2}},` +
+			`{"configRevision":"r","xrayStartedAt":7,"inbounds":{"in-1":{"up":1,"down":2}},` +
 				`"users":{"a@x":{"up":3,"down":4}},"online":["a@x"]}`,
 		},
 		{"error body", ErrorBody{Error: "bad"}, `{"error":"bad"}`},

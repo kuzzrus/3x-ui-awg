@@ -41,6 +41,7 @@ type NodeTrafficSyncJob struct {
 	inboundService service.InboundService
 	settingService service.SettingService
 	xrayService    service.XrayService
+	agentSync      service.AgentSyncService
 	running        sync.Mutex
 	structural     atomicBool
 	ipSyncMu       sync.Mutex
@@ -125,6 +126,10 @@ func (j *NodeTrafficSyncJob) Run() {
 		common.GoRecover("node-traffic-sync:"+n.Name, func() {
 			defer wg.Done()
 			defer func() { <-sem }()
+			if n.Kind == model.NodeKindAgent {
+				j.syncAgent(mgr, n)
+				return
+			}
 			if emails := j.syncOne(mgr, n, doIpSync); len(emails) > 0 {
 				activeMu.Lock()
 				activeEmails = append(activeEmails, emails...)

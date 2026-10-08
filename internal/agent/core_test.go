@@ -462,7 +462,23 @@ func TestStatsOfACoreThatIsNotRunning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Stats: %v", err)
 	}
-	if stats.XrayStartedAt != 0 || stats.Inbounds == nil || stats.Users == nil || stats.Online == nil {
-		t.Fatalf("stats = %+v, want zero start time and empty, non-nil collections", stats)
+	if stats.XrayStartedAt != 0 || stats.ConfigRevision != "" || stats.Inbounds == nil || stats.Users == nil || stats.Online == nil {
+		t.Fatalf("stats = %+v, want zero start time, no config and empty, non-nil collections", stats)
+	}
+}
+
+// Whether a push is due depends on the config the agent holds, running or not.
+func TestStatsNameTheConfigEvenWhenTheCoreIsDown(t *testing.T) {
+	f := newFixture(t)
+	body := f.config("a").compact(t)
+	f.mustApply(body)
+	f.core.Close()
+
+	stats, err := f.core.Stats()
+	if err != nil {
+		t.Fatalf("Stats: %v", err)
+	}
+	if want := agentproto.RevisionOf(body, false); stats.ConfigRevision != want || stats.XrayStartedAt != 0 {
+		t.Fatalf("stats = %+v, want revision %s and no start time", stats, want)
 	}
 }

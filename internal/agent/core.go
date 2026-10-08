@@ -466,6 +466,9 @@ func (c *Core) Stats() (agentproto.Stats, error) {
 	}
 	c.mu.Lock()
 	p, startedAt := c.process, c.startedAt
+	if c.current != nil {
+		stats.ConfigRevision = c.current.revision
+	}
 	c.mu.Unlock()
 	if p == nil || !p.IsRunning() {
 		return stats, nil
