@@ -24,11 +24,21 @@ func startIdleAgent(t *testing.T) (*model.Node, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	port, guid := serveIdleAgent(t, bundle)
+	return &model.Node{
+		Id: 9, Name: "agent-9", Kind: model.NodeKindAgent, Address: "127.0.0.1", Port: port,
+		ApiToken: bundle.Secret, PinnedCertSha256: fingerprint, AllowPrivateAddress: true,
+	}, guid
+}
+
+// serveIdleAgent runs a real agent server with the identity of bundle on a free local port.
+func serveIdleAgent(t *testing.T, bundle *agentproto.Bundle) (port int, guid string) {
+	t.Helper()
 	state, err := agent.OpenState(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	guid, err := state.Guid()
+	guid, err = state.Guid()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,11 +63,7 @@ func startIdleAgent(t *testing.T) (*model.Node, string) {
 			t.Errorf("Serve: %v", err)
 		}
 	})
-	return &model.Node{
-		Id: 9, Name: "agent-9", Kind: model.NodeKindAgent, Address: "127.0.0.1",
-		Port:     ln.Addr().(*net.TCPAddr).Port,
-		ApiToken: bundle.Secret, PinnedCertSha256: fingerprint, AllowPrivateAddress: true,
-	}, guid
+	return ln.Addr().(*net.TCPAddr).Port, guid
 }
 
 func TestProbeAgentFillsTheSameHeartbeatAsAPanel(t *testing.T) {

@@ -566,16 +566,22 @@ func (s *NodeService) UpdateFromRequest(id int, req *NodeMutationRequest) error 
 		return err
 	}
 	in := req.toNode()
+	db := database.GetDB()
+	existing := &model.Node{}
+	if err := db.Where("id = ?", id).First(existing).Error; err != nil {
+		return err
+	}
+	if existing.Kind == model.NodeKindAgent {
+		if req.ApiToken != nil || req.ClearApiToken {
+			return common.NewError("an agent's secret changes only by pairing it again")
+		}
+		keepAgentTransport(existing, in)
+	}
 	if err := s.normalize(in); err != nil {
 		return err
 	}
 	inboundTagsJSON, err := json.Marshal(in.InboundTags)
 	if err != nil {
-		return err
-	}
-	db := database.GetDB()
-	existing := &model.Node{}
-	if err := db.Where("id = ?", id).First(existing).Error; err != nil {
 		return err
 	}
 	apiToken := existing.ApiToken
@@ -646,10 +652,14 @@ func (s *NodeService) RuntimeNodeFromRequest(id int, req *NodeMutationRequest) (
 	if req.ClearApiToken {
 		overlay.ApiToken = ""
 	}
-	// The request cannot say what kind of node it describes, so the stored kind survives it.
-	kind := n.Kind
+	// The request cannot say what kind of node it describes, so the stored kind survives it,
+	// and an agent keeps the transport and pin that came with its bundle.
+	stored := *n
 	*n = *overlay
-	n.Kind = kind
+	n.Kind = stored.Kind
+	if stored.Kind == model.NodeKindAgent {
+		keepAgentTransport(&stored, n)
+	}
 	if err := s.normalize(n); err != nil {
 		return nil, err
 	}

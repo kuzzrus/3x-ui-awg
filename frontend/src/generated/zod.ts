@@ -21,6 +21,22 @@ export type trafficLocalApplyAction = z.infer<typeof trafficLocalApplyActionSche
 export const transportBitsSchema = z.number().int();
 export type transportBits = z.infer<typeof transportBitsSchema>;
 
+export const AgentNodeRequestSchema = z.object({
+  address: z.string(),
+  allowPrivateAddress: z.boolean(),
+  name: z.string(),
+  outboundTag: z.string(),
+  port: z.number().int().min(1).max(65535),
+  remark: z.string(),
+});
+export type AgentNodeRequest = z.infer<typeof AgentNodeRequestSchema>;
+
+export const AgentPairingSchema = z.object({
+  bundle: z.string(),
+  node: z.lazy(() => NodeViewSchema).nullable().optional(),
+});
+export type AgentPairing = z.infer<typeof AgentPairingSchema>;
+
 export const AllSettingSchema = z.object({
   datepicker: z.string(),
   discordAdminIds: z.string(),

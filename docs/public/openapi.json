@@ -26,6 +26,61 @@
       }
     },
     "schemas": {
+      "AgentNodeRequest": {
+        "description": "AgentNodeRequest is what adding an agent node needs: where the agent will be reachable.\nIts secret and certificate are minted here, not chosen by the admin.",
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "allowPrivateAddress": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "outboundTag": {
+            "type": "string"
+          },
+          "port": {
+            "maximum": 65535,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "remark": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "allowPrivateAddress",
+          "name",
+          "outboundTag",
+          "port",
+          "remark"
+        ],
+        "type": "object"
+      },
+      "AgentPairing": {
+        "description": "AgentPairing is an agent node with the bundle that pairs its agent to this master. The\nbundle holds the agent's private key and secret: it is shown once and never stored.",
+        "properties": {
+          "bundle": {
+            "example": "xab1.eyJ2IjoxLCJhZGRyZXNzIjoibm9kZS5leGFtcGxlLmNvbSJ9",
+            "type": "string"
+          },
+          "node": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NodeView"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "bundle"
+        ],
+        "type": "object"
+      },
       "AllSetting": {
         "properties": {
           "datepicker": {
@@ -11303,6 +11358,113 @@
                     "xrayError": "",
                     "xrayState": "running",
                     "xrayVersion": "25.10.31"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/nodes/addAgent": {
+      "post": {
+        "tags": [
+          "Nodes"
+        ],
+        "summary": "Register a node that runs the thin x-ui-agent instead of a full panel. The agent is not installed yet, so the node is not probed. The panel mints the secret and the certificate of the agent and returns the pairing bundle once: it holds the private key, is never stored, and is what install-agent.sh asks for on the node.",
+        "operationId": "post_panel_api_nodes_addAgent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "name": "de-fra-2",
+                "remark": "",
+                "address": "node2.example.com",
+                "port": 8443,
+                "allowPrivateAddress": false,
+                "outboundTag": ""
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {
+                      "$ref": "#/components/schemas/AgentPairing"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "bundle": "xab1.eyJ2IjoxLCJhZGRyZXNzIjoibm9kZS5leGFtcGxlLmNvbSJ9",
+                    "node": null
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/nodes/repairAgent/{id}": {
+      "post": {
+        "tags": [
+          "Nodes"
+        ],
+        "summary": "Pair an agent node again: mint a new secret and certificate and return the new bundle once. The agent that held the old bundle is cut off at once; install the new bundle on the node to bring it back.",
+        "operationId": "post_panel_api_nodes_repairAgent_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Agent node ID.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {
+                      "$ref": "#/components/schemas/AgentPairing"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "bundle": "xab1.eyJ2IjoxLCJhZGRyZXNzIjoibm9kZS5leGFtcGxlLmNvbSJ9",
+                    "node": null
                   }
                 }
               }
