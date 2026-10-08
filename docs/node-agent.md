@@ -158,7 +158,14 @@ through `/proc` and ends up in shell history); unattended installs read it from 
   derived `ServerName`, TLS 1.3, pinned fingerprint) and never `tlsConfigForNode`.
 - **Bearer secret** stored encrypted on the master with the existing `nodetoken`
   machinery (`Node.ApiToken`), compared in constant time on the agent.
-- The bundle is a credential: the UI shows it once and re-pairing mints a new secret.
+- The bundle is a credential: it is shown once and re-pairing mints a new secret.
+  `POST /panel/api/nodes/addAgent` takes a name, an address and a port, mints the secret
+  and the certificate, stores the secret and the pin, marks the node dirty and returns
+  the bundle. It does not probe: the agent is not installed yet, so the node reads
+  offline until it is. `POST /panel/api/nodes/repairAgent/:id` mints a new pair for an
+  agent that was reinstalled or whose bundle was lost; the old agent is cut off at once.
+- An agent node's secret, pin and transport come with its bundle, so the generic node
+  update changes only its name, remark, endpoint and enable flag, and rejects a secret.
 - The agent trusts the master completely, like SSH: it applies whatever config it is
   sent. A compromised master means compromised agents, exactly as with stock nodes
   and their API tokens.

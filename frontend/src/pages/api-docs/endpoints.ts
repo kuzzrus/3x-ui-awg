@@ -1770,6 +1770,22 @@ export const sections: readonly Section[] = [
       },
       {
         method: 'POST',
+        path: '/panel/api/nodes/addAgent',
+        summary:
+          'Register a node that runs the thin x-ui-agent instead of a full panel. The agent is not installed yet, so the node is not probed. The panel mints the secret and the certificate of the agent and returns the pairing bundle once: it holds the private key, is never stored, and is what install-agent.sh asks for on the node.',
+        body: '{\n  "name": "de-fra-2",\n  "remark": "",\n  "address": "node2.example.com",\n  "port": 8443,\n  "allowPrivateAddress": false,\n  "outboundTag": ""\n}',
+        responseSchema: 'AgentPairing',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/nodes/repairAgent/:id',
+        summary:
+          'Pair an agent node again: mint a new secret and certificate and return the new bundle once. The agent that held the old bundle is cut off at once; install the new bundle on the node to bring it back.',
+        params: [{ name: 'id', in: 'path', type: 'number', desc: 'Agent node ID.' }],
+        responseSchema: 'AgentPairing',
+      },
+      {
+        method: 'POST',
         path: '/panel/api/nodes/update/:id',
         summary:
           'Replace a node\u2019s connection details. apiToken is write-only: omit it or send an empty string to keep the stored token; set clearApiToken=true to clear it.',

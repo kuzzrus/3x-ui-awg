@@ -42,6 +42,18 @@ _openapi:
         only.
       url: '#register-a-new-remote-node-provide-its-url-write-only-apitoken-and-optional-remark--allowprivateaddress-flag-responses-expose-hasapitoken-only'
     - depth: 2
+      title: 'Register a node that runs the thin x-ui-agent instead of a full panel.
+        The agent is not installed yet, so the node is not probed. The panel
+        mints the secret and the certificate of the agent and returns the
+        pairing bundle once: it holds the private key, is never stored, and is
+        what install-agent.sh asks for on the node.'
+      url: '#register-a-node-that-runs-the-thin-x-ui-agent-instead-of-a-full-panel-the-agent-is-not-installed-yet-so-the-node-is-not-probed-the-panel-mints-the-secret-and-the-certificate-of-the-agent-and-returns-the-pairing-bundle-once-it-holds-the-private-key-is-never-stored-and-is-what-install-agentsh-asks-for-on-the-node'
+    - depth: 2
+      title: 'Pair an agent node again: mint a new secret and certificate and return
+        the new bundle once. The agent that held the old bundle is cut off at
+        once; install the new bundle on the node to bring it back.'
+      url: '#pair-an-agent-node-again-mint-a-new-secret-and-certificate-and-return-the-new-bundle-once-the-agent-that-held-the-old-bundle-is-cut-off-at-once-install-the-new-bundle-on-the-node-to-bring-it-back'
+    - depth: 2
       title: 'Replace a node’s connection details. apiToken is write-only: omit it or
         send an empty string to keep the stored token; set clearApiToken=true to
         clear it.'
@@ -109,6 +121,16 @@ _openapi:
           optional remark / allowPrivateAddress flag. Responses expose
           hasApiToken only.
         id: register-a-new-remote-node-provide-its-url-write-only-apitoken-and-optional-remark--allowprivateaddress-flag-responses-expose-hasapitoken-only
+      - content: 'Register a node that runs the thin x-ui-agent instead of a full panel.
+          The agent is not installed yet, so the node is not probed. The panel
+          mints the secret and the certificate of the agent and returns the
+          pairing bundle once: it holds the private key, is never stored, and is
+          what install-agent.sh asks for on the node.'
+        id: register-a-node-that-runs-the-thin-x-ui-agent-instead-of-a-full-panel-the-agent-is-not-installed-yet-so-the-node-is-not-probed-the-panel-mints-the-secret-and-the-certificate-of-the-agent-and-returns-the-pairing-bundle-once-it-holds-the-private-key-is-never-stored-and-is-what-install-agentsh-asks-for-on-the-node
+      - content: 'Pair an agent node again: mint a new secret and certificate and return
+          the new bundle once. The agent that held the old bundle is cut off at
+          once; install the new bundle on the node to bring it back.'
+        id: pair-an-agent-node-again-mint-a-new-secret-and-certificate-and-return-the-new-bundle-once-the-agent-that-held-the-old-bundle-is-cut-off-at-once-install-the-new-bundle-on-the-node-to-bring-it-back
       - content: 'Replace a node’s connection details. apiToken is write-only: omit it
           or send an empty string to keep the stored token; set
           clearApiToken=true to clear it.'
@@ -151,7 +173,7 @@ export default function Layout(props) {
   return (
     <>
       {props.children}
-      <Comp document="./public/openapi.json" webhooks={[]} operations={[{"path":"/panel/api/nodes/list","method":"get"},{"path":"/panel/api/nodes/mtls/ca","method":"post"},{"path":"/panel/api/nodes/mtls/trustCA","method":"post"},{"path":"/panel/api/nodes/mtls/reloadClient","method":"post"},{"path":"/panel/api/nodes/get/{id}","method":"get"},{"path":"/panel/api/nodes/webCert/{id}","method":"get"},{"path":"/panel/api/nodes/add","method":"post"},{"path":"/panel/api/nodes/update/{id}","method":"post"},{"path":"/panel/api/nodes/del/{id}","method":"post"},{"path":"/panel/api/nodes/setEnable/{id}","method":"post"},{"path":"/panel/api/nodes/test","method":"post"},{"path":"/panel/api/nodes/certFingerprint","method":"post"},{"path":"/panel/api/nodes/inbounds","method":"post"},{"path":"/panel/api/nodes/probe/{id}","method":"post"},{"path":"/panel/api/nodes/updatePanel","method":"post"},{"path":"/panel/api/nodes/history/{id}/{metric}/{bucket}","method":"get"}]} showTitle />
+      <Comp document="./public/openapi.json" webhooks={[]} operations={[{"path":"/panel/api/nodes/list","method":"get"},{"path":"/panel/api/nodes/mtls/ca","method":"post"},{"path":"/panel/api/nodes/mtls/trustCA","method":"post"},{"path":"/panel/api/nodes/mtls/reloadClient","method":"post"},{"path":"/panel/api/nodes/get/{id}","method":"get"},{"path":"/panel/api/nodes/webCert/{id}","method":"get"},{"path":"/panel/api/nodes/add","method":"post"},{"path":"/panel/api/nodes/addAgent","method":"post"},{"path":"/panel/api/nodes/repairAgent/{id}","method":"post"},{"path":"/panel/api/nodes/update/{id}","method":"post"},{"path":"/panel/api/nodes/del/{id}","method":"post"},{"path":"/panel/api/nodes/setEnable/{id}","method":"post"},{"path":"/panel/api/nodes/test","method":"post"},{"path":"/panel/api/nodes/certFingerprint","method":"post"},{"path":"/panel/api/nodes/inbounds","method":"post"},{"path":"/panel/api/nodes/probe/{id}","method":"post"},{"path":"/panel/api/nodes/updatePanel","method":"post"},{"path":"/panel/api/nodes/history/{id}/{metric}/{bucket}","method":"get"}]} showTitle />
     </>
   );
 }

@@ -7,6 +7,20 @@ export type staticEgressResolver = string;
 export type trafficLocalApplyAction = number;
 export type transportBits = number;
 
+export interface AgentNodeRequest {
+  address: string;
+  allowPrivateAddress: boolean;
+  name: string;
+  outboundTag: string;
+  port: number;
+  remark: string;
+}
+
+export interface AgentPairing {
+  bundle: string;
+  node?: NodeView | null;
+}
+
 export interface AllSetting {
   datepicker: string;
   discordAdminIds: string;

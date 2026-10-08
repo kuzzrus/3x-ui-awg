@@ -32,6 +32,8 @@ func (a *NodeController) initRouter(g *gin.RouterGroup) {
 	g.GET("/webCert/:id", a.webCert)
 
 	g.POST("/add", a.add)
+	g.POST("/addAgent", a.addAgent)
+	g.POST("/repairAgent/:id", a.repairAgent)
 	g.POST("/update/:id", a.update)
 	g.POST("/del/:id", a.del)
 	g.POST("/setEnable/:id", a.setEnable)
@@ -165,6 +167,41 @@ func (a *NodeController) add(c *gin.Context) {
 		}
 	}
 	jsonMsgObj(c, I18nWeb(c, "pages.nodes.toasts.add"), view, nil)
+}
+
+// addAgent registers a node whose agent is not installed yet, so unlike add it does not
+// probe it: the response carries the pairing bundle to install it with, shown only once.
+func (a *NodeController) addAgent(c *gin.Context) {
+	req, ok := middleware.BindAndValidate[service.AgentNodeRequest](c)
+	if !ok {
+		return
+	}
+	pairing, err := a.nodeService.CreateAgent(req)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.nodes.toasts.add"), err)
+		return
+	}
+	if req.OutboundTag != "" {
+		if err := a.xrayService.RestartXray(false); err != nil {
+			logger.Warning("apply node outbound bridge failed:", err)
+		}
+	}
+	jsonMsgObj(c, I18nWeb(c, "pages.nodes.toasts.add"), pairing, nil)
+}
+
+// repairAgent mints a new bundle for an agent node and cuts the old agent off.
+func (a *NodeController) repairAgent(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "get"), err)
+		return
+	}
+	pairing, err := a.nodeService.RepairAgent(id)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.nodes.toasts.update"), err)
+		return
+	}
+	jsonMsgObj(c, I18nWeb(c, "pages.nodes.toasts.update"), pairing, nil)
 }
 
 func (a *NodeController) update(c *gin.Context) {
