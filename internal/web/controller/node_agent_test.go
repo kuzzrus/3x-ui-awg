@@ -109,3 +109,43 @@ func TestNodeControllerRepairAgentMintsANewBundle(t *testing.T) {
 		t.Fatal("repairAgent accepted an id that is no number")
 	}
 }
+
+// An agent that is not installed yet, or is down, answers nothing, and fixing the address it
+// was added with must not need it to.
+func TestNodeControllerUpdatesAnAgentThatDoesNotAnswer(t *testing.T) {
+	engine := newNodeCredentialTestEngine(t)
+	_, added := postJSON(t, engine, "/panel/api/nodes/addAgent", `{"name":"edge","address":"203.0.113.7","port":8443}`)
+
+	w, updated := postJSON(t, engine, "/panel/api/nodes/update/"+strconv.Itoa(added.Obj.Node.Id),
+		`{"name":"edge-moved","address":"203.0.113.8","port":9443,"enable":true}`)
+	if w.Code != http.StatusOK || !updated.Success {
+		t.Fatalf("update = %d %s, want the edit saved without the agent being reachable", w.Code, w.Body.String())
+	}
+	var stored model.Node
+	if err := database.GetDB().First(&stored, added.Obj.Node.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Name != "edge-moved" || stored.Address != "203.0.113.8" || stored.Port != 9443 || stored.Kind != model.NodeKindAgent {
+		t.Fatalf("stored node = %+v, want the new endpoint on the same agent", stored)
+	}
+}
+
+// The probe that follows a change of the connection outbound is as little the agent's to answer:
+// the edit is saved by then, and reporting it as failed would hide that from the operator.
+func TestNodeControllerUpdatesTheOutboundOfAnAgentThatDoesNotAnswer(t *testing.T) {
+	engine := newNodeCredentialTestEngine(t)
+	_, added := postJSON(t, engine, "/panel/api/nodes/addAgent", `{"name":"edge","address":"203.0.113.7","port":8443}`)
+
+	w, updated := postJSON(t, engine, "/panel/api/nodes/update/"+strconv.Itoa(added.Obj.Node.Id),
+		`{"name":"edge","address":"203.0.113.7","port":8443,"enable":true,"outboundTag":"direct"}`)
+	if w.Code != http.StatusOK || !updated.Success {
+		t.Fatalf("update = %d %s, want the outbound saved without the agent being reachable", w.Code, w.Body.String())
+	}
+	var stored model.Node
+	if err := database.GetDB().First(&stored, added.Obj.Node.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.OutboundTag != "direct" || stored.Kind != model.NodeKindAgent {
+		t.Fatalf("stored node = %+v, want the new outbound on the same agent", stored)
+	}
+}

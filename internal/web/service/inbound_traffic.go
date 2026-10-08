@@ -353,7 +353,7 @@ func (s *InboundService) autoRenewClients(tx *gorm.DB, mutationBatch *trafficMut
 	now := time.Now().Unix() * 1000
 	var err error
 
-	// Filter to clients that have at least one local inbound. Using
+	// Filter to clients that have at least one local or agent-node inbound. Using
 	// client_traffics.inbound_id is wrong: it goes stale after an inbound is
 	// deleted/recreated and always points to the first inbound the client was
 	// attached to, so it could be a node inbound even when the client also has
@@ -367,7 +367,7 @@ func (s *InboundService) autoRenewClients(tx *gorm.DB, mutationBatch *trafficMut
 			Select("c.email").
 			Joins("JOIN clients c ON c.id = ci.client_id").
 			Joins("JOIN inbounds i ON i.id = ci.inbound_id").
-			Where("i.node_id IS NULL")).
+			Where(ownedInboundsCond("i.node_id"), model.NodeKindAgent)).
 		Find(&traffics).Error
 	if err != nil {
 		return false, 0, err

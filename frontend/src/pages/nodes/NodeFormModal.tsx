@@ -19,7 +19,7 @@ import type { RemoteInboundOption } from '@/api/queries/useNodeMutations';
 import type { Msg } from '@/utils';
 import { NodeFormSchema, type NodeFormValues, type ProbeResult } from '@/schemas/node';
 import { FormField, rhfZodValidate } from '@/components/form/rhf';
-import { useOutboundTagGroups } from '@/api/queries/useOutboundTags';
+import { useNodeOutboundOptions } from './useNodeOutboundOptions';
 import './NodeFormModal.css';
 
 type Mode = 'add' | 'edit';
@@ -79,29 +79,9 @@ export default function NodeFormModal({
   const scheme = useWatch({ control: methods.control, name: 'scheme' }) ?? 'https';
   const tlsVerifyMode = useWatch({ control: methods.control, name: 'tlsVerifyMode' }) ?? 'verify';
   const inboundSyncMode = useWatch({ control: methods.control, name: 'inboundSyncMode' }) ?? 'all';
-  const { data: outboundGroups } = useOutboundTagGroups({ excludeBlackhole: true });
-
-  // Outbounds and balancers share one picker (like the panel-outbound selector);
-  // when balancers exist they get a labeled group so it's clear the selection
-  // routes through a balancer. Empty falls back to the placeholder ("Direct
-  // connection") rather than a synthetic option, so it can't read as a second
-  // "direct" next to a real freedom outbound.
-  const outboundOptions = useMemo<
-    (
-      | { label: string; value: string }
-      | { label: string; options: { label: string; value: string }[] }
-    )[]
-  >(() => {
-    const outOpts = (outboundGroups?.outbounds ?? []).map((tag) => ({ label: tag, value: tag }));
-    if (!outboundGroups?.balancers.length) return outOpts;
-    return [
-      { label: t('pages.xray.Outbounds'), options: outOpts },
-      {
-        label: t('pages.xray.Balancers'),
-        options: outboundGroups.balancers.map((tag) => ({ label: tag, value: tag })),
-      },
-    ];
-  }, [outboundGroups, t]);
+  // Empty falls back to the placeholder ("Direct connection") rather than a synthetic option,
+  // so it can't read as a second "direct" next to a real freedom outbound.
+  const outboundOptions = useNodeOutboundOptions();
 
   // Reset during render, not in an effect, so the first frame is already clean.
   const [synced, setSynced] = useState<{ mode: string; node: NodeRecord | null } | null>(null);

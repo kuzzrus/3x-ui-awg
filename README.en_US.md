@@ -69,7 +69,7 @@ Every fix below was found and confirmed against live infrastructure, not hypothe
 - **Camouflage** — reverse proxy with a decoy (a real AdGuard Home, or login-mock pages).
 - **Per-client management** — traffic quotas, expiry dates, IP limits, live online status, one-click share links/QR/subscriptions.
 - **Traffic statistics** — per inbound, per client, and per outbound, with reset controls.
-- **Multi-node support** — manage and scale across servers from one panel.
+- **Multi-node support** — manage and scale across servers from one panel: full panels, or thin agents (`x-ui-agent`) that only run Xray, paired with one command ([details](docs/node-agent.md)).
 - **Built-in subscription server** with [custom page templates](docs/custom-subscription-templates.md).
 - **Telegram bot** for remote monitoring and management.
 - **RESTful API** with in-panel Swagger documentation.

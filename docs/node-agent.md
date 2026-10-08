@@ -1,9 +1,8 @@
 # Node agent (`x-ui-agent`)
 
 Design for an optional third kind of node: a thin, DB-less agent that only runs
-Xray-core for a master panel. The agent and its installer exist (phases 1 to 3); the
-master side (phases 4 and 5) does not yet. Each phase in [Phasing](#phasing) lands as
-its own PR and this file is updated as they do.
+Xray-core for a master panel. The agent, its installer and the master side with its UI
+exist (phases 1 to 6 of [Phasing](#phasing)); the later items are not built.
 
 ## Problem
 
@@ -252,7 +251,11 @@ what was accounted of the counter alone, so the agent's whole counter does not c
 
 Depletion and expiry are enforced by the master: the traffic sync job runs the usual check
 after every tick, a client that passed its quota is switched off and its node marked
-dirty, and it disappears from the next rendered config. Neither the stock global-traffic
+dirty, and it disappears from the next rendered config. The same goes for the traffic
+quota and the expiry of an inbound of an agent node, which has no panel to enforce them
+(a panel node still does it itself), and the renewal of a client on a plan that renews
+(a client that lives only on agent nodes included): the renewed client is back in the next
+push. Neither the stock global-traffic
 push to nodes nor a restart on disable is used for agents: the push carries the restart
 policy.
 
@@ -305,10 +308,13 @@ reach GitHub, and `--uninstall` (`--yes` skips the question).
    release archive carries `x-ui-agent` next to `x-ui`.
 3. **Installer** (`install-agent.sh`, systemd unit) and operator docs. Done.
 4. **Master core**: `Node.Kind` and migration, `AgentRuntime`, per-node rendering,
-   agent sync (heartbeat, push, stats), accounting.
-5. **UI**: agent kind in the add-node flow, bundle display, live connection check,
-   node list.
-6. **Live verification** on real hosts, then fixes.
+   agent sync (heartbeat, push, stats), accounting. Done.
+5. **UI**: agent kind in the add-node flow, bundle display, node list. Done: the Add
+   agent button, the pairing bundle shown once with the install steps, an Agent tag and
+   Pair again on the node list. The heartbeat is the live connection check.
+6. **Live verification** on a real host. Done with a throwaway master and an installed
+   agent: add, install, heartbeat, config push and hot apply, accounting through agent and
+   master restarts and resets, quota depletion, pairing again, deletion.
 7. Later, each on its own: outbound sidecars on the node (Tor, WARP, Psiphon) and
    AdGuard Home as the node's decoy, `nodeTags` routing, geo file updates,
    agent self-update, pull mode.
