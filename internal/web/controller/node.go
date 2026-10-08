@@ -221,7 +221,8 @@ func (a *NodeController) update(c *gin.Context) {
 		return
 	}
 	// An agent that is down, or not installed yet, must still be editable.
-	if old.Kind != model.NodeKindAgent && n.OutboundTag == "" && old.OutboundTag == "" && (!n.ClearApiToken || n.Enable) {
+	probes := old.Kind != model.NodeKindAgent
+	if probes && n.OutboundTag == "" && old.OutboundTag == "" && (!n.ClearApiToken || n.Enable) {
 		if err := a.ensureReachable(c, n, id); err != nil {
 			jsonMsg(c, I18nWeb(c, "pages.nodes.toasts.update"), err)
 			return
@@ -235,9 +236,11 @@ func (a *NodeController) update(c *gin.Context) {
 		if err := a.xrayService.RestartXray(false); err != nil {
 			logger.Warning("apply node outbound bridge change failed:", err)
 		}
-		if err := a.ensureReachable(c, n, id); err != nil {
-			jsonMsg(c, I18nWeb(c, "pages.nodes.toasts.update"), err)
-			return
+		if probes {
+			if err := a.ensureReachable(c, n, id); err != nil {
+				jsonMsg(c, I18nWeb(c, "pages.nodes.toasts.update"), err)
+				return
+			}
 		}
 	}
 	jsonMsg(c, I18nWeb(c, "pages.nodes.toasts.update"), nil)
