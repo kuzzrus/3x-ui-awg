@@ -12,9 +12,12 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
 
-// agentTrafficBatch bounds one client_traffics lookup and one baseline insert, which both run into
-// the database's variable limit past a few thousand.
-const agentTrafficBatch = 1000
+// One client_traffics lookup binds a variable per client, one baseline row five of them; both
+// stay under the ceiling the rest of the service keeps for a statement.
+const (
+	agentClientBatch  = sqliteMaxVars
+	agentCounterBatch = sqliteMaxVars / 5
+)
 
 type agentCounterKey struct{ kind, name string }
 
@@ -94,9 +97,9 @@ func (s *InboundService) addAgentTrafficLocked(nodeID int, stats *agentproto.Sta
 			}
 		}
 
-		for start := 0; start < len(clientDeltas); start += agentTrafficBatch {
-			end := min(start+agentTrafficBatch, len(clientDeltas))
-			if err := s.addClientTraffic(tx, clientDeltas[start:end]); err != nil {
+		for start := 0; start < len(clientDeltas); start += agentClientBatch {
+			end := min(start+agentClientBatch, len(clientDeltas))
+			if err := s.applyClientTraffic(tx, clientDeltas[start:end], true); err != nil {
 				return err
 			}
 		}
@@ -126,6 +129,6 @@ func (s *InboundService) addAgentTrafficLocked(nodeID int, stats *agentproto.Sta
 		return tx.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "node_id"}, {Name: "kind"}, {Name: "name"}},
 			DoUpdates: clause.AssignmentColumns([]string{"up", "down"}),
-		}).CreateInBatches(store, agentTrafficBatch).Error
+		}).CreateInBatches(store, agentCounterBatch).Error
 	})
 }

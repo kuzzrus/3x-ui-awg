@@ -127,7 +127,15 @@ func (s *InboundService) addInboundTraffic(tx *gorm.DB, traffics []*xray.Traffic
 	return nil
 }
 
-func (s *InboundService) addClientTraffic(tx *gorm.DB, traffics []*xray.ClientTraffic) (err error) {
+// addClientTraffic adds the deltas to the client rows; a row that fails is logged and the rest go on,
+// so one bad row cannot discard the usage Xray has already reset.
+func (s *InboundService) addClientTraffic(tx *gorm.DB, traffics []*xray.ClientTraffic) error {
+	return s.applyClientTraffic(tx, traffics, false)
+}
+
+// applyClientTraffic is addClientTraffic, except that with failFast a failed write is returned for
+// the caller's transaction to undo, as a caller that advances its own baselines with it needs.
+func (s *InboundService) applyClientTraffic(tx *gorm.DB, traffics []*xray.ClientTraffic, failFast bool) (err error) {
 	if len(traffics) == 0 {
 		return nil
 	}
@@ -190,6 +198,9 @@ func (s *InboundService) addClientTraffic(tx *gorm.DB, traffics []*xray.ClientTr
 			),
 			t.Up, t.Down, now, ct.Email,
 		).Error; err != nil {
+			if failFast {
+				return err
+			}
 			logger.Warning("AddClientTraffic update data ", err)
 		}
 	}
@@ -204,6 +215,9 @@ func (s *InboundService) addClientTraffic(tx *gorm.DB, traffics []*xray.ClientTr
 			`UPDATE client_traffics SET expiry_time = ? WHERE email = ? AND expiry_time < 0`,
 			convertedExpiryByEmail[email], email,
 		).Error; err != nil {
+			if failFast {
+				return err
+			}
 			logger.Warning("AddClientTraffic update expiry_time ", err)
 		}
 	}
