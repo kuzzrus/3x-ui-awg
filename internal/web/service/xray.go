@@ -400,10 +400,8 @@ func (s *XrayService) newConfigFromTemplate() (*xray.Config, error) {
 	return xrayConfig, nil
 }
 
-// mergeActiveSubscriptionOutbounds adds the outbounds of the active subscriptions to
-// cfg: each one before or after the template outbounds by its Prepend flag, ordered by
-// Priority. Tags assigned by the subscription service are kept stable across refreshes
-// so that balancers and routing rules continue to work.
+// mergeActiveSubscriptionOutbounds adds the active subscriptions' outbounds before or after the
+// template's by Prepend and Priority; their tags stay stable so balancers and rules keep working.
 func mergeActiveSubscriptionOutbounds(cfg *xray.Config) {
 	subSvc := &OutboundSubscriptionService{}
 	if prepend, appendList, err := subSvc.activeOutboundsSplit(); err == nil && (len(prepend) > 0 || len(appendList) > 0) {
