@@ -126,11 +126,13 @@ func (j *NodeTrafficSyncJob) Run() {
 		common.GoRecover("node-traffic-sync:"+n.Name, func() {
 			defer wg.Done()
 			defer func() { <-sem }()
+			var emails []string
 			if n.Kind == model.NodeKindAgent {
-				j.syncAgent(mgr, n)
-				return
+				emails = j.syncAgent(mgr, n)
+			} else {
+				emails = j.syncOne(mgr, n, doIpSync)
 			}
-			if emails := j.syncOne(mgr, n, doIpSync); len(emails) > 0 {
+			if len(emails) > 0 {
 				activeMu.Lock()
 				activeEmails = append(activeEmails, emails...)
 				activeMu.Unlock()

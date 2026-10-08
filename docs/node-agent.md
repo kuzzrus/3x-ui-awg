@@ -45,7 +45,7 @@ Non-goals (for v1):
 | Wire protocol               | Its own small HTTPS protocol (`/v1/*`), not the panel's `panel/api/*` dialect.                                                                                                           |
 | Who renders the Xray config | The master. The agent receives a finished config and applies it.                                                                                                                         |
 | How changes propagate       | Reuse the stock `ConfigDirty` mechanism: a mutation marks the node dirty, the sync job renders and pushes the whole config. The agent hot-applies when it can and restarts when it must. |
-| Traffic                     | Agent reports cumulative counters; the master diffs them against persisted per-node baselines (`node_client_traffics`), as for stock nodes.                                              |
+| Traffic                     | Agent reports cumulative counters; the master diffs them against what it already accounted of each counter (`agent_counters`).                                                           |
 | Installer                   | A separate `install-agent.sh`, not an `--agent` branch in `install.sh`.                                                                                                                  |
 | Push or pull                | Push (master dials the agent) in v1.                                                                                                                                                     |
 
@@ -176,7 +176,7 @@ New code lives in new files. The stock files get small hooks guarded by `Kind`:
 
 | Hook                                                          | Change                                                                                                                                                          |
 | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `database/model` + `db.go`                                    | `Node.Kind` (default `panel`) and one column for the last seen `xrayStartedAt`, with a migration.                                                               |
+| `database/model` + `db.go`                                    | `Node.Kind` (default `panel`), `Node.AgentStartedAt` and the `agent_counters` table, added by the automatic migration.                                          |
 | `runtime.Manager.RuntimeFor`                                  | `kind == agent` returns `AgentRuntime`.                                                                                                                         |
 | `AgentRuntime`                                                | Does not import `NodeService` (`service` already imports `runtime`). See below.                                                                                 |
 | Agent HTTP client (new file in `runtime`)                     | Built from `agentproto.ClientTLSConfig`: derived SNI, TLS 1.3, pinned fingerprint. Shared by `AgentRuntime` and `Probe`; stock `tls_client.go` is untouched.    |
@@ -219,9 +219,11 @@ then such a rule fails on an agent that lacks the sidecar. Per-node routing
 
 The agent keeps no history. Each poll the master reads cumulative counters together with
 the `xrayStartedAt` of the core that produced them, and compares them with the persisted
-baseline for that node and email.
+baseline for that node and counter (`agent_counters`: one row per user email and per inbound
+tag).
 
-- Same `xrayStartedAt`: the delta is `counter - baseline`.
+- Same `xrayStartedAt`: the delta is `counter - baseline`, and a counter with no baseline
+  yet is new, so it counts whole.
 - A different `xrayStartedAt` is a new core whatever the counters say. Counters restart
   from zero, so the whole new counter is the delta. A restart is not always visible as a
   drop: a busy client can pass its old baseline within one poll, so a rule that waits
@@ -229,13 +231,22 @@ baseline for that node and email.
 - The same `xrayStartedAt` with a counter below its baseline cannot happen (the agent
   never resets counters) and is treated as a reset too.
 
-Either way the delta goes into the central totals through the same path local traffic
-uses and the baseline is replaced. A restart loses at most the traffic since the last
+Either way the delta goes into the client totals through the same statement local traffic
+uses (and into the inbound totals of the node's inbounds), and the baselines are replaced,
+all in one transaction, so a crash can neither count a delta twice nor lose it. When a new
+core starts, the baselines of the old one are dropped first. A restart loses at most the traffic since the last
 poll (about five seconds). While the master is down the counters keep growing in the
 agent's Xray, so nothing is lost.
 
-Depletion and expiry are enforced by the master: a disabled client disappears from the
-next rendered config. The stock global-traffic push to nodes is not used for agents.
+The baselines are the agent's own table and not `node_client_traffics`, whose rows the
+stock resets delete: resetting a client's usage on the master zeroes its totals and leaves
+what was accounted of the counter alone, so the agent's whole counter does not count again.
+
+Depletion and expiry are enforced by the master: the traffic sync job runs the usual check
+after every tick, a client that passed its quota is switched off and its node marked
+dirty, and it disappears from the next rendered config. Neither the stock global-traffic
+push to nodes nor a restart on disable is used for agents: the push carries the restart
+policy.
 
 ## Failure behavior
 

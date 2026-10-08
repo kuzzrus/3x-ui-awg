@@ -83,6 +83,7 @@ func allModels() []any {
 		&model.Host{},
 		&model.NodeClientTraffic{},
 		&model.NodeClientIp{},
+		&model.AgentCounter{},
 		&model.ClientGlobalTraffic{},
 		&model.OutboundSubscription{},
 		&model.SubBalancer{},
@@ -1124,6 +1125,7 @@ func repairOverflowedTrafficCounters() error {
 		{"inbounds", []string{"up", "down"}},
 		{"outbound_traffics", []string{"up", "down", "total"}},
 		{"node_client_traffics", []string{"up", "down"}},
+		{"agent_counters", []string{"up", "down"}},
 	}
 	for _, target := range targets {
 		for _, col := range target.columns {

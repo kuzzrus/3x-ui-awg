@@ -1394,6 +1394,10 @@ func (s *InboundService) restartRemoteNodesOnDisable(nodeIDs []int) {
 				logger.Warning("disableInvalidClients: get runtime for node", nodeID, "failed:", rtErr)
 				continue
 			}
+			if _, isAgent := rt.(*runtime.AgentRuntime); isAgent {
+				// The next push drops the user and applies the same restart policy.
+				continue
+			}
 			if rtErr = rt.RestartXray(context.Background()); rtErr != nil {
 				logger.Warning("disableInvalidClients: restart xray on node", nodeID, "failed:", rtErr)
 			}

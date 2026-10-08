@@ -20,7 +20,7 @@ func seedAgentRow(t *testing.T, name string) int {
 	return node.Id
 }
 
-func seedInboundOn(t *testing.T, nodeID *int, tag string, protocol model.Protocol, enable bool, clients []model.Client) {
+func seedInboundOn(t *testing.T, nodeID *int, tag string, protocol model.Protocol, enable bool, clients []model.Client) *model.Inbound {
 	t.Helper()
 	in := &model.Inbound{
 		Tag:      tag,
@@ -36,6 +36,7 @@ func seedInboundOn(t *testing.T, nodeID *int, tag string, protocol model.Protoco
 	if err := (&ClientService{}).SyncInbound(nil, in.Id, clients); err != nil {
 		t.Fatalf("SyncInbound %s: %v", tag, err)
 	}
+	return in
 }
 
 func inboundTags(cfg *xray.Config) []string {
