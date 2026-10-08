@@ -853,6 +853,10 @@ type Node struct {
 	// save that grows the selection zeroes it so reconcile waits before sweeping.
 	InboundsAdoptedAt int64 `json:"-" gorm:"column:inbounds_adopted_at;default:0"`
 
+	// AgentStartedAt is the start time (unix ms) of the agent core whose counters the
+	// master last accounted. A different one means the counters began again from zero.
+	AgentStartedAt int64 `json:"-" gorm:"column:agent_started_at;default:0"`
+
 	InboundCount  int `json:"inboundCount" gorm:"-" example:"5"`
 	ClientCount   int `json:"clientCount" gorm:"-" example:"27"`
 	OnlineCount   int `json:"onlineCount" gorm:"-" example:"3"`
