@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/amneziawgnet"
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
@@ -130,5 +132,66 @@ func TestRenderAgentConfigIsTheSameBytesEveryTime(t *testing.T) {
 		if !bytes.Equal(first, again) {
 			t.Fatal("rendering the same state twice gave different bytes, so the master would push on every tick")
 		}
+	}
+}
+
+// The master bridges an amneziawg outbound through a socks password that is new with every
+// master process; an agent has no such sidecar, so its render must not carry it.
+func TestGetAgentConfigMakesAnAmneziaWGOutboundInert(t *testing.T) {
+	setupSettingTestDB(t)
+	node := seedAgentRow(t, "agent")
+	settings := &SettingService{}
+	template, err := settings.GetXrayConfigTemplate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(template), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	parsed["outbounds"] = append(parsed["outbounds"].([]any),
+		map[string]any{"protocol": "amneziawg", "tag": "awg-hop", "settings": map[string]any{"secretKey": "x"}})
+	raw, err := json.Marshal(parsed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := settings.saveSetting("xrayTemplateConfig", string(raw)); err != nil {
+		t.Fatal(err)
+	}
+
+	protocolOf := func(cfg *xray.Config, tag string) string {
+		var outbounds []struct{ Protocol, Tag string }
+		if err := json.Unmarshal(cfg.OutboundConfigs, &outbounds); err != nil {
+			t.Fatal(err)
+		}
+		for _, out := range outbounds {
+			if out.Tag == tag {
+				return out.Protocol
+			}
+		}
+		return ""
+	}
+	svc := &XrayService{}
+	master, err := svc.GetXrayConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := protocolOf(master, "awg-hop"); got != "socks" {
+		t.Fatalf("setup: the master bridges the outbound as %q, want socks", got)
+	}
+
+	agent, err := svc.GetAgentConfig(node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := protocolOf(agent, "awg-hop"); got != "blackhole" {
+		t.Fatalf("the agent's outbound is %q, want a blackhole that keeps the tag", got)
+	}
+	body, err := svc.RenderAgentConfig(node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), amneziawgnet.SocksPassword()) {
+		t.Fatal("the agent's render carries the master's per-process socks password")
 	}
 }
