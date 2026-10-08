@@ -11,13 +11,15 @@ import (
 	"gorm.io/gorm"
 )
 
-// ownedInboundsCond matches the inbounds this panel enforces the limits of: its own, and those
-// of an agent node, which has no panel of its own to do it. Placeholder: the agent kind.
-const ownedInboundsCond = "(node_id IS NULL OR node_id IN (SELECT id FROM nodes WHERE kind = ?))"
+// ownedInboundsCond matches the inbounds this panel keeps the limits and renewals of: its own, and
+// those of an agent node, which has no panel of its own to do it. Placeholder: the agent kind.
+func ownedInboundsCond(nodeIDColumn string) string {
+	return "(" + nodeIDColumn + " IS NULL OR " + nodeIDColumn + " IN (SELECT id FROM nodes WHERE kind = ?))"
+}
 
 func (s *InboundService) disableInvalidInbounds(tx *gorm.DB, mutationBatch *trafficMutationBatch) (bool, int64, error) {
 	now := time.Now().Unix() * 1000
-	cond := "((total > 0 and up + down >= total) or (expiry_time > 0 and expiry_time <= ?)) and enable = ? and " + ownedInboundsCond
+	cond := "((total > 0 and up + down >= total) or (expiry_time > 0 and expiry_time <= ?)) and enable = ? and " + ownedInboundsCond("node_id")
 	var inbounds []model.Inbound
 	if err := tx.Where(cond, now, true, model.NodeKindAgent).Find(&inbounds).Error; err != nil {
 		return false, 0, err

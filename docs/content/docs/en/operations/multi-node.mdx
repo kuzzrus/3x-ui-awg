@@ -125,7 +125,8 @@ secret, certificate pin and transport cannot be edited: they come with the bundl
 <Callout type="info">
   Traffic is counted on the master from the cumulative counters the agent reports, so a
   restart of the agent or of the master neither loses nor double counts usage, and a
-  client that passes its quota is dropped from the agent's config by the next push.
+  client that passes its quota is dropped from the agent's config by the next push, and
+  comes back the same way when its plan renews.
 </Callout>
 
 ## Managed hosts

@@ -253,7 +253,9 @@ Depletion and expiry are enforced by the master: the traffic sync job runs the u
 after every tick, a client that passed its quota is switched off and its node marked
 dirty, and it disappears from the next rendered config. The same goes for the traffic
 quota and the expiry of an inbound of an agent node, which has no panel to enforce them
-(a panel node still does it itself). Neither the stock global-traffic
+(a panel node still does it itself), and the renewal of a client on a plan that renews
+(a client that lives only on agent nodes included): the renewed client is back in the next
+push. Neither the stock global-traffic
 push to nodes nor a restart on disable is used for agents: the push carries the restart
 policy.
 
