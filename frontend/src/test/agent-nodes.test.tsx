@@ -117,7 +117,7 @@ describe('AgentNodeFormModal', () => {
     );
 
     expect(screen.getByLabelText('Address')).toHaveProperty('value', 'old.example.com');
-    expect(document.body.textContent).toContain('Use Pair again');
+    expect(document.body.textContent).toContain('use Pair again');
     expect(screen.getByLabelText('Enabled')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'new.example.com' } });

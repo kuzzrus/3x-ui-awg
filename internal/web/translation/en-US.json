@@ -1287,7 +1287,7 @@
         "add": "Add agent",
         "addTitle": "Add agent node",
         "addHint": "An agent runs only Xray on the server. This panel renders its whole config and pushes it, so the server needs no panel of its own. The agent is installed after the node is saved.",
-        "editHint": "The secret and the certificate of an agent come with its pairing bundle. Use Pair again to replace them.",
+        "editHint": "The secret, the certificate and the port of an agent come with its pairing bundle. After changing the port, or to replace the secret, use Pair again and install the new bundle.",
         "portHint": "The TCP port the agent listens on. It must be open in the firewall of the server.",
         "bundleTitle": "Install the agent of {name}",
         "bundleWarning": "This bundle holds the private key and the secret of the agent. It is shown only once and is not stored: copy it before you close this window.",
