@@ -6,10 +6,8 @@ const (
 	AgentCounterInbound = "inbound"
 )
 
-// AgentCounter is the last cumulative value the master accounted for one counter of an
-// agent's core, so the next poll can tell new traffic from what it already counted. It is
-// its own table, not node_client_traffics: those rows are dropped whenever a client's
-// usage is reset on the master, which would make the agent's whole counter count again.
+// AgentCounter is the last value accounted of one cumulative counter of an agent's core. It is not
+// node_client_traffics, whose rows a usage reset drops, which would count the whole counter again.
 type AgentCounter struct {
 	Id     int    `json:"id" gorm:"primaryKey;autoIncrement"`
 	NodeId int    `json:"nodeId" gorm:"uniqueIndex:idx_agent_counter,priority:1;not null"`

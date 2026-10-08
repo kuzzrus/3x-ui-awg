@@ -8,9 +8,8 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/web/runtime"
 )
 
-// syncAgent is syncOne for an agent node: the master keeps no copy of the node's state to
-// reconcile, so it accounts what the agent counted and sees that it runs the config the
-// master renders. It returns the emails online on the node.
+// syncAgent is syncOne for an agent node, which has no state to reconcile: it accounts what the agent
+// counted, sees that it runs the rendered config, and returns the emails online on the node.
 func (j *NodeTrafficSyncJob) syncAgent(mgr *runtime.Manager, n *model.Node) []string {
 	rt, err := mgr.AgentFor(n)
 	if err != nil {

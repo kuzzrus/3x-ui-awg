@@ -12,16 +12,14 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
 
-// agentTrafficBatch bounds the emails of one client_traffics lookup and the rows of one
-// baseline insert, both of which run into the database's variable limit past a few
-// thousand.
+// agentTrafficBatch bounds one client_traffics lookup and one baseline insert, which both run into
+// the database's variable limit past a few thousand.
 const agentTrafficBatch = 1000
 
 type agentCounterKey struct{ kind, name string }
 
-// AddAgentTraffic accounts what an agent's core counted since the last poll. The agent only
-// reports cumulative counters and the start time of the core that counted them, so the
-// master keeps what it already accounted and adds the difference to the central totals.
+// AddAgentTraffic adds to the totals what an agent's core counted since the last poll. The agent
+// reports only cumulative counters, so the master keeps what it accounted of each and adds the rest.
 func (s *InboundService) AddAgentTraffic(nodeID int, stats *agentproto.Stats) error {
 	if nodeID <= 0 || stats == nil {
 		return nil
