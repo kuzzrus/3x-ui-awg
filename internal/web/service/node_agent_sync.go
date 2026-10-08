@@ -19,6 +19,8 @@ const (
 	agentDriftCheckEvery = 30 * time.Second
 	// How long a config the agent turned down is left alone before it is tried again.
 	agentRefusalRetryAfter = 5 * time.Minute
+	// How long after a push failed another is tried, unless a mutation asks for one sooner.
+	agentRetryAfter = 15 * time.Second
 )
 
 // AgentSyncService keeps agent nodes running the config the master renders for them.
@@ -55,7 +57,8 @@ func (s *AgentSyncService) stateFor(nodeID int) *agentSyncState {
 // when the periodic comparison finds the agent running another one. stats is what the
 // agent reported this tick, nil when it could not be read. A config the agent refused is
 // not pushed again until it changes or agentRefusalRetryAfter has passed, and the node
-// stays dirty. A failure to reach the agent is returned and tried again on the next tick.
+// stays dirty. Any other failure is returned and tried again after agentRetryAfter, so an
+// agent that keeps failing is not rendered for and pushed to on every tick.
 func (s *AgentSyncService) Sync(ctx context.Context, rt *runtime.AgentRuntime, n *model.Node, stats *agentproto.Stats) error {
 	now := time.Now()
 	s.mu.Lock()
@@ -72,7 +75,7 @@ func (s *AgentSyncService) Sync(ctx context.Context, rt *runtime.AgentRuntime, n
 	err := s.sync(ctx, rt, n, stats, now)
 	if err != nil {
 		s.mu.Lock()
-		st.checkedAt, st.handledDirtyAt = time.Time{}, 0
+		st.checkedAt = now.Add(agentRetryAfter - agentDriftCheckEvery)
 		s.mu.Unlock()
 	}
 	return err

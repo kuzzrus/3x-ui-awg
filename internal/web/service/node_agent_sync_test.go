@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,14 +26,15 @@ type syncPush struct {
 // syncAgentFixture is a node row in the database that points at a stand-in for the agent's
 // /v1 API, which the test tells how to answer and which keeps what it was sent.
 type syncAgentFixture struct {
-	t      *testing.T
-	nodeID int
-	rt     *runtime.AgentRuntime
-	nodes  NodeService
-	mu     sync.Mutex
-	pushes []syncPush
-	refuse bool // answer pushes with 422
-	broken bool // answer pushes with 500
+	t        *testing.T
+	nodeID   int
+	rt       *runtime.AgentRuntime
+	nodes    NodeService
+	mu       sync.Mutex
+	pushes   []syncPush
+	restarts int
+	refuse   bool // answer pushes with 422
+	broken   bool // answer pushes with 500
 }
 
 func newSyncAgentFixture(t *testing.T) *syncAgentFixture {
@@ -86,6 +88,9 @@ func (f *syncAgentFixture) serve(w http.ResponseWriter, r *http.Request) {
 			revision := agentproto.RevisionOf(body, restart)
 			_, _ = w.Write([]byte(`{"revision":"` + revision + `","applied":"restart","xrayState":"running"}`))
 		}
+	case "POST " + agentproto.PathRestart:
+		f.restarts++
+		_, _ = w.Write([]byte(`{"revision":"x","applied":"restart","xrayState":"running"}`))
 	default:
 		http.NotFound(w, r)
 	}
@@ -256,7 +261,8 @@ func TestAgentSyncLeavesARefusedConfigAloneUntilItChanges(t *testing.T) {
 	}
 }
 
-func TestAgentSyncTriesAgainOnTheNextTickWhenTheAgentFails(t *testing.T) {
+// A failure that keeps coming back must not turn into a render and a push on every tick.
+func TestAgentSyncWaitsBeforeTryingAFailedPushAgain(t *testing.T) {
 	f := newSyncAgentFixture(t)
 	f.broken = true
 	svc := &AgentSyncService{}
@@ -265,20 +271,65 @@ func TestAgentSyncTriesAgainOnTheNextTickWhenTheAgentFails(t *testing.T) {
 	if err := f.sync(svc, nil); err == nil {
 		t.Fatal("a push the agent answered with a 500 was reported as done")
 	}
+	if err := f.sync(svc, nil); err != nil {
+		t.Fatalf("the next tick tried again at once: %v", err)
+	}
+	if got := len(f.pushed()); got != 1 {
+		t.Fatalf("%d pushes over two ticks, want the failed one only", got)
+	}
+
+	f.markDirty()
 	if err := f.sync(svc, nil); err == nil {
-		t.Fatal("the second push also failed, want that reported too")
+		t.Fatal("the push after a mutation also failed, want that reported")
 	}
 	if got := len(f.pushed()); got != 2 {
-		t.Fatalf("%d pushes over two ticks, want one per tick while the agent fails", got)
+		t.Fatalf("%d pushes, want a mutation to ask for one at once", got)
 	}
 
 	f.mu.Lock()
 	f.broken = false
 	f.mu.Unlock()
+	svc.agents[f.nodeID].checkedAt = time.Now().Add(-agentDriftCheckEvery)
 	if err := f.sync(svc, nil); err != nil {
-		t.Fatalf("Sync: %v", err)
+		t.Fatalf("Sync once the wait is over: %v", err)
 	}
-	if f.node().ConfigDirty {
-		t.Fatal("the node is still dirty after the agent took the config")
+	if got := len(f.pushed()); got != 3 || f.node().ConfigDirty {
+		t.Fatalf("%d pushes, dirty %v; want the node cleared by the third", got, f.node().ConfigDirty)
 	}
+}
+
+// The push that drops the user carries the restart policy, so a blind restart into the
+// config the agent still holds would only add a second one.
+func TestRestartOnDisableLeavesAnAgentToItsPush(t *testing.T) {
+	f := newSyncAgentFixture(t)
+	mgr := runtime.NewManager(runtime.LocalDeps{APIPort: func() int { return 0 }, SetNeedRestart: func() {}})
+	prev := runtime.GetManager()
+	runtime.SetManager(mgr)
+	t.Cleanup(func() { runtime.SetManager(prev) })
+	mgr.SetRuntimeOverride(f.nodeID, f.rt)
+	panel := &restartRecorder{}
+	mgr.SetRuntimeOverride(f.nodeID+1, panel)
+
+	(&InboundService{}).restartRemoteNodesOnDisable([]int{f.nodeID, f.nodeID + 1})
+
+	for deadline := time.Now().Add(5 * time.Second); panel.calls.Load() == 0; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the panel node was never asked to restart")
+		}
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.restarts != 0 {
+		t.Fatalf("the agent was asked to restart %d times, want it left to the next push", f.restarts)
+	}
+}
+
+type restartRecorder struct {
+	runtime.Runtime
+	calls atomic.Int32
+}
+
+func (r *restartRecorder) RestartXray(context.Context) error {
+	r.calls.Add(1)
+	return nil
 }

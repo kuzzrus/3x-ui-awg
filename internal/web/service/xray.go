@@ -397,11 +397,6 @@ func (s *XrayService) newConfigFromTemplate() (*xray.Config, error) {
 	// still carry sessionPlacement/sessionKey; lift them too (same reason as
 	// the per-inbound lift in renderInboundConfig).
 	xrayConfig.OutboundConfigs = liftOutboundsXhttpSessionIDKeys(xrayConfig.OutboundConfigs)
-	// Bridge amneziawg outbounds before anything else reads OutboundConfigs;
-	// the core has no amneziawg proxy and would reject the raw entry.
-	if err := transformAmneziaWGOutbounds(xrayConfig); err != nil {
-		return nil, err
-	}
 	return xrayConfig, nil
 }
 
@@ -420,6 +415,11 @@ func mergeActiveSubscriptionOutbounds(cfg *xray.Config) {
 func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 	xrayConfig, err := s.newConfigFromTemplate()
 	if err != nil {
+		return nil, err
+	}
+	// Bridge amneziawg outbounds before anything else reads OutboundConfigs;
+	// the core has no amneziawg proxy and would reject the raw entry.
+	if err := transformAmneziaWGOutbounds(xrayConfig); err != nil {
 		return nil, err
 	}
 
