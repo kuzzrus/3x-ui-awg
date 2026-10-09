@@ -39,6 +39,7 @@ type agentSyncState struct {
 	handledDirtyAt int64  // the dirty mark the last attempt dealt with, so a refusal is not retried every tick
 	refused        string // revision the agent turned down
 	refusedAt      time.Time
+	sendingGeo     bool // geo files are on their way, and the config waits for them
 }
 
 func (s *AgentSyncService) stateFor(nodeID int) *agentSyncState {
@@ -59,6 +60,10 @@ func (s *AgentSyncService) Sync(ctx context.Context, rt *runtime.AgentRuntime, n
 	now := time.Now()
 	s.mu.Lock()
 	st := s.stateFor(n.Id)
+	if st.sendingGeo {
+		s.mu.Unlock()
+		return nil
+	}
 	due := (n.ConfigDirty && n.ConfigDirtyAt != st.handledDirtyAt) || now.Sub(st.checkedAt) >= agentDriftCheckEvery
 	if due {
 		st.checkedAt, st.handledDirtyAt = now, n.ConfigDirtyAt
@@ -101,6 +106,16 @@ func (s *AgentSyncService) sync(ctx context.Context, rt *runtime.AgentRuntime, n
 	held := st.refused == want && now.Sub(st.refusedAt) < agentRefusalRetryAfter
 	s.mu.Unlock()
 	if held {
+		return nil
+	}
+
+	// The core refuses a config that reads a geo file it does not have, so those go first.
+	missing, err := s.geoFilesToSend(ctx, client, body, n.Name)
+	if err != nil {
+		return err
+	}
+	if len(missing) > 0 {
+		s.sendGeo(n, client, missing)
 		return nil
 	}
 

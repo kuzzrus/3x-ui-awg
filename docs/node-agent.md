@@ -2,7 +2,7 @@
 
 Design for an optional third kind of node: a thin, DB-less agent that only runs
 Xray-core for a master panel. The agent, its installer and the master side with its UI
-exist (phases 1 to 6 of [Phasing](#phasing)); the later items are not built.
+exist (phases 1 to 7 of [Phasing](#phasing)); the later items are not built.
 
 ## Problem
 
@@ -92,20 +92,22 @@ All requests carry `Authorization: Bearer <secret>`. Bodies and responses are JS
 except that a config push sends the Xray config itself as the body. Responses use plain
 HTTP status codes (no `{success,msg,obj}` envelope).
 
-| Endpoint           | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `PUT /v1/config`   | Body: the rendered Xray config, byte for byte; `restartOnUserRemoval` is a query flag. The revision is a hash of the flag and the body bytes, computed by each side over exactly what was sent, so no JSON re-encoding can make them disagree. Validates with the core's own test (`xray -test -c`), then applies (no-op, hot, or restart). Answers `{revision, applied: noop\|hot\|restart, xrayState}`; on a bad config answers 422 and keeps the last good one. |
-| `GET /v1/status`   | Agent version, hostname, GUID, config revision, Xray version/state/error, CPU, memory, uptime, interface throughput. This is the heartbeat.                                                                                                                                                                                                                                                                                                                        |
-| `GET /v1/stats`    | Cumulative counters since Xray started: per inbound tag and per user email (up/down), online emails, `xrayStartedAt` so the master detects resets exactly instead of guessing from a drop, and `configRevision`, the revision of the config the agent holds, which tells the master whether a push is due.                                                                                                                                                         |
-| `POST /v1/restart` | Restart Xray with the last good config. Answers 409 before any config exists and 500 when the core does not come back; 422 only ever means a refused push.                                                                                                                                                                                                                                                                                                         |
+| Endpoint                    | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PUT /v1/config`            | Body: the rendered Xray config, byte for byte; `restartOnUserRemoval` is a query flag. The revision is a hash of the flag and the body bytes, computed by each side over exactly what was sent, so no JSON re-encoding can make them disagree. Validates with the core's own test (`xray -test -c`), then applies (no-op, hot, or restart). Answers `{revision, applied: noop\|hot\|restart, xrayState}`; on a bad config answers 422 and keeps the last good one. |
+| `GET /v1/status`            | Agent version, hostname, GUID, config revision, Xray version/state/error, CPU, memory, uptime, interface throughput. This is the heartbeat.                                                                                                                                                                                                                                                                                                                        |
+| `GET /v1/stats`             | Cumulative counters since Xray started: per inbound tag and per user email (up/down), online emails, `xrayStartedAt` so the master detects resets exactly instead of guessing from a drop, and `configRevision`, the revision of the config the agent holds, which tells the master whether a push is due.                                                                                                                                                         |
+| `POST /v1/restart`          | Restart Xray with the last good config. Answers 409 before any config exists and 500 when the core does not come back; 422 only ever means a refused push.                                                                                                                                                                                                                                                                                                         |
+| `GET /v1/geo`               | The `*.dat` files in the agent's asset folder, with their sizes.                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `PUT /v1/geo?name=&sha256=` | Stores one geo file. The body is the file, gzip-encoded when `Content-Encoding: gzip` says so. The agent hashes what it unpacked and refuses (400) a name that is no `*.dat` file name or a body that does not match `sha256`, refuses (413) more than 256 MiB, and swaps the file in by renaming, so the core never reads half of one. It does not restart the core.                                                                                              |
 
 Any other path, wrong method, or failed auth answers the same bare 404, so a response
 never says which part of the request was wrong. It does not hide that an HTTPS server
 answers: that is the SNI gate's job. The master only sends valid requests, so for it a 404
 means a wrong secret and a handshake failure means a wrong bundle; the agent logs the
 precise reason locally, once a minute per reason so a scanner cannot flood the log. Later
-phases add endpoints (sidecars, geo update, logs,
-self-update) under the same prefix.
+phases add endpoints (sidecars, logs, self-update) under
+the same prefix.
 
 ### Config apply
 
@@ -125,6 +127,24 @@ On boot the agent opens its port, then loads the last good config and starts Xra
 waiting for the master, so a reboot with the master down does not take the node offline.
 The port opens first so a stored config that will not start cannot lock the master out; a
 push made meanwhile waits for the start attempt to end.
+
+### Geo files
+
+The core refuses a config that reads a geo file it does not have, and the files of the
+template's `geodata` section count: it looks for each one before it downloads anything.
+So before a push the sync compares what the rendered config reads (`geoip.dat` and
+`geosite.dat` when a rule uses `geoip:` or `geosite:`, every `ext:<file>.dat:<tag>`
+entry, every `geodata.assets[].file`) with `GET /v1/geo`, and sends the files the agent
+lacks and the master holds. The upload runs in the background, gzipped, four at a time
+and within 15 minutes each, so the tick that waits for every node is not held by a slow
+link; the config goes out on the first tick after the files are there, and an upload
+that fails is tried again after 15 seconds. A file the agent already has is never
+replaced. Keeping them current is the template's `geodata` section (Geodata
+Auto-Update on the dashboard): it is rendered into every agent's config like the rest of
+the template, so each core fetches its updates on the schedule set there. A file the
+master does not have either is left out, the push goes ahead and the agent's refusal
+shows on the node. An agent from before the endpoint answers 404 and is pushed as it
+always was.
 
 ## Pairing and transport security
 
@@ -315,14 +335,13 @@ reach GitHub, and `--uninstall` (`--yes` skips the question).
 6. **Live verification** on a real host. Done with a throwaway master and an installed
    agent: add, install, heartbeat, config push and hot apply, accounting through agent and
    master restarts and resets, quota depletion, pairing again, deletion.
-7. Later, each on its own: outbound sidecars on the node (Tor, WARP, Psiphon) and
-   AdGuard Home as the node's decoy, `nodeTags` routing, geo file updates,
-   agent self-update, pull mode.
+7. **Geo files**. Done: the master sends an agent the geo files its config reads when
+   it lacks them, and the template's `geodata` section keeps them current.
+8. Later, each on its own: outbound sidecars on the node (Tor, WARP, Psiphon) and
+   AdGuard Home as the node's decoy, `nodeTags` routing, agent self-update, pull mode.
 
 ## Open questions
 
 - Whether the stock node-tree views should show agents under their own heading.
-- How geo data (`geosite`/`geoip` plus the fork's extra `.dat` files) is kept current
-  on an agent before the geo update endpoint exists; v1 ships what the release bundles.
 - Whether the agent should also expose `GET /v1/logs` in v1 or leave it for the sidecar
   phase.

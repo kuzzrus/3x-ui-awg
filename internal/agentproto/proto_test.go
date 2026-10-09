@@ -144,3 +144,34 @@ func TestWireFieldNames(t *testing.T) {
 		})
 	}
 }
+
+func TestValidGeoName(t *testing.T) {
+	tests := []struct {
+		name string
+		ok   bool
+	}{
+		{"geoip.dat", true},
+		{"geosite_runet.dat", true},
+		{"geoip-IR.v2.dat", true},
+		{"", false},
+		{".dat", false},
+		{"geoip", false},
+		{"geoip.DAT", false},
+		{"geoip.dat.bak", false},
+		{"../geoip.dat", false},
+		{"..dat", false},
+		{"a..b.dat", false},
+		{"dir/geoip.dat", false},
+		{"dir" + bs + "geoip.dat", false},
+		{"/etc/geoip.dat", false},
+		{"geo ip.dat", false},
+		{"geoip.dat\n", false},
+		{strings.Repeat("a", 97) + ".dat", false},
+		{strings.Repeat("a", 96) + ".dat", true},
+	}
+	for _, tt := range tests {
+		if got := ValidGeoName(tt.name); got != tt.ok {
+			t.Errorf("ValidGeoName(%q) = %v, want %v", tt.name, got, tt.ok)
+		}
+	}
+}
