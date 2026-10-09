@@ -33,7 +33,8 @@ Usage: install-agent.sh [options]
   --bundle-file PATH  read the pairing bundle from PATH, or from stdin when PATH is -.
                       Without it the bundle is pasted at a silent prompt, and an
                       update keeps the bundle already installed.
-  --version TAG       install this release tag (default: the latest stable release;
+  --version TAG       install this release tag (default: the latest stable release, or
+                      dev-latest while that release does not ship the agent yet;
                       dev-latest follows the per-commit builds).
   --tarball PATH      install from an x-ui-linux-<arch>.tar.gz you downloaded yourself.
   --uninstall         stop the agent and remove everything it installed.
@@ -129,6 +130,18 @@ unpack_archive() {
     fi
 }
 
+# Unpacks the archive from scratch and succeeds only if it shipped the agent. With "quiet" tar's
+# complaint about a missing entry is left out, for a caller that has another archive to try.
+unpack_agent() {
+    rm -rf "$work/x-ui"
+    if [[ "${1:-}" == quiet ]]; then
+        unpack_archive 2> /dev/null || true
+    else
+        unpack_archive || true
+    fi
+    [[ -s "$work/x-ui/x-ui-agent" ]]
+}
+
 # Puts the bundle in $1 with owner-only permissions: read it from the prompt, a file or stdin.
 read_bundle() {
     local dest="$1" pasted
@@ -192,9 +205,19 @@ install_agent() {
     trap cleanup EXIT
 
     fetch_archive
-    unpack_archive || die "Could not unpack the release archive. It may not ship x-ui-agent: try --version dev-latest, or a newer release."
     agent_bin="$work/x-ui/x-ui-agent"
-    [[ -s "$agent_bin" ]] || die "This release does not ship x-ui-agent. Try --version dev-latest, or a newer release."
+    if ! unpack_agent quiet; then
+        # Only a release that came from "latest" is swapped: a tag or an archive the operator
+        # chose is installed as given or not at all.
+        if [[ -n "$tarball" || $tag_given -eq 1 ]]; then
+            unpack_agent || true # again, aloud, so that tar says what is wrong
+            die "Could not unpack the release archive. It may not ship x-ui-agent: try --version dev-latest, or a newer release."
+        fi
+        warn "The latest release (${tag}) does not ship x-ui-agent yet, so the rolling dev-latest build is installed instead."
+        tag="dev-latest"
+        fetch_archive
+        unpack_agent || die "Could not unpack the dev-latest archive, or it does not ship x-ui-agent either."
+    fi
     [[ -s "$work/x-ui/bin/xray-linux-$(arch)" ]] || die "The archive has no Xray core for $(arch)."
     chmod +x "$agent_bin"
 
@@ -252,7 +275,7 @@ uninstall_agent() {
     info "The x-ui agent is removed. Delete the node on the master as well."
 }
 
-bundle_file="" tag="" tarball="" archive="" work="" do_uninstall=0 assume_yes=0
+bundle_file="" tag="" tag_given=0 tarball="" archive="" work="" do_uninstall=0 assume_yes=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --bundle-file)
@@ -261,6 +284,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --version)
             tag="${2:?--version needs a release tag}"
+            tag_given=1
             shift 2
             ;;
         --tarball)
