@@ -1272,6 +1272,8 @@
         "updateStarted": "Panel update started",
         "updateResult": "Update triggered on {ok} node(s), {failed} failed",
         "updateNoneEligible": "Select at least one online, enabled node",
+        "logs": "Load the log of the node",
+        "restartXray": "Restart Xray",
         "saveMtls": "Save node mTLS",
         "reloadMtls": "Reload master mTLS credential"
       },
@@ -1302,7 +1304,13 @@
         "repair": "Pair again",
         "update": "Update agent",
         "repairConfirmTitle": "Pair \"{name}\" again?",
-        "repairConfirmContent": "A new secret and certificate are created and the agent that holds the current bundle is cut off at once. Install the new bundle on the server to bring the node back."
+        "repairConfirmContent": "A new secret and certificate are created and the agent that holds the current bundle is cut off at once. Install the new bundle on the server to bring the node back.",
+        "logs": "Agent log",
+        "restart": "Restart Xray",
+        "restarted": "Xray restarted on {name}",
+        "restartConfirmTitle": "Restart Xray on \"{name}\"?",
+        "restartConfirmContent": "The core restarts into the config the agent last ran, and every connection through this node drops for a moment.",
+        "logsTitle": "Log of {name}"
       },
       "mtls": {
         "title": "Node mTLS",

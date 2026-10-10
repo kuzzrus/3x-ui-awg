@@ -11909,6 +11909,126 @@
         }
       }
     },
+    "/panel/api/nodes/agentLogs/{id}/{count}": {
+      "post": {
+        "tags": [
+          "Nodes"
+        ],
+        "summary": "Return the newest lines of an agent node’s log, newest first, with what its core printed. Only an agent node has a log to read from here; an agent from before the endpoint is reported as too old.",
+        "operationId": "post_panel_api_nodes_agentLogs_id_count",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Agent node ID.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "count",
+            "in": "path",
+            "required": true,
+            "description": "Number of lines, at most 1000.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "level": {
+                    "type": "string",
+                    "description": "Least severe level to include: debug, info, notice, warning or err. Defaults to info."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {
+                      "type": "array",
+                      "nullable": true,
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": [
+                    "2026/10/10 12:00:02 INFO - XRAY: Xray started",
+                    "2026/10/10 12:00:01 INFO - agent: serving the master on [::]:8443"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/nodes/restartXray/{id}": {
+      "post": {
+        "tags": [
+          "Nodes"
+        ],
+        "summary": "Restart the Xray core of a node. An agent restarts into the config it last ran and every connection through it drops for a moment; a node that is disabled is refused.",
+        "operationId": "post_panel_api_nodes_restartXray_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Node ID.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/panel/api/nodes/history/{id}/{metric}/{bucket}": {
       "get": {
         "tags": [

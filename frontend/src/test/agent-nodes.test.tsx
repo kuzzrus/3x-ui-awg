@@ -156,7 +156,7 @@ describe('NodeList with an agent node', () => {
     },
   ];
 
-  function renderList(onRepair = noop, onUpdateNode = noop) {
+  function renderList(onRepair = noop, onUpdateNode = noop, onLogs = noop, onRestartXray = noop) {
     renderWithProviders(
       <NodeList
         nodes={nodes}
@@ -168,6 +168,8 @@ describe('NodeList with an agent node', () => {
         onMtls={noop}
         onEdit={noop}
         onRepair={onRepair}
+        onLogs={onLogs}
+        onRestartXray={onRestartXray}
         onDelete={noop}
         onProbe={noop}
         onToggleEnable={noop}
@@ -200,6 +202,19 @@ describe('NodeList with an agent node', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Pair again' }));
     expect(onRepair).toHaveBeenCalledWith(expect.objectContaining({ id: 2, kind: 'agent' }));
+  });
+
+  it('offers an agent its log and a restart of Xray, and a panel node neither', () => {
+    const onLogs = vi.fn();
+    const onRestartXray = vi.fn();
+    renderList(noop, noop, onLogs, onRestartXray);
+
+    expect(screen.getAllByLabelText('Agent log')).toHaveLength(1);
+    expect(screen.getAllByLabelText('Restart Xray')).toHaveLength(1);
+    fireEvent.click(screen.getByLabelText('Agent log'));
+    expect(onLogs).toHaveBeenCalledWith(expect.objectContaining({ id: 2, kind: 'agent' }));
+    fireEvent.click(screen.getByLabelText('Restart Xray'));
+    expect(onRestartXray).toHaveBeenCalledWith(expect.objectContaining({ id: 2, kind: 'agent' }));
   });
 
   it('has a button to add an agent', () => {

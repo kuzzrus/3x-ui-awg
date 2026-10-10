@@ -44,6 +44,8 @@ func (a *NodeController) initRouter(g *gin.RouterGroup) {
 	g.POST("/inbounds", a.inbounds)
 	g.POST("/probe/:id", a.probe)
 	g.POST("/updatePanel", a.updatePanel)
+	g.POST("/agentLogs/:id/:count", a.agentLogs)
+	g.POST("/restartXray/:id", a.restartXray)
 	g.GET("/history/:id/:metric/:bucket", a.history)
 	g.POST("/mtls/ca", a.mtlsCa)
 	g.POST("/mtls/trustCA", a.setMtlsTrustCA)
@@ -372,6 +374,36 @@ func (a *NodeController) probe(c *gin.Context) {
 		return
 	}
 	jsonObj(c, patch.ToUI(probeErr == nil), nil)
+}
+
+// agentLogs returns the newest lines of an agent node's log, the core's output included.
+func (a *NodeController) agentLogs(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "get"), err)
+		return
+	}
+	count, err := strconv.Atoi(c.Param("count"))
+	if err != nil || count < 1 {
+		jsonMsg(c, I18nWeb(c, "get"), errors.New("count must be a positive number"))
+		return
+	}
+	lines, err := a.nodeService.AgentLogs(id, count, c.PostForm("level"))
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.nodes.toasts.logs"), err)
+		return
+	}
+	jsonObj(c, lines, nil)
+}
+
+// restartXray restarts the Xray core of a node.
+func (a *NodeController) restartXray(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "get"), err)
+		return
+	}
+	jsonMsg(c, I18nWeb(c, "pages.nodes.toasts.restartXray"), a.nodeService.RestartNodeXray(id))
 }
 
 func (a *NodeController) updatePanel(c *gin.Context) {
