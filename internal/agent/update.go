@@ -21,10 +21,12 @@ import (
 )
 
 const (
-	updateStatusFile      = "update.json"
-	maxInstallerBytes     = 1 << 20
-	installerFetchTimeout = 30 * time.Second
-	systemdRunTimeout     = 30 * time.Second
+	updateStatusFile  = "update.json"
+	maxInstallerBytes = 1 << 20
+	// The installer is a few kilobytes, and the master that waits for the answer to start an update
+	// gives up after 20 s, so downloading it and queueing the unit must fit well inside that.
+	installerFetchTimeout = 10 * time.Second
+	systemdRunTimeout     = 5 * time.Second
 	// A run that never wrote its result (the host went down under it) stops blocking the next.
 	updateStaleAfter = 30 * time.Minute
 

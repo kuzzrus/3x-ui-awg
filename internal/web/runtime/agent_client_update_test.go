@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/agentproto"
 )
@@ -64,5 +65,14 @@ func TestAgentClientReportsWhyTheAgentWillNotUpdate(t *testing.T) {
 	var got *AgentError
 	if !errors.As(err, &got) || got.Status != http.StatusConflict || !strings.Contains(got.Message, "already running") {
 		t.Fatalf("error = %v, want the agent's own reason as an *AgentError", err)
+	}
+}
+
+// An update is started from a request that the panel cuts off after 30 s (web.go), and a bulk update
+// answers when its slowest node does, so one agent that does not answer must not outlast that.
+func TestAgentUpdateStartGivesUpBeforeThePanelCutsTheRequestOff(t *testing.T) {
+	const panelWriteTimeout = 30 * time.Second
+	if agentUpdateTimeout > panelWriteTimeout-5*time.Second {
+		t.Fatalf("agentUpdateTimeout = %v, want it to leave the panel's %v write deadline room to answer", agentUpdateTimeout, panelWriteTimeout)
 	}
 }

@@ -33,8 +33,9 @@ const (
 	agentGeoListTimeout = 10 * time.Second
 	// A geo file is tens of megabytes and the link to a node may be slow.
 	agentGeoSendTimeout = 15 * time.Minute
-	// The agent downloads the installer, in up to 30 s, before it answers that an update has started.
-	agentUpdateTimeout = 90 * time.Second
+	// The agent downloads the installer, in up to 10 s, before it answers that an update has started.
+	// The call runs inside a request the panel cuts off after 30 s, as a panel node's update does in 20.
+	agentUpdateTimeout = 20 * time.Second
 	// Status, config and restart answers are a handful of scalars, and every heartbeat reads
 	// one; the stats hold a counter for every inbound and user.
 	maxAnswerBytes = 1 << 20
