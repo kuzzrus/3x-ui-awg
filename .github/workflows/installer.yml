@@ -1,0 +1,31 @@
+name: Agent Installer
+
+# install-agent.sh is piped from main by the Add agent window, so its choice of archive is
+# worth a check of its own. The test needs no root, systemd or network, and the build jobs
+# never run the script.
+
+on:
+  push:
+    branches:
+      - "**"
+    paths:
+      - "install-agent.sh"
+      - "deploy/test/install-agent-selection.sh"
+      - ".github/workflows/installer.yml"
+  pull_request:
+    paths:
+      - "install-agent.sh"
+      - "deploy/test/install-agent-selection.sh"
+      - ".github/workflows/installer.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  archive-selection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Archive selection
+        run: bash deploy/test/install-agent-selection.sh
