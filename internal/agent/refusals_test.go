@@ -77,3 +77,34 @@ func TestServerLogHoldsBackAFloodOfComplaints(t *testing.T) {
 		t.Fatalf("lines after the minute = %q, want one that counts the held ones", lines)
 	}
 }
+
+// A panic in a handler or a failed accept is nobody's flood, and has to stay in the log whatever
+// a scanner has just been held back for.
+func TestServerLogKeepsWhatIsNotAHandshakeComplaint(t *testing.T) {
+	var debugs, warns []string
+	clock := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
+	log := serverLog{
+		now:    func() time.Time { return clock },
+		debugf: func(format string, args ...any) { debugs = append(debugs, fmt.Sprintf(format, args...)) },
+		warnf:  func(format string, args ...any) { warns = append(warns, fmt.Sprintf(format, args...)) },
+	}
+
+	for range 100 {
+		fmt.Fprint(&log, "http: TLS handshake error from 203.0.113.1:4000: EOF\n")
+	}
+	fmt.Fprint(&log, "http: panic serving 203.0.113.1:4001: boom\ngoroutine 7 [running]:\n")
+	fmt.Fprint(&log, "http: Accept error: accept tcp [::]:8443: too many open files; retrying in 5ms\n")
+	if len(debugs) != 1 {
+		t.Fatalf("handshake lines = %q, want the first one only", debugs)
+	}
+	if len(warns) != 2 || !strings.Contains(warns[0], "panic serving") || !strings.Contains(warns[0], "goroutine 7") ||
+		!strings.Contains(warns[1], "Accept error") {
+		t.Fatalf("warnings = %q, want the panic with its trace and the failed accept, each at once", warns)
+	}
+
+	clock = clock.Add(refusalLogEvery)
+	fmt.Fprint(&log, "http: TLS handshake error from 203.0.113.2:4002: EOF\n")
+	if len(debugs) != 2 || !strings.HasSuffix(debugs[1], "(99 more like it since the last line)") {
+		t.Fatalf("handshake lines after the minute = %q, want a count of the handshake complaints held back", debugs)
+	}
+}

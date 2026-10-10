@@ -121,17 +121,34 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, tlsConfig *tls.Conf
 	return err
 }
 
-// serverLog passes one of the http server's complaints a minute on to the debug log and counts the
-// rest: the port is open to the world, and a flood of them would fill the log GET /v1/logs serves.
+// serverLog logs one failed handshake a minute, with a count of the rest: the port is open to the
+// world, and a flood of them would fill the log GET /v1/logs serves. Anything else is a warning.
 type serverLog struct {
 	mu     sync.Mutex
 	last   time.Time
 	held   int
 	now    func() time.Time                 // time.Now unless a test sets it
 	debugf func(format string, args ...any) // logger.Debugf unless a test sets it
+	warnf  func(format string, args ...any) // logger.Warningf unless a test sets it
+}
+
+// isHandshakeComplaint reports whether a line of the http server's log is about a connection that
+// never got as far as a request, which anyone who can reach the port can cause.
+func isHandshakeComplaint(line string) bool {
+	return strings.HasPrefix(line, "http: TLS handshake error from ") ||
+		strings.HasPrefix(line, "http2: server: error reading preface from client ")
 }
 
 func (l *serverLog) Write(p []byte) (int, error) {
+	line := strings.TrimSpace(string(p))
+	if !isHandshakeComplaint(line) {
+		warnf := logger.Warningf
+		if l.warnf != nil {
+			warnf = l.warnf
+		}
+		warnf("agent: http: %s", line)
+		return len(p), nil
+	}
 	now, debugf := time.Now, logger.Debugf
 	if l.now != nil {
 		now = l.now
@@ -154,7 +171,7 @@ func (l *serverLog) Write(p []byte) (int, error) {
 	if held > 0 {
 		more = fmt.Sprintf(" (%d more like it since the last line)", held)
 	}
-	debugf("agent: http: %s%s", strings.TrimSpace(string(p)), more)
+	debugf("agent: http: %s%s", line, more)
 	return len(p), nil
 }
 
