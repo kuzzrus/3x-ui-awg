@@ -5,6 +5,8 @@ package agentproto
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"regexp"
+	"strings"
 )
 
 const (
@@ -13,13 +15,23 @@ const (
 	PathStatus  = "/v1/status"
 	PathStats   = "/v1/stats"
 	PathRestart = "/v1/restart"
+	// PathGeo lists the geo files the agent holds (GET) and stores one (PUT).
+	PathGeo = "/v1/geo"
 
 	// QueryRestartOnUserRemoval is the PathConfig query flag (a bool) that makes
 	// the agent restart the core instead of dropping a removed client's credential.
 	QueryRestartOnUserRemoval = "restartOnUserRemoval"
 
+	// The PathGeo PUT names the file and carries the SHA-256 of its content as query parameters.
+	QueryGeoName   = "name"
+	QueryGeoSha256 = "sha256"
+
 	// MaxConfigBytes caps a PUT /v1/config body on the agent.
 	MaxConfigBytes = 32 << 20
+	// MaxGeoBytes caps one geo file, as it is stored.
+	MaxGeoBytes = 256 << 20
+
+	maxGeoNameLen = 100
 )
 
 // How a pushed config was applied.
@@ -70,6 +82,24 @@ type Stats struct {
 	Inbounds       map[string]Counter `json:"inbounds"`
 	Users          map[string]Counter `json:"users"`
 	Online         []string           `json:"online"`
+}
+
+// GeoFile is a geo database in the agent's asset folder.
+type GeoFile struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+}
+
+type GeoFiles struct {
+	Files []GeoFile `json:"files"`
+}
+
+var geoNamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]+\.dat$`)
+
+// ValidGeoName reports whether name can be a geo file in the asset folder: plain characters, no
+// path and no dot-dot, ending in .dat, the rule the panel applies to the geo files it updates.
+func ValidGeoName(name string) bool {
+	return len(name) <= maxGeoNameLen && !strings.Contains(name, "..") && geoNamePattern.MatchString(name)
 }
 
 type ErrorBody struct {

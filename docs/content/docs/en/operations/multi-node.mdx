@@ -129,6 +129,13 @@ secret, certificate pin and transport cannot be edited: they come with the bundl
   comes back the same way when its plan renews.
 </Callout>
 
+<Callout type="info">
+  The agent's core will not accept a config that reads a geo file it does not have. When a
+  config needs one the agent lacks, the master sends its own copy before the config. Files
+  the agent already holds are left alone: set **Geodata Auto-Update** on the dashboard and
+  every agent's core keeps them current on that schedule.
+</Callout>
+
 ## Managed hosts
 
 A **managed host** is an override endpoint attached to an inbound. At

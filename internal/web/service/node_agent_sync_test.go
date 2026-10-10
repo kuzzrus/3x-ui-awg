@@ -35,6 +35,7 @@ type syncAgentFixture struct {
 	restarts int
 	refuse   bool // answer pushes with 422
 	broken   bool // answer pushes with 500
+	geo      *syncGeoAgent
 }
 
 func newSyncAgentFixture(t *testing.T) *syncAgentFixture {
@@ -92,7 +93,9 @@ func (f *syncAgentFixture) serve(w http.ResponseWriter, r *http.Request) {
 		f.restarts++
 		_, _ = w.Write([]byte(`{"revision":"x","applied":"restart","xrayState":"running"}`))
 	default:
-		http.NotFound(w, r)
+		if !f.serveGeo(w, r) {
+			http.NotFound(w, r)
+		}
 	}
 }
 
@@ -172,7 +175,7 @@ func TestAgentSyncSendsTheRestartPolicyOfTheSetting(t *testing.T) {
 func TestAgentSyncDoesNotPushWhatTheAgentAlreadyRuns(t *testing.T) {
 	f := newSyncAgentFixture(t)
 	f.markDirty()
-	stats := &agentproto.Stats{ConfigRevision: agentproto.RevisionOf(f.wantRendered(), true)}
+	stats := &agentproto.Stats{ConfigRevision: agentproto.RevisionOf(f.wantRendered(), true), XrayStartedAt: time.Now().UnixMilli()}
 
 	if err := f.sync(&AgentSyncService{}, stats); err != nil {
 		t.Fatalf("Sync: %v", err)
