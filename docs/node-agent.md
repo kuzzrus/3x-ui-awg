@@ -305,7 +305,9 @@ The installer asks for the bundle, checks it before it touches anything, downloa
 release archive for the node's CPU (verifying its SHA-256), installs the agent and the
 Xray core, and starts `x-ui-agent.service`. Options: `--bundle-file`, `--version <tag>`
 (`dev-latest` follows the per-commit builds), `--tarball <path>` for a node that cannot
-reach GitHub, and `--uninstall` (`--yes` skips the question).
+reach GitHub, and `--uninstall` (`--yes` skips the question). While the latest stable
+release predates the agent, a run without `--version` installs `dev-latest` instead and
+says so; a tag or archive given explicitly is never swapped.
 
 | What                                                      | Where                                              |
 | --------------------------------------------------------- | -------------------------------------------------- |

@@ -33,7 +33,8 @@ Usage: install-agent.sh [options]
   --bundle-file PATH  read the pairing bundle from PATH, or from stdin when PATH is -.
                       Without it the bundle is pasted at a silent prompt, and an
                       update keeps the bundle already installed.
-  --version TAG       install this release tag (default: the latest stable release;
+  --version TAG       install this release tag (default: the latest stable release, or
+                      dev-latest while that release does not ship the agent yet;
                       dev-latest follows the per-commit builds).
   --tarball PATH      install from an x-ui-linux-<arch>.tar.gz you downloaded yourself.
   --uninstall         stop the agent and remove everything it installed.
@@ -129,6 +130,30 @@ unpack_archive() {
     fi
 }
 
+# Succeeds when the archive lists the agent. An archive that cannot be listed (cut short,
+# damaged) stops the install here, so that it is not taken for one without the agent.
+archive_has_agent() {
+    local entries
+    entries=$(tar -tzf "$archive") || die "Cannot read the release archive: it may be damaged or cut short."
+    grep -qx 'x-ui/x-ui-agent' <<< "$entries"
+}
+
+# Gets the archive that ships the agent. Only one resolved from "latest" is swapped for dev-latest
+# when it predates the agent: a tag or an archive the operator chose is installed as given or not at all.
+select_archive() {
+    fetch_archive
+    if archive_has_agent; then
+        return 0
+    fi
+    if [[ -n "$tarball" || $tag_given -eq 1 ]]; then
+        die "This archive does not ship x-ui-agent: try --version dev-latest, or a newer release."
+    fi
+    warn "The latest release (${tag}) does not ship x-ui-agent yet, so the rolling dev-latest build is installed instead."
+    tag="dev-latest"
+    fetch_archive
+    archive_has_agent || die "The dev-latest archive does not ship x-ui-agent either."
+}
+
 # Puts the bundle in $1 with owner-only permissions: read it from the prompt, a file or stdin.
 read_bundle() {
     local dest="$1" pasted
@@ -191,10 +216,10 @@ install_agent() {
     work=$(mktemp -d "${STAGING_PARENT}/.x-ui-agent-install.XXXXXX")
     trap cleanup EXIT
 
-    fetch_archive
-    unpack_archive || die "Could not unpack the release archive. It may not ship x-ui-agent: try --version dev-latest, or a newer release."
+    select_archive
+    unpack_archive || die "Could not unpack the release archive."
     agent_bin="$work/x-ui/x-ui-agent"
-    [[ -s "$agent_bin" ]] || die "This release does not ship x-ui-agent. Try --version dev-latest, or a newer release."
+    [[ -s "$agent_bin" ]] || die "The x-ui-agent in the archive is empty."
     [[ -s "$work/x-ui/bin/xray-linux-$(arch)" ]] || die "The archive has no Xray core for $(arch)."
     chmod +x "$agent_bin"
 
@@ -252,43 +277,53 @@ uninstall_agent() {
     info "The x-ui agent is removed. Delete the node on the master as well."
 }
 
-bundle_file="" tag="" tarball="" archive="" work="" do_uninstall=0 assume_yes=0
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --bundle-file)
-            bundle_file="${2:?--bundle-file needs a path, or - for stdin}"
-            shift 2
-            ;;
-        --version)
-            tag="${2:?--version needs a release tag}"
-            shift 2
-            ;;
-        --tarball)
-            tarball="${2:?--tarball needs a path}"
-            shift 2
-            ;;
-        --uninstall)
-            do_uninstall=1
-            shift
-            ;;
-        --yes | -y)
-            assume_yes=1
-            shift
-            ;;
-        -h | --help)
-            usage
-            exit 0
-            ;;
-        --bundle | --bundle=*)
-            die "The bundle is a credential. Paste it at the prompt or use --bundle-file, not an argument."
-            ;;
-        *) die "Unknown option: $1 (see --help)" ;;
-    esac
-done
+bundle_file="" tag="" tag_given=0 tarball="" archive="" work="" do_uninstall=0 assume_yes=0
 
-require_system
-if [[ $do_uninstall -eq 1 ]]; then
-    uninstall_agent
-else
-    install_agent
+main() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --bundle-file)
+                bundle_file="${2:?--bundle-file needs a path, or - for stdin}"
+                shift 2
+                ;;
+            --version)
+                tag="${2:?--version needs a release tag}"
+                tag_given=1
+                shift 2
+                ;;
+            --tarball)
+                tarball="${2:?--tarball needs a path}"
+                shift 2
+                ;;
+            --uninstall)
+                do_uninstall=1
+                shift
+                ;;
+            --yes | -y)
+                assume_yes=1
+                shift
+                ;;
+            -h | --help)
+                usage
+                exit 0
+                ;;
+            --bundle | --bundle=*)
+                die "The bundle is a credential. Paste it at the prompt or use --bundle-file, not an argument."
+                ;;
+            *) die "Unknown option: $1 (see --help)" ;;
+        esac
+    done
+
+    require_system
+    if [[ $do_uninstall -eq 1 ]]; then
+        uninstall_agent
+    else
+        install_agent
+    fi
+}
+
+# Sourcing the file for its functions, as the test of the archive choice does, installs nothing.
+# BASH_SOURCE is empty when the script is piped into bash, which must still run it.
+if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
+    main "$@"
 fi
