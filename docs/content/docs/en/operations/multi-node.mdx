@@ -122,6 +122,11 @@ the server was reinstalled or the bundle was lost. The agent that holds the old 
 cut off at once, so install the new bundle to bring the node back. An agent node's
 secret, certificate pin and transport cannot be edited: they come with the bundle.
 
+An agent is updated from the Nodes page like a panel node: the update button, or the
+**Update available** tag, makes the agent run its installer again, on the latest release or
+on the dev channel as the dialog says. It restarts onto the new version and keeps its
+pairing bundle.
+
 <Callout type="info">
   Traffic is counted on the master from the cumulative counters the agent reports, so a
   restart of the agent or of the master neither loses nor double counts usage, and a

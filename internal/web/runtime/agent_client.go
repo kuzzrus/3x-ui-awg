@@ -33,6 +33,9 @@ const (
 	agentGeoListTimeout = 10 * time.Second
 	// A geo file is tens of megabytes and the link to a node may be slow.
 	agentGeoSendTimeout = 15 * time.Minute
+	// The agent downloads the installer, in up to 10 s, before it answers that an update has started.
+	// The call runs inside a request the panel cuts off after 30 s, as a panel node's update does in 20.
+	agentUpdateTimeout = 20 * time.Second
 	// Status, config and restart answers are a handful of scalars, and every heartbeat reads
 	// one; the stats hold a counter for every inbound and user.
 	maxAnswerBytes = 1 << 20
@@ -182,6 +185,26 @@ func (c *AgentClient) PushConfig(ctx context.Context, body []byte, restartOnUser
 func (c *AgentClient) Restart(ctx context.Context) (*agentproto.ConfigResponse, error) {
 	var out agentproto.ConfigResponse
 	if err := c.do(ctx, http.MethodPost, agentproto.PathRestart, nil, nil, agentRestartTimeout, maxAnswerBytes, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// Update starts the agent's self-update, which runs its installer again: on the latest release,
+// or on the rolling dev channel when dev is set. The agent restarts when it is done.
+func (c *AgentClient) Update(ctx context.Context, dev bool) (*agentproto.UpdateStatus, error) {
+	query := url.Values{agentproto.QueryUpdateDev: {strconv.FormatBool(dev)}}
+	var out agentproto.UpdateStatus
+	if err := c.do(ctx, http.MethodPost, agentproto.PathUpdate, query, nil, agentUpdateTimeout, maxAnswerBytes, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// UpdateStatus reports how the agent's last update went.
+func (c *AgentClient) UpdateStatus(ctx context.Context) (*agentproto.UpdateStatus, error) {
+	var out agentproto.UpdateStatus
+	if err := c.do(ctx, http.MethodGet, agentproto.PathUpdate, nil, nil, agentStatusTimeout, maxAnswerBytes, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
