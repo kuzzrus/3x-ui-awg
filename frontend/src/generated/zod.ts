@@ -28,6 +28,7 @@ export const AgentNodeRequestSchema = z.object({
   outboundTag: z.string(),
   port: z.number().int().min(1).max(65535),
   remark: z.string(),
+  tags: z.array(z.string()),
 });
 export type AgentNodeRequest = z.infer<typeof AgentNodeRequestSchema>;
 
@@ -846,6 +847,7 @@ export const NodeSchema = z.object({
   remark: z.string(),
   scheme: z.enum(['http', 'https']),
   status: z.string(),
+  tags: z.array(z.string()),
   tlsVerifyMode: z.enum(['verify', 'skip', 'pin', 'mtls']),
   transitive: z.boolean().optional(),
   updatedAt: z.number().int(),
@@ -872,6 +874,7 @@ export const NodeMutationRequestSchema = z.object({
   port: z.number().int().min(1).max(65535),
   remark: z.string(),
   scheme: z.enum(['http', 'https']),
+  tags: z.array(z.string()),
   tlsVerifyMode: z.enum(['verify', 'skip', 'pin', 'mtls']),
 });
 export type NodeMutationRequest = z.infer<typeof NodeMutationRequestSchema>;
@@ -912,6 +915,7 @@ export const NodeViewSchema = z.object({
   remark: z.string(),
   scheme: z.string(),
   status: z.string(),
+  tags: z.array(z.string()),
   tlsVerifyMode: z.string(),
   transitive: z.boolean().optional(),
   updatedAt: z.number().int(),

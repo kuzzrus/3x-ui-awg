@@ -17,12 +17,13 @@ import (
 // AgentNodeRequest is what adding an agent node needs: where the agent will be reachable.
 // Its secret and certificate are minted here, not chosen by the admin.
 type AgentNodeRequest struct {
-	Name                string `json:"name" form:"name" validate:"required"`
-	Remark              string `json:"remark" form:"remark"`
-	Address             string `json:"address" form:"address" validate:"required"`
-	Port                int    `json:"port" form:"port" validate:"gte=1,lte=65535"`
-	AllowPrivateAddress bool   `json:"allowPrivateAddress" form:"allowPrivateAddress"`
-	OutboundTag         string `json:"outboundTag" form:"outboundTag"`
+	Name                string   `json:"name" form:"name" validate:"required"`
+	Remark              string   `json:"remark" form:"remark"`
+	Address             string   `json:"address" form:"address" validate:"required"`
+	Port                int      `json:"port" form:"port" validate:"gte=1,lte=65535"`
+	AllowPrivateAddress bool     `json:"allowPrivateAddress" form:"allowPrivateAddress"`
+	OutboundTag         string   `json:"outboundTag" form:"outboundTag"`
+	Tags                []string `json:"tags" form:"tags"`
 }
 
 // AgentPairing is an agent node with the bundle that pairs its agent to this master. The
@@ -66,6 +67,7 @@ func (s *NodeService) CreateAgent(req *AgentNodeRequest) (*AgentPairing, error) 
 		TlsVerifyMode:       "pin",
 		PinnedCertSha256:    pin,
 		OutboundTag:         req.OutboundTag,
+		Tags:                req.Tags,
 		ConfigDirty:         true,
 		ConfigDirtyAt:       now,
 	}

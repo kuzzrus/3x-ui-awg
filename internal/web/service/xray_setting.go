@@ -11,6 +11,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/amneziawg"
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/common"
+	"github.com/mhsanaei/3x-ui/v3/internal/util/json_util"
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
 
@@ -53,6 +54,9 @@ func (s *XraySettingService) CheckXrayConfig(XrayTemplateConfig string) error {
 	if err != nil {
 		return common.NewError("xray template config invalid:", err)
 	}
+	if err := checkRuleNodeTags(xrayConfig.RouterConfig); err != nil {
+		return err
+	}
 	if len(xrayConfig.OutboundConfigs) > 0 {
 		var outbounds []json.RawMessage
 		if err := json.Unmarshal(xrayConfig.OutboundConfigs, &outbounds); err != nil {
@@ -87,6 +91,29 @@ func (s *XraySettingService) CheckXrayConfig(XrayTemplateConfig string) error {
 				_ = json.Unmarshal(outbound, &tagged)
 				return common.NewError("xray core rejects outbound \""+tagged.Tag+"\":", err)
 			}
+		}
+	}
+	return nil
+}
+
+// checkRuleNodeTags refuses a routing rule whose nodeTags are not a list of tags.
+func checkRuleNodeTags(routerCfg json_util.RawMessage) error {
+	if len(routerCfg) == 0 {
+		return nil
+	}
+	var parsed struct {
+		Rules []map[string]any `json:"rules"`
+	}
+	if err := json.Unmarshal(routerCfg, &parsed); err != nil {
+		return nil
+	}
+	for i, rule := range parsed.Rules {
+		raw, ok := rule["nodeTags"]
+		if !ok {
+			continue
+		}
+		if _, ok := ruleNodeTags(raw); !ok {
+			return common.NewErrorf("xray template config invalid: routing rule %d: nodeTags must be a list of tags of up to %d characters", i+1, maxNodeTagLen)
 		}
 	}
 	return nil

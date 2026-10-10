@@ -14,6 +14,7 @@ export interface AgentNodeRequest {
   outboundTag: string;
   port: number;
   remark: string;
+  tags: string[];
 }
 
 export interface AgentPairing {
@@ -795,6 +796,7 @@ export interface Node {
   remark: string;
   scheme: string;
   status: string;
+  tags: string[];
   tlsVerifyMode: string;
   transitive?: boolean;
   updatedAt: number;
@@ -820,6 +822,7 @@ export interface NodeMutationRequest {
   port: number;
   remark: string;
   scheme: string;
+  tags: string[];
   tlsVerifyMode: string;
 }
 
@@ -859,6 +862,7 @@ export interface NodeView {
   remark: string;
   scheme: string;
   status: string;
+  tags: string[];
   tlsVerifyMode: string;
   transitive?: boolean;
   updatedAt: number;

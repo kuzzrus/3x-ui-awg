@@ -21,6 +21,19 @@
   opacity: 0.65;
 }
 
+.name-cell .node-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  margin-top: 2px;
+}
+
+.name-cell .node-tags .ant-tag {
+  margin-inline-end: 4px;
+  font-size: 11px;
+  line-height: 18px;
+}
+
 .address-header {
   display: inline-flex;
   align-items: center;

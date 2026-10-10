@@ -85,6 +85,7 @@ export default function RoutingTab({
           r.sourceIP = arrJoin(rule.sourceIP);
           r.user = arrJoin(rule.user);
           r.inboundTag = arrJoin(rule.inboundTag);
+          r.nodeTags = arrJoin(rule.nodeTags);
           r.protocol = arrJoin(rule.protocol);
           if (rule.attrs && typeof rule.attrs === 'object' && !Array.isArray(rule.attrs)) {
             r.attrs = JSON.stringify(rule.attrs, null, 2);

@@ -8,6 +8,7 @@ import { GeoTokenInput } from '@/components/geodata';
 import { FormField } from '@/components/form/rhf';
 import { useClientOptions } from '@/api/queries/useClientOptions';
 import { useInboundOptions } from '@/api/queries/useInboundOptions';
+import { useNodeTags } from '@/api/queries/useNodeTags';
 import { RuleFormSchema, type RuleFormValues } from '@/schemas/xray';
 import { buildRemarkByTag, formatInboundTag, isApiRule } from './helpers';
 
@@ -24,6 +25,7 @@ export interface RoutingRule {
   sourceIP?: string | string[];
   user?: string | string[];
   inboundTag?: string[];
+  nodeTags?: string[];
   protocol?: string[];
   attrs?: Record<string, string>;
   outboundTag?: string;
@@ -53,6 +55,7 @@ const initialForm = (): RuleFormValues => ({
   sourceIP: '',
   user: '',
   inboundTag: [],
+  nodeTags: [],
   protocol: [],
   attrs: [],
   outboundTag: '',
@@ -83,6 +86,8 @@ export default function RuleFormModal({
   const methods = useForm<RuleFormValues>({ defaultValues: initialForm() });
   const isEdit = rule != null;
 
+  // A tag no node carries yet can be typed in; the nodes are asked for only once the form opens.
+  const nodeTagOptions = useNodeTags(open).map((tag) => ({ label: tag, value: tag }));
   const { data: inboundOptions } = useInboundOptions();
   const remarkByTag = useMemo(() => buildRemarkByTag(inboundOptions || []), [inboundOptions]);
   const {
@@ -116,6 +121,7 @@ export default function RuleFormModal({
         sourceIP: Array.isArray(rule.sourceIP) ? rule.sourceIP.join(',') : rule.sourceIP || '',
         user: Array.isArray(rule.user) ? rule.user.join(',') : rule.user || '',
         inboundTag: rule.inboundTag || [],
+        nodeTags: rule.nodeTags || [],
         protocol: rule.protocol || [],
         attrs: rule.attrs ? Object.entries(rule.attrs) : [],
         outboundTag: rule.outboundTag || '',
@@ -145,6 +151,7 @@ export default function RuleFormModal({
       sourceIP: csv(v.sourceIP),
       user: csv(v.user),
       inboundTag: v.inboundTag,
+      nodeTags: [...new Set(v.nodeTags.map((tag) => tag.trim()).filter(Boolean))],
       protocol: v.protocol,
       attrs: Object.fromEntries(v.attrs.filter(([k]) => k)),
       outboundTag: v.outboundTag === '' ? undefined : v.outboundTag,
@@ -352,6 +359,23 @@ export default function RuleFormModal({
                 value: tag,
                 label: formatInboundTag(tag, remarkByTag),
               }))}
+            />
+          </FormField>
+
+          <FormField
+            name="nodeTags"
+            label={
+              <Tooltip title={t('pages.xray.ruleForm.nodeTagsHint')}>
+                {t('pages.xray.ruleForm.nodeTags')} <QuestionCircleOutlined aria-hidden="true" />
+              </Tooltip>
+            }
+          >
+            <Select
+              mode="tags"
+              tokenSeparators={[',']}
+              allowClear
+              placeholder={t('pages.xray.ruleForm.nodeTagsPlaceholder')}
+              options={nodeTagOptions}
             />
           </FormField>
 

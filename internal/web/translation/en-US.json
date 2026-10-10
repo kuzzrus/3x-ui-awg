@@ -1302,7 +1302,11 @@
         "repair": "Pair again",
         "update": "Update agent",
         "repairConfirmTitle": "Pair \"{name}\" again?",
-        "repairConfirmContent": "A new secret and certificate are created and the agent that holds the current bundle is cut off at once. Install the new bundle on the server to bring the node back."
+        "repairConfirmContent": "A new secret and certificate are created and the agent that holds the current bundle is cut off at once. Install the new bundle on the server to bring the node back.",
+        "tags": "Tags",
+        "tagsHint": "Labels for this node. A routing rule with a node tag that this node carries is part of its config; a rule with no node tags is for every node. Tags are matched without regard to case.",
+        "tagsPlaceholder": "Type a tag and press Enter",
+        "tagsInvalid": "A node takes up to 16 tags of up to 32 characters each"
       },
       "mtls": {
         "title": "Node mTLS",
@@ -2128,7 +2132,10 @@
         "inboundTags": "Inbound tags",
         "outboundTag": "Outbound tag",
         "balancerTag": "Balancer tag",
-        "balancerTagTooltip": "Routes traffic through one of the configured load balancers"
+        "balancerTagTooltip": "Routes traffic through one of the configured load balancers",
+        "nodeTags": "Agent nodes",
+        "nodeTagsHint": "Empty: the rule is for every core, the panel's own and every agent node. With tags: only for the agent nodes that carry one of them, and not for the panel's own core. A node's tags are set when you edit it on the Nodes page.",
+        "nodeTagsPlaceholder": "Any node"
       },
       "outboundForm": {
         "tagDuplicate": "Tag already used by another outbound",

@@ -6,7 +6,10 @@ export const EXAMPLES: Record<string, unknown> = {
     "name": "",
     "outboundTag": "",
     "port": 1,
-    "remark": ""
+    "remark": "",
+    "tags": [
+      ""
+    ]
   },
   "AgentPairing": {
     "bundle": "xab1.eyJ2IjoxLCJhZGRyZXNzIjoibm9kZS5leGFtcGxlLmNvbSJ9",
@@ -877,6 +880,9 @@ export const EXAMPLES: Record<string, unknown> = {
     "remark": "",
     "scheme": "https",
     "status": "online",
+    "tags": [
+      ""
+    ],
     "tlsVerifyMode": "verify",
     "transitive": false,
     "updatedAt": 1700000000,
@@ -903,6 +909,9 @@ export const EXAMPLES: Record<string, unknown> = {
     "port": 1,
     "remark": "",
     "scheme": "http",
+    "tags": [
+      ""
+    ],
     "tlsVerifyMode": "verify"
   },
   "NodeView": {
@@ -943,6 +952,9 @@ export const EXAMPLES: Record<string, unknown> = {
     "remark": "Primary edge",
     "scheme": "https",
     "status": "online",
+    "tags": [
+      "eu"
+    ],
     "tlsVerifyMode": "verify",
     "transitive": false,
     "updatedAt": 1700003600,

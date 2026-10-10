@@ -16,7 +16,7 @@ export type { AgentPairing, ProbeResult };
 
 export type AgentNodePayload = Pick<
   AgentFormValues,
-  'name' | 'remark' | 'address' | 'port' | 'allowPrivateAddress' | 'outboundTag'
+  'name' | 'remark' | 'address' | 'port' | 'allowPrivateAddress' | 'outboundTag' | 'tags'
 >;
 
 export interface NodeUpdateResult {

@@ -289,7 +289,14 @@ export function useRoutingColumns({
               {record.user && (
                 <CriterionRow label="User" value={record.user} title={`User: ${record.user}`} />
               )}
-              {inboundParts.length === 0 && !record.user && (
+              {record.nodeTags && (
+                <CriterionRow
+                  label="Nodes"
+                  value={record.nodeTags}
+                  title={`Agent nodes: ${record.nodeTags}`}
+                />
+              )}
+              {inboundParts.length === 0 && !record.user && !record.nodeTags && (
                 <span className="criterion-empty">—</span>
               )}
             </div>
