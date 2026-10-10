@@ -132,19 +132,23 @@ push made meanwhile waits for the start attempt to end.
 
 The core refuses a config that reads a geo file it does not have, and the files of the
 template's `geodata` section count: it looks for each one before it downloads anything.
-So before a push the sync compares what the rendered config reads (`geoip.dat` and
-`geosite.dat` when a rule uses `geoip:` or `geosite:`, every `ext:<file>.dat:<tag>`
-entry, every `geodata.assets[].file`) with `GET /v1/geo`, and sends the files the agent
-lacks and the master holds. The upload runs in the background, gzipped, four at a time
-and within 15 minutes each, so the tick that waits for every node is not held by a slow
-link; the config goes out on the first tick after the files are there, and an upload
-that fails is tried again after 15 seconds. A file the agent already has is never
-replaced. Keeping them current is the template's `geodata` section (Geodata
-Auto-Update on the dashboard): it is rendered into every agent's config like the rest of
-the template, so each core fetches its updates on the schedule set there. A file the
-master does not have either is left out, the push goes ahead and the agent's refusal
-shows on the node. An agent from before the endpoint answers 404 and is pushed as it
-always was.
+So before a push the sync compares what the rendered config reads with `GET /v1/geo`: the
+database of every `geoip:`, `geosite:`, `ext:`, `ext-ip:`, `ext-domain:` and `ext-site:`
+token, read with the parser of the panel's own token validator, and every
+`geodata.assets[].file`. It sends the files the agent lacks and the master holds. The
+upload runs in the background, gzipped, sixteen at a time and within 15 minutes each, so
+the tick that waits for every node is not held by a slow link; the config goes out on the
+first tick after the files are there, as the core would refuse it before. An upload that
+fails is tried again after 15 seconds, then after twice as long each time, up to ten
+minutes. The files are also looked at while the agent's core is not running at the
+revision the master wants, which is what a core that went down on a missing file looks
+like. A file the agent already has is never replaced. Keeping them current is the
+template's `geodata` section (Geodata Auto-Update on the dashboard): it is rendered into
+every agent's config like the rest of the template, so each core fetches its updates on
+the schedule set there. A file the master does not have either, or a name that is no plain
+`*.dat` name (the master never writes anything else on a node), is left out with a
+warning, the push goes ahead and the agent's refusal shows on the node. An agent from
+before the endpoint answers 404 and is pushed as it always was.
 
 ## Pairing and transport security
 

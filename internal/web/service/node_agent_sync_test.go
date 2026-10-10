@@ -175,7 +175,7 @@ func TestAgentSyncSendsTheRestartPolicyOfTheSetting(t *testing.T) {
 func TestAgentSyncDoesNotPushWhatTheAgentAlreadyRuns(t *testing.T) {
 	f := newSyncAgentFixture(t)
 	f.markDirty()
-	stats := &agentproto.Stats{ConfigRevision: agentproto.RevisionOf(f.wantRendered(), true)}
+	stats := &agentproto.Stats{ConfigRevision: agentproto.RevisionOf(f.wantRendered(), true), XrayStartedAt: time.Now().UnixMilli()}
 
 	if err := f.sync(&AgentSyncService{}, stats); err != nil {
 		t.Fatalf("Sync: %v", err)

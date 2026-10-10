@@ -7,41 +7,41 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/agentproto"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/runtime"
+	"github.com/mhsanaei/3x-ui/v3/internal/xray/geodata"
 )
 
-// agentGeoSlots bounds the geo files in flight across all agents, so a master that finds a dozen
-// agents lacking the same file does not compress and upload a dozen copies at once.
-var agentGeoSlots = make(chan struct{}, 4)
+const (
+	// A transfer costs the master a hash, a compression and a stream, nothing like a core, and one
+	// node's slow link must not hold the others back, so a few dozen at once is still small.
+	agentGeoConcurrency = 16
+	// A failed upload is tried again after agentRetryAfter, then after twice as long each time.
+	agentGeoRetryMax = 10 * time.Minute
+	// How often the same complaint about the same node is made again.
+	agentGeoWarnEvery = time.Hour
+)
 
-// geoExtRef is a routing or DNS entry that reads a database by file name: ext:geoip_runet.dat:ru.
-var geoExtRef = regexp.MustCompile(`\bext(?:-ip|-domain)?:([A-Za-z0-9._-]+\.dat)\b`)
+// agentGeoSlots bounds the geo files in flight across all agents.
+var agentGeoSlots = make(chan struct{}, agentGeoConcurrency)
 
 // agentGeoFile is a geo file the master can send: its name on the agent and where it lies here.
 type agentGeoFile struct{ name, path string }
 
-// agentGeoFilesNeeded lists the geo files a rendered config makes the core read: the default pair for
-// geoip:/geosite: rules, the file of every ext: entry, and the files of the geodata section.
-func agentGeoFilesNeeded(config []byte) []string {
-	text := string(config)
+// agentGeoFilesNeeded lists the geo files a config makes the core read, from its tokens (as the panel's
+// validator parses them) and the geodata section; names that are no plain *.dat come back as rejected.
+func agentGeoFilesNeeded(config []byte) (names, rejected []string) {
+	var root any
+	if json.Unmarshal(config, &root) != nil {
+		return nil, nil
+	}
 	need := map[string]struct{}{}
-	if strings.Contains(text, "geoip:") {
-		need["geoip.dat"] = struct{}{}
-	}
-	if strings.Contains(text, "geosite:") {
-		need["geosite.dat"] = struct{}{}
-	}
-	for _, match := range geoExtRef.FindAllStringSubmatch(text, -1) {
-		need[match[1]] = struct{}{}
-	}
+	collectTokenFiles(root, need)
 	var parsed struct {
 		Geodata struct {
 			Assets []struct {
@@ -51,23 +51,67 @@ func agentGeoFilesNeeded(config []byte) []string {
 	}
 	if json.Unmarshal(config, &parsed) == nil {
 		for _, asset := range parsed.Geodata.Assets {
-			need[asset.File] = struct{}{}
+			if asset.File != "" {
+				need[asset.File] = struct{}{}
+			}
 		}
 	}
-	names := make([]string, 0, len(need))
 	for name := range need {
 		if agentproto.ValidGeoName(name) {
 			names = append(names, name)
+		} else {
+			rejected = append(rejected, name)
 		}
 	}
 	slices.Sort(names)
-	return names
+	slices.Sort(rejected)
+	return names, rejected
+}
+
+// collectTokenFiles adds the database of every routing or DNS token among the strings of v. A string
+// is tried as a domain token and as an ip token, since where it sits does not say which it is.
+func collectTokenFiles(v any, into map[string]struct{}) {
+	switch value := v.(type) {
+	case string:
+		for _, kind := range []geodata.GeoKind{geodata.KindSite, geodata.KindIP} {
+			if ref, err := geodata.ParseReference(value, kind); err == nil && ref.File != "" {
+				into[ref.File] = struct{}{}
+			}
+		}
+	case []any:
+		for _, item := range value {
+			collectTokenFiles(item, into)
+		}
+	case map[string]any:
+		for _, item := range value {
+			collectTokenFiles(item, into)
+		}
+	}
+}
+
+// warnOften makes a complaint about a node, at most once an hour for the same one.
+func (s *AgentSyncService) warnOften(nodeID int, key, format string, args ...any) {
+	s.mu.Lock()
+	st := s.stateFor(nodeID)
+	if st.warned == nil {
+		st.warned = map[string]time.Time{}
+	}
+	if at, ok := st.warned[key]; ok && time.Since(at) < agentGeoWarnEvery {
+		s.mu.Unlock()
+		return
+	}
+	st.warned[key] = time.Now()
+	s.mu.Unlock()
+	logger.Warningf(format, args...)
 }
 
 // geoFilesToSend lists the geo files the config needs that the agent does not hold and this panel
 // does. An agent from before the geo endpoint answers 404, and its config is pushed as it always was.
-func (s *AgentSyncService) geoFilesToSend(ctx context.Context, client *runtime.AgentClient, config []byte, nodeName string) ([]agentGeoFile, error) {
-	needed := agentGeoFilesNeeded(config)
+func (s *AgentSyncService) geoFilesToSend(ctx context.Context, n *model.Node, client *runtime.AgentClient, config []byte) ([]agentGeoFile, error) {
+	needed, rejected := agentGeoFilesNeeded(config)
+	for _, name := range rejected {
+		s.warnOften(n.Id, "rejected "+name, "agent %s: the config reads %q, which is no plain *.dat name, so the panel cannot send it: it has to be on the node already", n.Name, name)
+	}
 	if len(needed) == 0 {
 		return nil, nil
 	}
@@ -90,7 +134,7 @@ func (s *AgentSyncService) geoFilesToSend(ctx context.Context, client *runtime.A
 		}
 		path := filepath.Join(assetDir(), name)
 		if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() || info.Size() == 0 || info.Size() > agentproto.MaxGeoBytes {
-			logger.Warningf("agent %s lacks the geo file %s, which this panel has no usable copy of either", nodeName, name)
+			s.warnOften(n.Id, "no copy "+name, "agent %s lacks the geo file %s, which this panel has no usable copy of either", n.Name, name)
 			continue
 		}
 		missing = append(missing, agentGeoFile{name: name, path: path})
@@ -98,8 +142,18 @@ func (s *AgentSyncService) geoFilesToSend(ctx context.Context, client *runtime.A
 	return missing, nil
 }
 
+// geoRetryDelay is the wait after the given number of failed uploads in a row.
+func geoRetryDelay(failures int) time.Duration {
+	delay := agentRetryAfter
+	for i := 1; i < failures && delay < agentGeoRetryMax; i++ {
+		delay *= 2
+	}
+	return min(delay, agentGeoRetryMax)
+}
+
 // sendGeo sends the files in the background, so the sync tick that waits for every node is not held
-// by a slow link. The config goes out on the first tick after they are there.
+// by a slow link. The config goes out on the first tick after they are there; it could not go out
+// before, as the core would refuse it for the files it lacks.
 func (s *AgentSyncService) sendGeo(n *model.Node, client *runtime.AgentClient, files []agentGeoFile) {
 	s.mu.Lock()
 	st := s.stateFor(n.Id)
@@ -116,9 +170,12 @@ func (s *AgentSyncService) sendGeo(n *model.Node, client *runtime.AgentClient, f
 		defer s.mu.Unlock()
 		st.sendingGeo = false
 		if err != nil {
-			st.checkedAt = time.Now().Add(agentRetryAfter - agentDriftCheckEvery)
+			st.geoFailures++
+			st.geoRetryAt = time.Now().Add(geoRetryDelay(st.geoFailures))
+			st.checkedAt = st.geoRetryAt.Add(-agentDriftCheckEvery)
 			return
 		}
+		st.geoFailures, st.geoRetryAt = 0, time.Time{}
 		// A config the agent turned down for lacking these files is worth another try at once.
 		st.refused, st.checkedAt = "", time.Time{}
 	}()

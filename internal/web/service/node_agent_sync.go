@@ -40,6 +40,9 @@ type agentSyncState struct {
 	refused        string // revision the agent turned down
 	refusedAt      time.Time
 	sendingGeo     bool // geo files are on their way, and the config waits for them
+	geoFailures    int  // uploads that failed in a row
+	geoRetryAt     time.Time
+	warned         map[string]time.Time
 }
 
 func (s *AgentSyncService) stateFor(nodeID int) *agentSyncState {
@@ -97,7 +100,9 @@ func (s *AgentSyncService) sync(ctx context.Context, rt *runtime.AgentRuntime, n
 	}
 	want := agentproto.RevisionOf(body, restartOnUserRemoval)
 
-	if stats != nil && stats.ConfigRevision == want {
+	// A start time of 0 is a core that is not running.
+	current := stats != nil && stats.ConfigRevision == want
+	if current && stats.XrayStartedAt != 0 {
 		s.clearDirty(n)
 		return nil
 	}
@@ -109,13 +114,25 @@ func (s *AgentSyncService) sync(ctx context.Context, rt *runtime.AgentRuntime, n
 		return nil
 	}
 
-	// The core refuses a config that reads a geo file it does not have, so those go first.
-	missing, err := s.geoFilesToSend(ctx, client, body, n.Name)
+	// The core refuses a config that reads a geo file it does not have, so those go first. A core
+	// that went down on one stays down at the revision the master wants, so a stopped core is looked at too.
+	missing, err := s.geoFilesToSend(ctx, n, client, body)
 	if err != nil {
 		return err
 	}
 	if len(missing) > 0 {
-		s.sendGeo(n, client, missing)
+		s.mu.Lock()
+		waiting := now.Before(st.geoRetryAt)
+		s.mu.Unlock()
+		if !waiting {
+			s.sendGeo(n, client, missing)
+		}
+		return nil
+	}
+	if current {
+		// The agent holds this config and its core is down for another reason: its supervisor keeps
+		// trying, and a push would change nothing.
+		s.clearDirty(n)
 		return nil
 	}
 
