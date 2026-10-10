@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -12,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -28,6 +30,9 @@ const (
 	agentStatsTimeout   = 10 * time.Second
 	agentPushTimeout    = 2 * time.Minute
 	agentRestartTimeout = time.Minute
+	agentGeoListTimeout = 10 * time.Second
+	// A geo file is tens of megabytes and the link to a node may be slow.
+	agentGeoSendTimeout = 15 * time.Minute
 	// Status, config and restart answers are a handful of scalars, and every heartbeat reads
 	// one; the stats hold a counter for every inbound and user.
 	maxAnswerBytes = 1 << 20
@@ -180,6 +185,87 @@ func (c *AgentClient) Restart(ctx context.Context) (*agentproto.ConfigResponse, 
 		return nil, err
 	}
 	return &out, nil
+}
+
+// Geo lists the geo files the agent holds.
+func (c *AgentClient) Geo(ctx context.Context) (*agentproto.GeoFiles, error) {
+	var out agentproto.GeoFiles
+	if err := c.do(ctx, http.MethodGet, agentproto.PathGeo, nil, nil, agentGeoListTimeout, maxAnswerBytes, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// PutGeo sends the file at path to the agent as the geo file called name, gzipped on the way. The
+// agent checks what it read against the digest taken here, so a file that changes meanwhile is refused.
+func (c *AgentClient) PutGeo(ctx context.Context, name, path string) (*agentproto.GeoFile, error) {
+	digest, err := fileSha256(path)
+	if err != nil {
+		return nil, err
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	pr, pw := io.Pipe()
+	go func() {
+		defer file.Close()
+		zw := gzip.NewWriter(pw)
+		_, err := io.Copy(zw, file)
+		if err == nil {
+			err = zw.Close()
+		}
+		pw.CloseWithError(err)
+	}()
+	// Closing the read end frees the goroutine above when the request ends before the body does.
+	defer pr.Close()
+
+	ctx, cancel := context.WithTimeout(netsafe.ContextWithAllowPrivate(ctx, c.node.AllowPrivateAddress), agentGeoSendTimeout)
+	defer cancel()
+	query := url.Values{agentproto.QueryGeoName: {name}, agentproto.QueryGeoSha256: {digest}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.base+agentproto.PathGeo+"?"+query.Encode(), pr)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.secret)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("Content-Encoding", "gzip")
+
+	// The pooled client may carry a timeout sized for a config push, which a geo file outlasts.
+	patient := *c.client
+	patient.Timeout = 0
+	resp, err := patient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("PUT %s: %w", agentproto.PathGeo, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, errBodyDiagBytes))
+		return nil, agentErrorFor(resp.StatusCode, snippet)
+	}
+	raw, err := readCappedBody(resp.Body, maxAnswerBytes)
+	if err != nil {
+		return nil, fmt.Errorf("read %s response: %w", agentproto.PathGeo, err)
+	}
+	var stored agentproto.GeoFile
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return nil, fmt.Errorf("decode %s response: %w", agentproto.PathGeo, err)
+	}
+	return &stored, nil
+}
+
+func fileSha256(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func (c *AgentClient) do(ctx context.Context, method, path string, query url.Values, body []byte, timeout time.Duration, limit int64, out any) error {
