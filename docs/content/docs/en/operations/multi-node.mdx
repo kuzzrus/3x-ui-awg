@@ -126,6 +126,11 @@ The row of an agent also has **Agent log**, the newest lines of its log with wha
 printed, at the level you choose, and **Restart Xray**, which restarts the core into the
 config the agent last ran. Connections through the node drop for a moment.
 
+An agent is updated from the Nodes page like a panel node: the update button, or the
+**Update available** tag, makes the agent run its installer again, on the latest release or
+on the dev channel as the dialog says. It restarts onto the new version and keeps its
+pairing bundle.
+
 <Callout type="info">
   Traffic is counted on the master from the cumulative counters the agent reports, so a
   restart of the agent or of the master neither loses nor double counts usage, and a

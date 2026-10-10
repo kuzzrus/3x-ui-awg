@@ -89,3 +89,6 @@ func (s *State) SaveLastGood(body []byte, restartOnUserRemoval bool) error {
 	}
 	return xray.WriteFileAtomic(filepath.Join(s.dir, lastGoodFile), raw, stateMode)
 }
+
+// Dir is the folder the state lives in, which the agent's other private files share.
+func (s *State) Dir() string { return s.dir }

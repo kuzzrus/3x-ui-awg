@@ -26,6 +26,7 @@ type Server struct {
 	secret   string
 	guid     string
 	geoDir   string
+	updater  *updater
 	sys      sysSampler
 	routes   map[string]http.HandlerFunc
 	paths    map[string]bool
@@ -38,7 +39,7 @@ func NewServer(core *Core, state *State, secret string) (*Server, error) {
 		return nil, err
 	}
 	// The core reads its geo files from the folder it is started from.
-	s := &Server{core: core, secret: secret, guid: guid, geoDir: config.GetBinFolderPath()}
+	s := &Server{core: core, secret: secret, guid: guid, geoDir: config.GetBinFolderPath(), updater: &updater{stateDir: state.Dir()}}
 	s.routes = map[string]http.HandlerFunc{}
 	s.paths = map[string]bool{}
 	for _, route := range []struct {
@@ -52,6 +53,8 @@ func NewServer(core *Core, state *State, secret string) (*Server, error) {
 		{http.MethodGet, agentproto.PathGeo, s.getGeo},
 		{http.MethodPut, agentproto.PathGeo, s.putGeo},
 		{http.MethodGet, agentproto.PathLogs, s.getLogs},
+		{http.MethodPost, agentproto.PathUpdate, s.postUpdate},
+		{http.MethodGet, agentproto.PathUpdate, s.getUpdate},
 	} {
 		s.routes[route.method+" "+route.path] = route.handler
 		s.paths[route.path] = true

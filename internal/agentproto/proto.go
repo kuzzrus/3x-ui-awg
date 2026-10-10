@@ -19,10 +19,16 @@ const (
 	PathGeo = "/v1/geo"
 	// PathLogs returns the last lines of the agent's own log, which holds what its core printed too.
 	PathLogs = "/v1/logs"
+	// PathUpdate starts the agent's self-update (POST) and reports how the last one went (GET).
+	PathUpdate = "/v1/update"
 
 	// QueryRestartOnUserRemoval is the PathConfig query flag (a bool) that makes
 	// the agent restart the core instead of dropping a removed client's credential.
 	QueryRestartOnUserRemoval = "restartOnUserRemoval"
+
+	// QueryUpdateDev is the PathUpdate query flag (a bool) that moves the agent to the rolling dev
+	// channel instead of the latest release.
+	QueryUpdateDev = "dev"
 
 	// The PathGeo PUT names the file and carries the SHA-256 of its content as query parameters.
 	QueryGeoName   = "name"
@@ -90,6 +96,23 @@ type Stats struct {
 	Inbounds       map[string]Counter `json:"inbounds"`
 	Users          map[string]Counter `json:"users"`
 	Online         []string           `json:"online"`
+}
+
+// How a self-update run stands. None is what an agent that never ran one reports.
+const (
+	UpdateNone    = "none"
+	UpdatePending = "pending"
+	UpdateSuccess = "success"
+	UpdateFailed  = "failed"
+)
+
+// UpdateStatus is one self-update run. RunID is a decimal string, so that no JSON reader rounds it.
+type UpdateStatus struct {
+	RunID      string `json:"runId"`
+	State      string `json:"state"`
+	ExitCode   int    `json:"exitCode"`
+	StartedAt  int64  `json:"startedAt,omitempty"`
+	FinishedAt int64  `json:"finishedAt,omitempty"`
 }
 
 // Logs is the answer of PathLogs, the newest line first as the panel serves its own log.

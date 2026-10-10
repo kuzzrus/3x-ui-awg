@@ -969,6 +969,12 @@ func (s *NodeService) UpdatePanels(ids []int, dev bool) ([]NodeUpdateResult, err
 			res.Error = "node is disabled"
 		case n.Status != "online":
 			res.Error = "node is offline"
+		case n.Kind == model.NodeKindAgent:
+			if updErr := s.updateAgent(mgr, n, dev); updErr != nil {
+				res.Error = updErr.Error()
+			} else {
+				res.OK = true
+			}
 		default:
 			remote, remoteErr := mgr.RemoteFor(n)
 			if remoteErr != nil {
