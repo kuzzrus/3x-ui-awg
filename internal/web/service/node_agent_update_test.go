@@ -68,18 +68,23 @@ func useManagerWith(t *testing.T, f *syncAgentFixture) {
 	}
 }
 
+// shortWatch is called last in a test's setup, so that its cleanup, which waits for the watchers,
+// runs while the stand-in agent they ask is still there.
 func shortWatch(t *testing.T) {
 	t.Helper()
 	previous := agentUpdateWatchEvery
 	agentUpdateWatchEvery = 5 * time.Millisecond
-	t.Cleanup(func() { agentUpdateWatchEvery = previous })
+	t.Cleanup(func() {
+		agentUpdateWatchers.Wait()
+		agentUpdateWatchEvery = previous
+	})
 }
 
 func TestUpdatePanelsStartsTheSelfUpdateOfAnAgentOnTheChannelAsked(t *testing.T) {
-	shortWatch(t)
 	f := newSyncAgentFixture(t)
 	f.update = &syncUpdateAgent{results: []string{agentproto.UpdatePending, agentproto.UpdateSuccess}}
 	useManagerWith(t, f)
+	shortWatch(t)
 
 	for _, dev := range []bool{false, true} {
 		results, err := (&NodeService{}).UpdatePanels([]int{f.nodeID}, dev)
@@ -94,10 +99,10 @@ func TestUpdatePanelsStartsTheSelfUpdateOfAnAgentOnTheChannelAsked(t *testing.T)
 }
 
 func TestUpdatePanelsWatchesAnAgentUpdateUntilItEnds(t *testing.T) {
-	shortWatch(t)
 	f := newSyncAgentFixture(t)
 	f.update = &syncUpdateAgent{results: []string{agentproto.UpdatePending, agentproto.UpdatePending, agentproto.UpdateFailed}}
 	useManagerWith(t, f)
+	shortWatch(t)
 
 	if _, err := (&NodeService{}).UpdatePanels([]int{f.nodeID}, false); err != nil {
 		t.Fatal(err)

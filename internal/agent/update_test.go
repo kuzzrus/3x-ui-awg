@@ -3,6 +3,7 @@
 package agent
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -22,6 +23,9 @@ printf '%s\n' "$@" > "$FAKE_SYSTEMD_RUN_LOG"
 if [ -n "$FAKE_SYSTEMD_RUN_FAIL" ]; then
     echo "$FAKE_SYSTEMD_RUN_FAIL" >&2
     exit 1
+fi
+if [ -n "$FAKE_SYSTEMD_RUN_DELAY" ]; then
+    sleep "$FAKE_SYSTEMD_RUN_DELAY"
 fi
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -276,5 +280,36 @@ func TestServerKeepsTheUpdateRoutesBehindTheSecretAndTheirMethods(t *testing.T) 
 	}
 	if f.hits.Load() != 0 {
 		t.Fatal("a request the server refused started an update")
+	}
+}
+
+// The master gives up on its own deadline while systemd-run is still queueing the unit; the update
+// has started by then, and killing systemd-run would leave a run that nothing recorded.
+func TestServerFinishesStartingAnUpdateTheMasterHungUpOn(t *testing.T) {
+	f := newUpdateFixture(t)
+	t.Setenv("FAKE_SYSTEMD_RUN_DELAY", "0.4")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, f.url+agentproto.PathUpdate, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+f.bundle.Secret)
+	if resp, err := f.client.Do(req); err == nil {
+		resp.Body.Close()
+		t.Fatal("the request was answered inside the master's deadline, so it did not hang up")
+	}
+
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		if got := f.last(); got.State == agentproto.UpdateSuccess {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("status = %+v, want the run that was started to end as recorded", f.last())
+		}
+	}
+	if left := f.scripts(); len(left) != 0 {
+		t.Fatalf("installer copies left behind: %v", left)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/agentproto"
@@ -13,15 +14,17 @@ import (
 )
 
 const (
-	// The agent downloads the installer before it answers that the update has started.
-	agentUpdateStartTimeout = time.Minute
-	agentUpdatePollTimeout  = 10 * time.Second
+	agentUpdatePollTimeout = 10 * time.Second
 	// The installer downloads a release of tens of megabytes and the agent restarts at the end.
 	agentUpdateWatchFor = 15 * time.Minute
 )
 
-// agentUpdateWatchEvery is a variable so a test can shorten it.
-var agentUpdateWatchEvery = 5 * time.Second
+// agentUpdateWatchEvery is a variable so a test can shorten it, and agentUpdateWatchers lets the
+// test wait for the watchers, which read it, before it puts it back.
+var (
+	agentUpdateWatchEvery = 5 * time.Second
+	agentUpdateWatchers   sync.WaitGroup
+)
 
 // updateAgent has the agent run its installer again, and logs how that ends: the new version shows
 // on the node by itself, but a failure would otherwise leave no trace on the master.
@@ -34,9 +37,7 @@ func (s *NodeService) updateAgent(mgr *runtime.Manager, n *model.Node, dev bool)
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), agentUpdateStartTimeout)
-	defer cancel()
-	status, err := client.Update(ctx, dev)
+	status, err := client.Update(context.Background(), dev)
 	var answer *runtime.AgentError
 	if errors.As(err, &answer) && answer.Status == http.StatusNotFound {
 		// A 404 to a valid request is how an agent answers a path it does not know.
@@ -45,7 +46,11 @@ func (s *NodeService) updateAgent(mgr *runtime.Manager, n *model.Node, dev bool)
 	if err != nil {
 		return err
 	}
-	go watchAgentUpdate(n.Name, client, status.RunID)
+	agentUpdateWatchers.Add(1)
+	go func() {
+		defer agentUpdateWatchers.Done()
+		watchAgentUpdate(n.Name, client, status.RunID)
+	}()
 	return nil
 }
 

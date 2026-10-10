@@ -24,6 +24,7 @@ const (
 	updateStatusFile      = "update.json"
 	maxInstallerBytes     = 1 << 20
 	installerFetchTimeout = 30 * time.Second
+	systemdRunTimeout     = 30 * time.Second
 	// A run that never wrote its result (the host went down under it) stops blocking the next.
 	updateStaleAfter = 30 * time.Minute
 
@@ -108,7 +109,10 @@ func (u *updater) start(ctx context.Context, dev bool) (agentproto.UpdateStatus,
 	if dev {
 		args = append(args, "--version", "dev-latest")
 	}
-	if out, err := exec.CommandContext(ctx, systemdRun, args...).CombinedOutput(); err != nil {
+	// The master hanging up on its own deadline must not kill systemd-run once the unit may be queued.
+	runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), systemdRunTimeout)
+	defer cancel()
+	if out, err := exec.CommandContext(runCtx, systemdRun, args...).CombinedOutput(); err != nil {
 		_ = os.Remove(script)
 		_ = os.Remove(u.statusPath())
 		return agentproto.UpdateStatus{}, fmt.Errorf("start the update job: %w: %s", err, strings.TrimSpace(string(out)))
