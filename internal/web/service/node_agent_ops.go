@@ -10,10 +10,9 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/web/runtime"
 )
 
-const (
-	nodeLogsTimeout    = 15 * time.Second
-	nodeRestartTimeout = 30 * time.Second
-)
+// A restart is asked for by a request that the panel cuts off after 30 s, whichever kind of node it
+// is; the call that reads an agent's log is bound by the client, at 10 s.
+const nodeRestartTimeout = 25 * time.Second
 
 // AgentLogs reads the newest lines of an agent node's log, which holds what its core printed too.
 func (s *NodeService) AgentLogs(id, count int, level string) ([]string, error) {
@@ -36,9 +35,7 @@ func (s *NodeService) AgentLogs(id, count int, level string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), nodeLogsTimeout)
-	defer cancel()
-	logs, err := client.Logs(ctx, count, level)
+	logs, err := client.Logs(context.Background(), count, level)
 	var answer *runtime.AgentError
 	if errors.As(err, &answer) && answer.Status == http.StatusNotFound {
 		// A 404 to a valid request is how an agent answers a path it does not know.

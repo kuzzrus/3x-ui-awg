@@ -23,6 +23,7 @@ interface LogModalProps {
 }
 
 const AUTO_UPDATE_INTERVAL = 5000;
+const NO_LINES: string[] = [];
 
 export default function LogModal({ open, onClose, source }: LogModalProps) {
   const { t } = useTranslation();
@@ -32,20 +33,31 @@ export default function LogModal({ open, onClose, source }: LogModalProps) {
   const [syslog, setSyslog] = useState(false);
   const [autoUpdate, setAutoUpdate] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [logs, setLogs] = useState<string[]>([]);
+  // The lines come with the source they were read from, so that a dialog that moves on to another
+  // log, or whose refresh fails, never shows one log under the title of another.
+  const [fetched, setFetched] = useState<{ path?: string; lines: string[] }>({ lines: NO_LINES });
   const sourcePath = source?.path;
+  const logs = fetched.path === sourcePath ? fetched.lines : NO_LINES;
+  const currentPath = useRef(sourcePath);
+  const busy = useRef(false);
+  useEffect(() => {
+    currentPath.current = sourcePath;
+  });
 
   const runRefresh = useCallback(async () => {
+    busy.current = true;
     try {
       const msg = await HttpUtil.post<string[]>(
         `${sourcePath ?? '/panel/api/server/logs'}/${rows}`,
         sourcePath ? { level } : { level, syslog },
       );
-      if (msg?.success) {
-        setLogs(msg.obj || []);
+      // An answer for a log the dialog has left is not for the one it shows now.
+      if (msg?.success && currentPath.current === sourcePath) {
+        setFetched({ path: sourcePath, lines: msg.obj || [] });
       }
       await PromiseUtil.sleep(300);
     } finally {
+      busy.current = false;
       setLoading(false);
     }
   }, [rows, level, syslog, sourcePath]);
@@ -75,7 +87,9 @@ export default function LogModal({ open, onClose, source }: LogModalProps) {
 
   useEffect(() => {
     if (!open || !autoUpdate) return;
-    const id = setInterval(() => refreshRef.current(), AUTO_UPDATE_INTERVAL);
+    const id = setInterval(() => {
+      if (!busy.current) refreshRef.current();
+    }, AUTO_UPDATE_INTERVAL);
     return () => clearInterval(id);
   }, [open, autoUpdate]);
 
@@ -95,7 +109,7 @@ export default function LogModal({ open, onClose, source }: LogModalProps) {
         tabIndex={0}
         aria-label={t('refresh')}
         onClick={refresh}
-        onKeyDown={activateOnKey(refresh)}
+        onKeyDown={(event) => activateOnKey(refresh)(event)}
       />
     </>
   );

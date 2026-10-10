@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/agentproto"
@@ -27,6 +29,7 @@ type Server struct {
 	guid     string
 	geoDir   string
 	updater  *updater
+	httpLog  serverLog
 	sys      sysSampler
 	routes   map[string]http.HandlerFunc
 	paths    map[string]bool
@@ -96,7 +99,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, tlsConfig *tls.Conf
 		WriteTimeout:      5 * time.Minute,
 		IdleTimeout:       2 * time.Minute,
 		MaxHeaderBytes:    16 << 10,
-		ErrorLog:          log.New(debugWriter{}, "", 0),
+		ErrorLog:          log.New(&s.httpLog, "", 0),
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -118,12 +121,40 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, tlsConfig *tls.Conf
 	return err
 }
 
-// debugWriter sends the http server's own complaints, mostly handshakes that scanners
-// abandon, to the debug log.
-type debugWriter struct{}
+// serverLog passes one of the http server's complaints a minute on to the debug log and counts the
+// rest: the port is open to the world, and a flood of them would fill the log GET /v1/logs serves.
+type serverLog struct {
+	mu     sync.Mutex
+	last   time.Time
+	held   int
+	now    func() time.Time                 // time.Now unless a test sets it
+	debugf func(format string, args ...any) // logger.Debugf unless a test sets it
+}
 
-func (debugWriter) Write(p []byte) (int, error) {
-	logger.Debug("agent: http:", string(p))
+func (l *serverLog) Write(p []byte) (int, error) {
+	now, debugf := time.Now, logger.Debugf
+	if l.now != nil {
+		now = l.now
+	}
+	if l.debugf != nil {
+		debugf = l.debugf
+	}
+	at := now()
+	l.mu.Lock()
+	if !l.last.IsZero() && at.Sub(l.last) < refusalLogEvery {
+		l.held++
+		l.mu.Unlock()
+		return len(p), nil
+	}
+	held := l.held
+	l.last, l.held = at, 0
+	l.mu.Unlock()
+
+	more := ""
+	if held > 0 {
+		more = fmt.Sprintf(" (%d more like it since the last line)", held)
+	}
+	debugf("agent: http: %s%s", strings.TrimSpace(string(p)), more)
 	return len(p), nil
 }
 

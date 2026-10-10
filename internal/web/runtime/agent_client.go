@@ -26,10 +26,11 @@ import (
 )
 
 const (
-	agentStatusTimeout  = 10 * time.Second
-	agentStatsTimeout   = 10 * time.Second
-	agentPushTimeout    = 2 * time.Minute
-	agentRestartTimeout = time.Minute
+	agentStatusTimeout = 10 * time.Second
+	agentStatsTimeout  = 10 * time.Second
+	agentPushTimeout   = 2 * time.Minute
+	// A restart is asked for by a request that the panel cuts off after 30 s.
+	agentRestartTimeout = 25 * time.Second
 	agentGeoListTimeout = 10 * time.Second
 	agentLogsTimeout    = 10 * time.Second
 	// A geo file is tens of megabytes and the link to a node may be slow.
