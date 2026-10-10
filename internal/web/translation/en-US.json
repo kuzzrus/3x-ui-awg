@@ -1300,6 +1300,7 @@
         "stepPaste": "Paste the bundle when asked (nothing is echoed), or save it to a file and run the command with --bundle-file <path>.",
         "done": "Done",
         "repair": "Pair again",
+        "update": "Update agent",
         "repairConfirmTitle": "Pair \"{name}\" again?",
         "repairConfirmContent": "A new secret and certificate are created and the agent that holds the current bundle is cut off at once. Install the new bundle on the server to bring the node back."
       },

@@ -36,6 +36,7 @@ type syncAgentFixture struct {
 	refuse   bool // answer pushes with 422
 	broken   bool // answer pushes with 500
 	geo      *syncGeoAgent
+	update   *syncUpdateAgent
 }
 
 func newSyncAgentFixture(t *testing.T) *syncAgentFixture {
@@ -93,7 +94,7 @@ func (f *syncAgentFixture) serve(w http.ResponseWriter, r *http.Request) {
 		f.restarts++
 		_, _ = w.Write([]byte(`{"revision":"x","applied":"restart","xrayState":"running"}`))
 	default:
-		if !f.serveGeo(w, r) {
+		if !f.serveGeo(w, r) && !f.serveUpdate(w, r) {
 			http.NotFound(w, r)
 		}
 	}

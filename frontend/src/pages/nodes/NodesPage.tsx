@@ -310,10 +310,7 @@ export default function NodesPage() {
 
   const onUpdateSelected = useCallback(() => {
     const eligible = nodes
-      .filter(
-        (n) =>
-          selectedIds.includes(n.id) && n.enable && n.status === 'online' && n.kind !== 'agent',
-      )
+      .filter((n) => selectedIds.includes(n.id) && n.enable && n.status === 'online')
       .map((n) => n.id);
     if (eligible.length === 0) {
       messageApi.warning(t('pages.nodes.toasts.updateNoneEligible'));
