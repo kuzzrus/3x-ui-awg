@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Badge, Button, Card, Dropdown, Modal, Space, Switch, Table, Tag, Tooltip } from 'antd';
 import type { BadgeProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -47,9 +48,13 @@ interface NodeListProps {
   onUpdateSelected: () => void;
 }
 
-// An agent has no panel to update: it is reinstalled from the release, not updated by the master.
 function isUpdateEligible(n: NodeRecord): boolean {
-  return !!n.enable && n.status === 'online' && n.kind !== 'agent';
+  return !!n.enable && n.status === 'online';
+}
+
+// An agent updates itself the way a panel does, but what it updates is not a panel.
+function updateLabel(t: TFunction, n: NodeRecord): string {
+  return n.kind === 'agent' ? t('pages.nodes.agent.update') : t('pages.nodes.updatePanel');
 }
 
 interface NodeRow extends NodeRecord {
@@ -275,13 +280,13 @@ export default function NodeList({
                 />
               </Tooltip>
               {isUpdateEligible(record) && (
-                <Tooltip title={t('pages.nodes.updatePanel')}>
+                <Tooltip title={updateLabel(t, record)}>
                   <Button
                     type="text"
                     size="small"
                     style={{ fontSize: 16 }}
                     icon={<CloudDownloadOutlined />}
-                    aria-label={t('pages.nodes.updatePanel')}
+                    aria-label={updateLabel(t, record)}
                     onClick={() => onUpdateNode(record)}
                   />
                 </Tooltip>
@@ -707,7 +712,7 @@ export default function NodeList({
                                       key: 'update',
                                       label: (
                                         <>
-                                          <CloudDownloadOutlined /> {t('pages.nodes.updatePanel')}
+                                          <CloudDownloadOutlined /> {updateLabel(t, record)}
                                         </>
                                       ),
                                       onClick: () => onUpdateNode(record),

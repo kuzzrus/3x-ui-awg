@@ -177,13 +177,21 @@ describe('NodeList with an agent node', () => {
     );
   }
 
-  it('marks the agent, offers to pair it again, and never to update its panel', () => {
+  it('marks the agent and offers to pair it again', () => {
     renderList();
 
     expect(screen.getAllByText('Agent')).toHaveLength(1);
     expect(screen.getAllByRole('button', { name: 'Pair again' })).toHaveLength(1);
+  });
+
+  it('offers each node its update, the agent under its own name', () => {
+    const onUpdateNode = vi.fn();
+    renderList(noop, onUpdateNode);
+
     expect(screen.getAllByRole('button', { name: 'Update Panel' })).toHaveLength(1);
-    expect(screen.getAllByText('Update available')).toHaveLength(1);
+    expect(screen.getAllByText('Update available')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Update agent' }));
+    expect(onUpdateNode).toHaveBeenCalledWith(expect.objectContaining({ id: 2, kind: 'agent' }));
   });
 
   it('pairs the agent row again, not the panel row', () => {

@@ -2,7 +2,7 @@
 
 Design for an optional third kind of node: a thin, DB-less agent that only runs
 Xray-core for a master panel. The agent, its installer and the master side with its UI
-exist (phases 1 to 7 of [Phasing](#phasing)); the later items are not built.
+exist (phases 1 to 8 of [Phasing](#phasing)); the later items are not built.
 
 ## Problem
 
@@ -33,7 +33,7 @@ Non-goals (for v1):
 - Sidecar protocols on the node (MTProto, AmneziaWG, TUIC, tproxy, NaiveProxy).
   `nodeEligibleProtocols` already excludes them; agents run Xray-native inbounds only.
 - Per-client IP limits on agent nodes.
-- Pull mode (agent dials the master) and agent self-update. Both are addable later.
+- Pull mode (agent dials the master). Addable later.
 
 ## Decisions
 
@@ -100,6 +100,8 @@ HTTP status codes (no `{success,msg,obj}` envelope).
 | `POST /v1/restart`          | Restart Xray with the last good config. Answers 409 before any config exists and 500 when the core does not come back; 422 only ever means a refused push.                                                                                                                                                                                                                                                                                                         |
 | `GET /v1/geo`               | The `*.dat` files in the agent's asset folder, with their sizes.                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `PUT /v1/geo?name=&sha256=` | Stores one geo file. The body is the file, gzip-encoded when `Content-Encoding: gzip` says so. The agent hashes what it unpacked and refuses (400) a name that is no `*.dat` file name or a body that does not match `sha256`, refuses (413) more than 256 MiB, and swaps the file in by renaming, so the core never reads half of one. It does not restart the core.                                                                                              |
+| `POST /v1/update`           | Starts the self-update: downloads the installer from its fixed address, refuses (409) while a run is on or when the agent was not installed by it, and runs it as a transient systemd unit of its own, because the installer stops this very agent. `dev=true` moves to the rolling dev channel. Answers the run as `{runId, state: pending}`.                                                                                                                     |
+| `GET /v1/update`            | How the last run ended: `none`, `pending`, `success` or `failed`, with the installer's exit code. The unit writes it when the installer ends, so the new agent can answer it.                                                                                                                                                                                                                                                                                      |
 
 Any other path, wrong method, or failed auth answers the same bare 404, so a response
 never says which part of the request was wrong. It does not hide that an HTTPS server
@@ -316,7 +318,13 @@ reach GitHub, and `--uninstall` (`--yes` skips the question).
 
 - Open the agent's TCP port, printed at the end of the install, in the host firewall. It
   is the only port the master needs.
-- To update, run the installer again without a bundle: the bundle, the identity and the
+- The master can start the update from the Nodes page, like a panel node's: the agent runs
+  the installer again, on the latest release or on the dev channel as the dialog says. It
+  needs systemd-run and an agent installed by `install-agent.sh`, answers 409 otherwise, and
+  comes back on the new version after a short restart. The master logs how the run ended,
+  and `journalctl -u 'x-ui-agent-update-*'` on the node has the installer's own output. An
+  agent from before the endpoint is told to be too old, and needs the installer run on it once.
+- To update by hand, run the installer again without a bundle: the bundle, the identity and the
   last good config stay, and the agent comes back up on that config.
 - A reboot starts the agent and its core from the last good config without the master.
 - `x-ui-agent -check-bundle -bundle-file <path>` validates a bundle and prints the
@@ -341,8 +349,10 @@ reach GitHub, and `--uninstall` (`--yes` skips the question).
    master restarts and resets, quota depletion, pairing again, deletion.
 7. **Geo files**. Done: the master sends an agent the geo files its config reads when
    it lacks them, and the template's `geodata` section keeps them current.
-8. Later, each on its own: outbound sidecars on the node (Tor, WARP, Psiphon) and
-   AdGuard Home as the node's decoy, `nodeTags` routing, agent self-update, pull mode.
+8. **Self-update**. Done: the Nodes page updates an agent like a panel node, through
+   `POST /v1/update`.
+9. Later, each on its own: outbound sidecars on the node (Tor, WARP, Psiphon) and
+   AdGuard Home as the node's decoy, `nodeTags` routing, pull mode.
 
 ## Open questions
 
