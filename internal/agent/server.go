@@ -51,6 +51,7 @@ func NewServer(core *Core, state *State, secret string) (*Server, error) {
 		{http.MethodPost, agentproto.PathRestart, s.postRestart},
 		{http.MethodGet, agentproto.PathGeo, s.getGeo},
 		{http.MethodPut, agentproto.PathGeo, s.putGeo},
+		{http.MethodGet, agentproto.PathLogs, s.getLogs},
 	} {
 		s.routes[route.method+" "+route.path] = route.handler
 		s.paths[route.path] = true

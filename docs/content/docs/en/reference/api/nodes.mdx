@@ -89,6 +89,16 @@ _openapi:
         latest stable release. Returns a per-node result list.'
       url: '#trigger-the-official-panel-self-updater-on-each-given-node-downloads-the-latest-release-and-restarts-only-enabled-online-nodes-are-updated-offlinedisabled-ones-are-reported-as-skipped-set-dev-true-to-move-the-nodes-to-the-rolling-per-commit-dev-channel-instead-of-the-latest-stable-release-returns-a-per-node-result-list'
     - depth: 2
+      title: Return the newest lines of an agent node’s log, newest first, with what
+        its core printed. Only an agent node has a log to read from here; an
+        agent from before the endpoint is reported as too old.
+      url: '#return-the-newest-lines-of-an-agent-nodes-log-newest-first-with-what-its-core-printed-only-an-agent-node-has-a-log-to-read-from-here-an-agent-from-before-the-endpoint-is-reported-as-too-old'
+    - depth: 2
+      title: Restart the Xray core of a node. An agent restarts into the config it
+        last ran and every connection through it drops for a moment; a node that
+        is disabled is refused.
+      url: '#restart-the-xray-core-of-a-node-an-agent-restarts-into-the-config-it-last-ran-and-every-connection-through-it-drops-for-a-moment-a-node-that-is-disabled-is-refused'
+    - depth: 2
       title: Aggregated metric history for a node — same shape as /server/history,
         scoped to one node.
       url: '#aggregated-metric-history-for-a-node--same-shape-as-serverhistory-scoped-to-one-node'
@@ -158,6 +168,14 @@ _openapi:
           true to move the nodes to the rolling per-commit dev channel instead
           of the latest stable release. Returns a per-node result list.'
         id: trigger-the-official-panel-self-updater-on-each-given-node-downloads-the-latest-release-and-restarts-only-enabled-online-nodes-are-updated-offlinedisabled-ones-are-reported-as-skipped-set-dev-true-to-move-the-nodes-to-the-rolling-per-commit-dev-channel-instead-of-the-latest-stable-release-returns-a-per-node-result-list
+      - content: Return the newest lines of an agent node’s log, newest first, with what
+          its core printed. Only an agent node has a log to read from here; an
+          agent from before the endpoint is reported as too old.
+        id: return-the-newest-lines-of-an-agent-nodes-log-newest-first-with-what-its-core-printed-only-an-agent-node-has-a-log-to-read-from-here-an-agent-from-before-the-endpoint-is-reported-as-too-old
+      - content: Restart the Xray core of a node. An agent restarts into the config it
+          last ran and every connection through it drops for a moment; a node
+          that is disabled is refused.
+        id: restart-the-xray-core-of-a-node-an-agent-restarts-into-the-config-it-last-ran-and-every-connection-through-it-drops-for-a-moment-a-node-that-is-disabled-is-refused
       - content: Aggregated metric history for a node — same shape as /server/history,
           scoped to one node.
         id: aggregated-metric-history-for-a-node--same-shape-as-serverhistory-scoped-to-one-node
@@ -173,7 +191,7 @@ export default function Layout(props) {
   return (
     <>
       {props.children}
-      <Comp document="./public/openapi.json" webhooks={[]} operations={[{"path":"/panel/api/nodes/list","method":"get"},{"path":"/panel/api/nodes/mtls/ca","method":"post"},{"path":"/panel/api/nodes/mtls/trustCA","method":"post"},{"path":"/panel/api/nodes/mtls/reloadClient","method":"post"},{"path":"/panel/api/nodes/get/{id}","method":"get"},{"path":"/panel/api/nodes/webCert/{id}","method":"get"},{"path":"/panel/api/nodes/add","method":"post"},{"path":"/panel/api/nodes/addAgent","method":"post"},{"path":"/panel/api/nodes/repairAgent/{id}","method":"post"},{"path":"/panel/api/nodes/update/{id}","method":"post"},{"path":"/panel/api/nodes/del/{id}","method":"post"},{"path":"/panel/api/nodes/setEnable/{id}","method":"post"},{"path":"/panel/api/nodes/test","method":"post"},{"path":"/panel/api/nodes/certFingerprint","method":"post"},{"path":"/panel/api/nodes/inbounds","method":"post"},{"path":"/panel/api/nodes/probe/{id}","method":"post"},{"path":"/panel/api/nodes/updatePanel","method":"post"},{"path":"/panel/api/nodes/history/{id}/{metric}/{bucket}","method":"get"}]} showTitle />
+      <Comp document="./public/openapi.json" webhooks={[]} operations={[{"path":"/panel/api/nodes/list","method":"get"},{"path":"/panel/api/nodes/mtls/ca","method":"post"},{"path":"/panel/api/nodes/mtls/trustCA","method":"post"},{"path":"/panel/api/nodes/mtls/reloadClient","method":"post"},{"path":"/panel/api/nodes/get/{id}","method":"get"},{"path":"/panel/api/nodes/webCert/{id}","method":"get"},{"path":"/panel/api/nodes/add","method":"post"},{"path":"/panel/api/nodes/addAgent","method":"post"},{"path":"/panel/api/nodes/repairAgent/{id}","method":"post"},{"path":"/panel/api/nodes/update/{id}","method":"post"},{"path":"/panel/api/nodes/del/{id}","method":"post"},{"path":"/panel/api/nodes/setEnable/{id}","method":"post"},{"path":"/panel/api/nodes/test","method":"post"},{"path":"/panel/api/nodes/certFingerprint","method":"post"},{"path":"/panel/api/nodes/inbounds","method":"post"},{"path":"/panel/api/nodes/probe/{id}","method":"post"},{"path":"/panel/api/nodes/updatePanel","method":"post"},{"path":"/panel/api/nodes/agentLogs/{id}/{count}","method":"post"},{"path":"/panel/api/nodes/restartXray/{id}","method":"post"},{"path":"/panel/api/nodes/history/{id}/{metric}/{bucket}","method":"get"}]} showTitle />
     </>
   );
 }

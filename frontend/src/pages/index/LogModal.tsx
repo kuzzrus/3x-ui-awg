@@ -9,14 +9,22 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { parseLogLine } from './logParse';
 import './LogModal.css';
 
+// A log other than the panel's own, read from path/<rows> with the level in the form.
+export interface LogSource {
+  path: string;
+  title: string;
+  fileName: string;
+}
+
 interface LogModalProps {
   open: boolean;
   onClose: () => void;
+  source?: LogSource;
 }
 
 const AUTO_UPDATE_INTERVAL = 5000;
 
-export default function LogModal({ open, onClose }: LogModalProps) {
+export default function LogModal({ open, onClose, source }: LogModalProps) {
   const { t } = useTranslation();
   const { isMobile } = useMediaQuery();
   const [rows, setRows] = useState('20');
@@ -25,13 +33,14 @@ export default function LogModal({ open, onClose }: LogModalProps) {
   const [autoUpdate, setAutoUpdate] = useState(false);
   const [loading, setLoading] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
+  const sourcePath = source?.path;
 
   const runRefresh = useCallback(async () => {
     try {
-      const msg = await HttpUtil.post<string[]>(`/panel/api/server/logs/${rows}`, {
-        level,
-        syslog,
-      });
+      const msg = await HttpUtil.post<string[]>(
+        `${sourcePath ?? '/panel/api/server/logs'}/${rows}`,
+        sourcePath ? { level } : { level, syslog },
+      );
       if (msg?.success) {
         setLogs(msg.obj || []);
       }
@@ -39,7 +48,7 @@ export default function LogModal({ open, onClose }: LogModalProps) {
     } finally {
       setLoading(false);
     }
-  }, [rows, level, syslog]);
+  }, [rows, level, syslog, sourcePath]);
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -53,7 +62,7 @@ export default function LogModal({ open, onClose }: LogModalProps) {
 
   // The spinner is raised during render so the fetch effect stays side-effect
   // free until its response lands.
-  const refreshKey = open ? `${rows}\u0000${level}\u0000${syslog}` : null;
+  const refreshKey = open ? `${sourcePath}\u0000${rows}\u0000${level}\u0000${syslog}` : null;
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
   if (refreshKey !== loadingKey) {
     setLoadingKey(refreshKey);
@@ -73,12 +82,12 @@ export default function LogModal({ open, onClose }: LogModalProps) {
   const parsedLogs = useMemo(() => logs.map(parseLogLine), [logs]);
 
   function download() {
-    FileManager.downloadTextFile(logs.join('\n'), 'x-ui.log');
+    FileManager.downloadTextFile(logs.join('\n'), source?.fileName ?? 'x-ui.log');
   }
 
   const titleNode = (
     <>
-      {t('pages.index.logs')}
+      {source?.title ?? t('pages.index.logs')}
       <SyncOutlined
         spin={loading}
         className="reload-icon"
@@ -133,9 +142,11 @@ export default function LogModal({ open, onClose }: LogModalProps) {
           </Space.Compact>
         </Form.Item>
         <Form.Item>
-          <Checkbox checked={syslog} onChange={(e) => setSyslog(e.target.checked)}>
-            SysLog
-          </Checkbox>
+          {!source && (
+            <Checkbox checked={syslog} onChange={(e) => setSyslog(e.target.checked)}>
+              SysLog
+            </Checkbox>
+          )}
           <Checkbox checked={autoUpdate} onChange={(e) => setAutoUpdate(e.target.checked)}>
             {t('pages.index.autoUpdate')}
           </Checkbox>

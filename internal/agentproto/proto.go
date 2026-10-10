@@ -17,6 +17,8 @@ const (
 	PathRestart = "/v1/restart"
 	// PathGeo lists the geo files the agent holds (GET) and stores one (PUT).
 	PathGeo = "/v1/geo"
+	// PathLogs returns the last lines of the agent's own log, which holds what its core printed too.
+	PathLogs = "/v1/logs"
 
 	// QueryRestartOnUserRemoval is the PathConfig query flag (a bool) that makes
 	// the agent restart the core instead of dropping a removed client's credential.
@@ -26,10 +28,16 @@ const (
 	QueryGeoName   = "name"
 	QueryGeoSha256 = "sha256"
 
+	// The PathLogs query: how many lines, and the least severe level to include.
+	QueryLogCount = "count"
+	QueryLogLevel = "level"
+
 	// MaxConfigBytes caps a PUT /v1/config body on the agent.
 	MaxConfigBytes = 32 << 20
 	// MaxGeoBytes caps one geo file, as it is stored.
 	MaxGeoBytes = 256 << 20
+	// MaxLogLines caps what one PathLogs request returns.
+	MaxLogLines = 1000
 
 	maxGeoNameLen = 100
 )
@@ -82,6 +90,11 @@ type Stats struct {
 	Inbounds       map[string]Counter `json:"inbounds"`
 	Users          map[string]Counter `json:"users"`
 	Online         []string           `json:"online"`
+}
+
+// Logs is the answer of PathLogs, the newest line first as the panel serves its own log.
+type Logs struct {
+	Lines []string `json:"lines"`
 }
 
 // GeoFile is a geo database in the agent's asset folder.

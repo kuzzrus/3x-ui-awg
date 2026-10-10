@@ -122,6 +122,10 @@ the server was reinstalled or the bundle was lost. The agent that holds the old 
 cut off at once, so install the new bundle to bring the node back. An agent node's
 secret, certificate pin and transport cannot be edited: they come with the bundle.
 
+The row of an agent also has **Agent log**, the newest lines of its log with what Xray
+printed, at the level you choose, and **Restart Xray**, which restarts the core into the
+config the agent last ran. Connections through the node drop for a moment.
+
 <Callout type="info">
   Traffic is counted on the master from the cumulative counters the agent reports, so a
   restart of the agent or of the master neither loses nor double counts usage, and a
