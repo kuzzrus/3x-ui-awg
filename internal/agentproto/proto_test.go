@@ -199,7 +199,7 @@ func TestNormalizeSidecars(t *testing.T) {
 		{"blank names are dropped", []string{"", "  "}, nil, ""},
 		{"one", []string{SidecarTor}, []string{SidecarTor}, ""},
 		{"repeats and spaces", []string{" tor", "tor ", SidecarTor}, []string{SidecarTor}, ""},
-		{"unknown", []string{SidecarTor, "psiphon"}, nil, "psiphon"},
+		{"unknown", []string{SidecarTor, "no-such-program"}, nil, "no-such-program"},
 		{"case matters", []string{"Tor"}, nil, "Tor"},
 	}
 	for _, tt := range tests {

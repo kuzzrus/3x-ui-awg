@@ -41,8 +41,8 @@ func TestAgentNodeSidecarsAreSavedAndReplaced(t *testing.T) {
 	if got := save(nil); got == nil || len(got) != 0 {
 		t.Fatalf("a save that names none left %#v, want none, as an empty list", got)
 	}
-	err = svc.UpdateFromRequest(id, &NodeMutationRequest{Name: "edge", Address: "203.0.113.7", Port: 8443, Enable: true, Sidecars: []string{"psiphon"}})
-	if err == nil || !strings.Contains(err.Error(), `"psiphon"`) {
+	err = svc.UpdateFromRequest(id, &NodeMutationRequest{Name: "edge", Address: "203.0.113.7", Port: 8443, Enable: true, Sidecars: []string{"no-such-program"}})
+	if err == nil || !strings.Contains(err.Error(), `"no-such-program"`) {
 		t.Fatalf("a program no agent runs was accepted: %v", err)
 	}
 	if _, err := svc.CreateAgent(&AgentNodeRequest{Name: "edge2", Address: "203.0.113.8", Port: 8443, Sidecars: []string{"nope"}}); err == nil {

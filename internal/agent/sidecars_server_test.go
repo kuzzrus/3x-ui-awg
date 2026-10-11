@@ -64,7 +64,7 @@ func TestServerRefusesWhatIsNotAListOfKnownSidecars(t *testing.T) {
 	s.putSidecars(`{"enabled":["tor"]}`)
 
 	for name, body := range map[string]string{
-		"unknown program": `{"enabled":["tor","psiphon"]}`,
+		"unknown program": `{"enabled":["tor","no-such-program"]}`,
 		"not json":        `tor`,
 		"wrong type":      `{"enabled":"tor"}`,
 	} {
@@ -75,7 +75,7 @@ func TestServerRefusesWhatIsNotAListOfKnownSidecars(t *testing.T) {
 			}
 		})
 	}
-	if unknown := s.putSidecars(`{"enabled":["psiphon"]}`); !strings.Contains(unknown.body, "psiphon") {
+	if unknown := s.putSidecars(`{"enabled":["no-such-program"]}`); !strings.Contains(unknown.body, "no-such-program") {
 		t.Fatalf("answer = %s, want the program that is not known named", unknown.body)
 	}
 	if revision := s.server.sidecars.Revision(); revision != agentproto.SidecarsRevision([]string{agentproto.SidecarTor}) {

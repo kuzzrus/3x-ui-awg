@@ -309,9 +309,9 @@ func TestSidecarHostRefusesAProgramItDoesNotKnow(t *testing.T) {
 	f := newHostFixture(t, &fakeProgram{installed: true})
 	f.set(agentproto.SidecarTor)
 
-	_, err := f.host.Set([]string{agentproto.SidecarTor, "psiphon"})
+	_, err := f.host.Set([]string{agentproto.SidecarTor, "no-such-program"})
 	var unknown *agentproto.UnknownSidecarError
-	if !errors.As(err, &unknown) || unknown.Name != "psiphon" {
+	if !errors.As(err, &unknown) || unknown.Name != "no-such-program" {
 		t.Fatalf("Set error = %v, want the unknown program named", err)
 	}
 	if stored, err := f.state.Sidecars(); err != nil || !slices.Equal(stored, []string{agentproto.SidecarTor}) {
