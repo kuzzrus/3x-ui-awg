@@ -450,7 +450,7 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 
 	// Merge subscription-derived outbounds (if any) into the final outbounds array.
 	mergeActiveSubscriptionOutbounds(xrayConfig)
-	for _, note := range pointLeftOutAtABlackhole(xrayConfig, left) {
+	for _, note := range repairLeftOut(xrayConfig, left) {
 		logger.Warning("panel's own core:", note)
 	}
 

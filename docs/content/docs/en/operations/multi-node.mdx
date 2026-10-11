@@ -156,12 +156,15 @@ them, and not for the panel's own core. Tags are matched without regard to case,
 gets the new config on the next push.
 
 Outbounds work the same way: the **Agent nodes** field of an outbound puts it on the agent
-nodes that carry one of the tags only. The first outbound a node has is its default, so a
-node-only outbound listed first becomes the default of the nodes that have it. A rule for
-every core cannot send to a node-only outbound, and the panel refuses to save one. If a rule
-for some nodes sends to an outbound that a node with that rule does not have, the node still
-gets its config, with the traffic of that rule blocked, and its status says which outbound is
-missing and which tags give it.
+nodes that carry one of the tags only. The first outbound is the default of every core and
+cannot be limited: to send the other traffic of some nodes through a node-only outbound, give
+those nodes a rule that matches everything, with their tags. A rule or an outbound for every
+core cannot send to or be chained through a node-only outbound, and an outbound that the
+panel's own features use (the panel outbound, the one a node is reached through, an inbound's
+egress) cannot be limited to agent nodes: the panel refuses to save either. If a rule for some
+nodes sends to an outbound that a node with that rule does not have, the node still gets its
+config, with the traffic of that rule blocked, and its status says which outbound is missing
+and which tags give it.
 
 ## Managed hosts
 

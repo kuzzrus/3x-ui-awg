@@ -259,8 +259,12 @@ replaces its tags like every other field, and no tags clears them.
 
 An outbound is picked the same way: a `nodeTags` list on an entry of the template's `outbounds` puts
 it in the config of the agent nodes that carry one of the tags and in no other, the panel's own core
-included, and the key is stripped. The first outbound a config has is its default, so a node-only
-outbound that comes first is the default of the nodes that have it.
+included, and the key is stripped. The first outbound is the default of every core, so it cannot carry
+`nodeTags`, or the cores without them would get another default: to send the other traffic of some
+nodes through a node-only outbound, give those nodes a rule that matches everything, with their tags.
+The panel's own core needs outbounds too, for the panel outbound, the outbound a node is reached
+through and the egress of an inbound's bridge, so the template is refused when it limits one of
+those to agent nodes, and the pickers of those features leave node-only outbounds out.
 
 What the tags leave dangling is repaired and never refused: an agent is kept in step by the config it
 is sent, and a client is removed by being left out of it, so a config that is not rendered keeps
@@ -269,10 +273,12 @@ a balancer left without outbounds sends its traffic out of the default outbound.
 lacks an outbound the tags took away, the rules that send to it, or to a balancer it emptied, send to
 a blackhole tagged `x-ui-missing-outbound`, which does not depend on the version of the core, a
 fallback to it is dropped like the panel's own cleanup does when it deletes an outbound, and the last
-error of the node says what was changed. The panel's own core is repaired the same way and logs it. The template is refused when a rule for every core, an
-empty `nodeTags` included, sends to a node-only outbound, since the panel's own core would lack it. A
-rule that names an outbound the template does not hold at all is left as it was, for templates in
-the field are full of them.
+error of the node says what was changed. The panel's own core is repaired the same way and logs it.
+An outbound chained through a missing one by `sockopt.dialerProxy` fails its dials by itself, so it is
+only reported. The template is refused when a rule or an outbound for every core, an empty
+`nodeTags` included, sends to or is chained through a node-only outbound, since the panel's own core
+would lack it. A rule that names an outbound the template does not hold at all is left as it was, for
+templates in the field are full of them.
 
 ## Traffic accounting
 

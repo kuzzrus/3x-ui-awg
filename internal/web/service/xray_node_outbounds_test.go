@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/database"
+	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
 
@@ -298,6 +300,7 @@ func TestARuleToAnOutboundThatIsNowhereStillRenders(t *testing.T) {
 }
 
 func TestSavingTheTemplateChecksTheNodeTagsOfOutbounds(t *testing.T) {
+	setupSettingTestDB(t)
 	svc := &XraySettingService{}
 	template := func(outbound, rule string) string {
 		return `{"outbounds":[{"tag":"direct","protocol":"freedom"},` + outbound + `],` +
@@ -331,5 +334,101 @@ func TestSavingTheTemplateChecksTheNodeTagsOfOutbounds(t *testing.T) {
 	err := svc.CheckXrayConfig(template(nodeOnly, toIt(``)))
 	if err == nil || !strings.Contains(err.Error(), "eu, Exit") {
 		t.Errorf("the refusal of a shared rule = %v, want it to list the tags that give the outbound", err)
+	}
+}
+
+func TestSavingTheTemplateKeepsTheDefaultOutboundForEveryCore(t *testing.T) {
+	svc := &XraySettingService{}
+	first := `{"outbounds":[{"tag":"eu-hop","protocol":"freedom","nodeTags":["eu"]},{"tag":"direct","protocol":"freedom"}]}`
+	if err := svc.CheckXrayConfig(first); err == nil || !strings.Contains(err.Error(), "outbound 1 is the default outbound of every core") {
+		t.Fatalf("CheckXrayConfig = %v, want a refusal of nodeTags on the first outbound, which the cores without them would lose", err)
+	}
+	later := `{"outbounds":[{"tag":"direct","protocol":"freedom"},{"tag":"eu-hop","protocol":"freedom","nodeTags":["eu"]}]}`
+	if err := svc.CheckXrayConfig(later); err != nil {
+		t.Fatalf("CheckXrayConfig = %v, want nodeTags accepted on an outbound that is not the first", err)
+	}
+}
+
+func TestSavingTheTemplateKeepsChainsOfSharedOutboundsOnSharedOnes(t *testing.T) {
+	setupSettingTestDB(t)
+	svc := &XraySettingService{}
+	template := func(chainExtra string) string {
+		return `{"outbounds":[{"tag":"direct","protocol":"freedom"},{"tag":"eu-hop","protocol":"freedom","nodeTags":["eu"]},` +
+			`{"tag":"chain","protocol":"freedom"` + chainExtra + `,"streamSettings":{"sockopt":{"dialerProxy":"eu-hop"}}}]}`
+	}
+	if err := svc.CheckXrayConfig(template(``)); err == nil || !strings.Contains(err.Error(), `outbound 3 is for every core but is chained through outbound "eu-hop"`) {
+		t.Fatalf("CheckXrayConfig = %v, want a refusal of a shared outbound chained through a node-only one", err)
+	}
+	if err := svc.CheckXrayConfig(template(`,"nodeTags":["eu"]`)); err != nil {
+		t.Fatalf("CheckXrayConfig = %v, want a chain between outbounds of nodes accepted", err)
+	}
+}
+
+func TestSavingTheTemplateKeepsOutboundsThePanelUsesForEveryCore(t *testing.T) {
+	setupSettingTestDB(t)
+	settings := &SettingService{}
+	svc := &XraySettingService{}
+	limited := `{"outbounds":[{"tag":"direct","protocol":"freedom"},{"tag":"eu-hop","protocol":"freedom","nodeTags":["eu"]}]}`
+	if err := svc.CheckXrayConfig(limited); err != nil {
+		t.Fatalf("setup: CheckXrayConfig = %v, want it accepted while nothing uses eu-hop", err)
+	}
+
+	if err := settings.SetPanelOutbound("eu-hop"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.CheckXrayConfig(limited); err == nil || !strings.Contains(err.Error(), "the panel outbound") {
+		t.Fatalf("CheckXrayConfig = %v, want a refusal that names the panel outbound", err)
+	}
+	if err := settings.SetPanelOutbound(""); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := database.GetDB().Create(&model.Node{Name: "far", Address: "192.0.2.20", Port: 2053, OutboundTag: "eu-hop", Enable: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.CheckXrayConfig(limited); err == nil || !strings.Contains(err.Error(), `the node "far"`) {
+		t.Fatalf("CheckXrayConfig = %v, want a refusal that names the node that is reached through it", err)
+	}
+	if err := database.GetDB().Model(model.Node{}).Where("name = ?", "far").Update("enable", false).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	bridge := seedInboundOn(t, nil, "mt-in", model.MTProto, true, nil)
+	egress := `{"routeThroughXray":true,"routeXrayPort":10808,"outboundTag":"eu-hop"}`
+	if err := database.GetDB().Model(&model.Inbound{}).Where("id = ?", bridge.Id).Update("settings", egress).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.CheckXrayConfig(limited); err == nil || !strings.Contains(err.Error(), `the inbound "mt-in"`) {
+		t.Fatalf("CheckXrayConfig = %v, want a refusal that names the inbound whose bridge goes through it", err)
+	}
+}
+
+func TestAgentConfigSaysWhatIsChainedThroughAnOutboundTheNodeLacks(t *testing.T) {
+	setupSettingTestDB(t)
+	addTemplateOutbounds(t,
+		hop("us-hop", map[string]any{"nodeTags": []any{"us"}}),
+		hop("chain-eu", map[string]any{
+			"nodeTags":       []any{"eu"},
+			"streamSettings": map[string]any{"sockopt": map[string]any{"dialerProxy": "us-hop"}},
+		}),
+	)
+	eu := seedTaggedAgent(t, "eu-1", "eu")
+	both := seedTaggedAgent(t, "both-1", "eu", "us")
+	t.Cleanup(func() { setAgentConfigProblem(eu, ""); setAgentConfigProblem(both, "") })
+
+	svc := &XrayService{}
+	cfg, err := svc.GetAgentConfig(eu)
+	if err != nil {
+		t.Fatal(err)
+	}
+	problem := agentConfigProblem(eu)
+	if !strings.Contains(problem, `"chain-eu" is chained through outbound "us-hop"`) || !strings.Contains(problem, "tagged us") {
+		t.Fatalf("problem = %q, want it to say which outbound is chained through which, and who has the second", problem)
+	}
+	if !strings.Contains(string(cfg.OutboundConfigs), `"dialerProxy":"us-hop"`) {
+		t.Fatal("the chain was changed, but it fails closed by itself and is only reported")
+	}
+	if _, err := svc.GetAgentConfig(both); err != nil || agentConfigProblem(both) != "" {
+		t.Fatalf("a node that has both outbounds: %v, problem %q", err, agentConfigProblem(both))
 	}
 }

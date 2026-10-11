@@ -2150,7 +2150,7 @@
         "tagRequired": "Tag is required",
         "tagPlaceholder": "unique-tag",
         "nodeTags": "Agent nodes",
-        "nodeTagsHint": "Empty: the outbound is in every core, the panel's own and every agent node. With tags: only on the agent nodes that carry one of them, and not in the panel's own core. The first outbound a core has is its default.",
+        "nodeTagsHint": "Empty: the outbound is in every core, the panel's own and every agent node. With tags: only on the agent nodes that carry one of them, and not in the panel's own core, so the panel's own features cannot use it. The first outbound is the default of every core and cannot be limited.",
         "nodeTagsPlaceholder": "Any node",
         "localIpPlaceholder": "local IP",
         "dialerProxyPlaceholder": "Select an outbound to chain through",

@@ -88,6 +88,8 @@ export default function GeneralTab({ allSetting, updateSetting }: GeneralTabProp
           if (!o || typeof o !== 'object') continue;
           const rec = o as Record<string, unknown>;
           if (isOutboundProtocol(rec, 'blackhole')) continue; // never a useful egress
+          // On some agent nodes only, so not in the panel's own core, which is what this picks for.
+          if (Array.isArray(rec.nodeTags) && rec.nodeTags.length > 0) continue;
           const tag = rec.tag;
           if (typeof tag === 'string' && tag) tags.add(tag);
         }
