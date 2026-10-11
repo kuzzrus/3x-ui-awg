@@ -7,17 +7,20 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
 	"github.com/google/uuid"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/agentproto"
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
 
 const (
 	guidFile     = "guid"
 	lastGoodFile = "last-good.json"
+	sidecarsFile = "sidecars.json"
 	stateDirMode = 0o700
 	stateMode    = 0o600
 )
@@ -88,6 +91,33 @@ func (s *State) SaveLastGood(body []byte, restartOnUserRemoval bool) error {
 		return err
 	}
 	return xray.WriteFileAtomic(filepath.Join(s.dir, lastGoodFile), raw, stateMode)
+}
+
+// Sidecars is the helper programs the master last told the agent to run, so a reboot with the master
+// unreachable still brings them up. A name this build does not know, as after a downgrade, is left out.
+func (s *State) Sidecars() ([]string, error) {
+	raw, err := os.ReadFile(filepath.Join(s.dir, sidecarsFile))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var spec agentproto.SidecarsSpec
+	if err := json.Unmarshal(raw, &spec); err != nil {
+		return nil, fmt.Errorf("the helper programs in %s are unreadable", s.dir)
+	}
+	known := slices.DeleteFunc(spec.Enabled, func(name string) bool { return !slices.Contains(agentproto.KnownSidecars, name) })
+	return agentproto.NormalizeSidecars(known)
+}
+
+// SaveSidecars replaces the stored list in one atomic step, like the config.
+func (s *State) SaveSidecars(names []string) error {
+	raw, err := json.Marshal(agentproto.SidecarsSpec{Enabled: append([]string{}, names...)})
+	if err != nil {
+		return err
+	}
+	return xray.WriteFileAtomic(filepath.Join(s.dir, sidecarsFile), raw, stateMode)
 }
 
 // Dir is the folder the state lives in, which the agent's other private files share.

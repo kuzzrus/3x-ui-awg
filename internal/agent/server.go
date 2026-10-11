@@ -29,6 +29,7 @@ type Server struct {
 	guid     string
 	geoDir   string
 	updater  *updater
+	sidecars *sidecarHost
 	httpLog  serverLog
 	sys      sysSampler
 	routes   map[string]http.HandlerFunc
@@ -42,7 +43,14 @@ func NewServer(core *Core, state *State, secret string) (*Server, error) {
 		return nil, err
 	}
 	// The core reads its geo files from the folder it is started from.
-	s := &Server{core: core, secret: secret, guid: guid, geoDir: config.GetBinFolderPath(), updater: &updater{stateDir: state.Dir()}}
+	s := &Server{
+		core:     core,
+		secret:   secret,
+		guid:     guid,
+		geoDir:   config.GetBinFolderPath(),
+		updater:  &updater{stateDir: state.Dir()},
+		sidecars: newSidecarHost(state, defaultSidecars()),
+	}
 	s.routes = map[string]http.HandlerFunc{}
 	s.paths = map[string]bool{}
 	for _, route := range []struct {
@@ -58,6 +66,7 @@ func NewServer(core *Core, state *State, secret string) (*Server, error) {
 		{http.MethodGet, agentproto.PathLogs, s.getLogs},
 		{http.MethodPost, agentproto.PathUpdate, s.postUpdate},
 		{http.MethodGet, agentproto.PathUpdate, s.getUpdate},
+		{http.MethodPut, agentproto.PathSidecars, s.putSidecars},
 	} {
 		s.routes[route.method+" "+route.path] = route.handler
 		s.paths[route.path] = true
@@ -88,6 +97,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	handler(w, r)
 }
+
+// RunSidecars keeps the helper programs the master asked for running until ctx ends.
+func (s *Server) RunSidecars(ctx context.Context) { s.sidecars.Run(ctx) }
 
 // Serve answers on ln until ctx ends; tlsConfig carries the certificate and the SNI gate.
 func (s *Server) Serve(ctx context.Context, ln net.Listener, tlsConfig *tls.Config) error {
@@ -246,13 +258,33 @@ func (s *Server) getStatus(w http.ResponseWriter, _ *http.Request) {
 		UptimeSecs:     sys.uptime,
 		NetUp:          sys.netUp,
 		NetDown:        sys.netDown,
+		Sidecars:       s.sidecars.States(),
 	})
+}
+
+func (s *Server) putSidecars(w http.ResponseWriter, r *http.Request) {
+	var spec agentproto.SidecarsSpec
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, agentproto.MaxSidecarsBytes)).Decode(&spec); err != nil {
+		writeError(w, http.StatusBadRequest, "the helper programs are not a JSON list of names: "+err.Error())
+		return
+	}
+	view, err := s.sidecars.Set(spec.Enabled)
+	var unknown *agentproto.UnknownSidecarError
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusOK, view)
+	case errors.As(err, &unknown):
+		writeError(w, http.StatusBadRequest, err.Error())
+	default:
+		writeError(w, http.StatusInternalServerError, "keep the helper programs: "+err.Error())
+	}
 }
 
 func (s *Server) getStats(w http.ResponseWriter, _ *http.Request) {
 	stats, err := s.core.Stats()
 	switch {
 	case err == nil:
+		stats.SidecarsRevision = s.sidecars.Revision()
 		writeJSON(w, http.StatusOK, stats)
 	case errors.Is(err, ErrCoreRestarted):
 		writeError(w, http.StatusServiceUnavailable, err.Error())

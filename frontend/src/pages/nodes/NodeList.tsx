@@ -26,6 +26,7 @@ import {
 } from '@ant-design/icons';
 
 import NodeHistoryPanel from './NodeHistoryPanel';
+import SidecarChips from './SidecarChips';
 import type { NodeRecord } from '@/api/queries/useNodesQuery';
 import { isPanelUpdateAvailable } from '@/lib/panel-version';
 import { activateOnKey } from '@/utils/a11y';
@@ -397,6 +398,7 @@ export default function NodeList({
                 ))}
               </span>
             )}
+            <SidecarChips node={record} />
           </div>
         ),
       },
@@ -849,6 +851,12 @@ export default function NodeList({
                   <div className="stat-row">
                     <span className="stat-label">{t('pages.nodes.agent.tags')}</span>
                     <span>{statsNode.tags.join(', ')}</span>
+                  </div>
+                )}
+                {statsNode.kind === 'agent' && !!statsNode.sidecars?.length && (
+                  <div className="stat-row">
+                    <span className="stat-label">{t('pages.nodes.agent.sidecars')}</span>
+                    <SidecarChips node={statsNode} detailed />
                   </div>
                 )}
                 <div className="stat-row">

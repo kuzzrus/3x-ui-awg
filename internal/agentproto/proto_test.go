@@ -2,10 +2,12 @@ package agentproto
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -113,22 +115,31 @@ func TestWireFieldNames(t *testing.T) {
 				AgentVersion: "v1", Hostname: "h", Guid: "g", ConfigRevision: "r",
 				XrayVersion: "26.1.1", XrayState: XrayStateError, XrayError: "e",
 				CpuPct: 1.5, MemPct: 2.5, UptimeSecs: 3, NetUp: 4, NetDown: 5,
+				Sidecars: []SidecarState{{Name: SidecarTor, State: SidecarRunning, Message: "Bootstrapped 100%"}},
 			},
 			`{"agentVersion":"v1","hostname":"h","guid":"g","configRevision":"r",` +
 				`"xrayVersion":"26.1.1","xrayState":"error","xrayError":"e",` +
-				`"cpuPct":1.5,"memPct":2.5,"uptimeSecs":3,"netUp":4,"netDown":5}`,
+				`"cpuPct":1.5,"memPct":2.5,"uptimeSecs":3,"netUp":4,"netDown":5,` +
+				`"sidecars":[{"name":"tor","state":"running","message":"Bootstrapped 100%"}]}`,
 		},
 		{
 			"stats",
 			Stats{
-				ConfigRevision: "r",
-				XrayStartedAt:  7,
-				Inbounds:       map[string]Counter{"in-1": {Up: 1, Down: 2}},
-				Users:          map[string]Counter{"a@x": {Up: 3, Down: 4}},
-				Online:         []string{"a@x"},
+				ConfigRevision:   "r",
+				XrayStartedAt:    7,
+				Inbounds:         map[string]Counter{"in-1": {Up: 1, Down: 2}},
+				Users:            map[string]Counter{"a@x": {Up: 3, Down: 4}},
+				Online:           []string{"a@x"},
+				SidecarsRevision: "s",
 			},
 			`{"configRevision":"r","xrayStartedAt":7,"inbounds":{"in-1":{"up":1,"down":2}},` +
-				`"users":{"a@x":{"up":3,"down":4}},"online":["a@x"]}`,
+				`"users":{"a@x":{"up":3,"down":4}},"online":["a@x"],"sidecarsRevision":"s"}`,
+		},
+		{"sidecars spec", SidecarsSpec{Enabled: []string{SidecarTor}}, `{"enabled":["tor"]}`},
+		{
+			"sidecars",
+			Sidecars{Revision: "r", Enabled: []string{SidecarTor}, States: []SidecarState{{Name: SidecarTor, State: SidecarInstalling}}},
+			`{"revision":"r","enabled":["tor"],"states":[{"name":"tor","state":"installing"}]}`,
 		},
 		{"error body", ErrorBody{Error: "bad"}, `{"error":"bad"}`},
 	}
@@ -173,5 +184,56 @@ func TestValidGeoName(t *testing.T) {
 		if got := ValidGeoName(tt.name); got != tt.ok {
 			t.Errorf("ValidGeoName(%q) = %v, want %v", tt.name, got, tt.ok)
 		}
+	}
+}
+
+func TestNormalizeSidecars(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      []string
+		want    []string
+		unknown string
+	}{
+		{"nil", nil, nil, ""},
+		{"empty", []string{}, nil, ""},
+		{"blank names are dropped", []string{"", "  "}, nil, ""},
+		{"one", []string{SidecarTor}, []string{SidecarTor}, ""},
+		{"repeats and spaces", []string{" tor", "tor ", SidecarTor}, []string{SidecarTor}, ""},
+		{"unknown", []string{SidecarTor, "no-such-program"}, nil, "no-such-program"},
+		{"case matters", []string{"Tor"}, nil, "Tor"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NormalizeSidecars(tt.in)
+			if tt.unknown != "" {
+				var unknown *UnknownSidecarError
+				if !errors.As(err, &unknown) || unknown.Name != tt.unknown {
+					t.Fatalf("NormalizeSidecars(%q) error = %v, want the unknown helper program %q", tt.in, err, tt.unknown)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("NormalizeSidecars(%q): %v", tt.in, err)
+			}
+			if !slices.Equal(got, tt.want) || (got == nil) != (tt.want == nil) {
+				t.Fatalf("NormalizeSidecars(%q) = %#v, want %#v", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSidecarsRevision(t *testing.T) {
+	if got := SidecarsRevision(nil); got != "" {
+		t.Fatalf("no helper programs have revision %q, want none, which is what an agent that predates them reports", got)
+	}
+	if got := SidecarsRevision([]string{}); got != "" {
+		t.Fatalf("an empty list has revision %q, want none", got)
+	}
+	one := SidecarsRevision([]string{SidecarTor})
+	if one == "" || one != SidecarsRevision([]string{SidecarTor}) {
+		t.Fatalf("the revision of a list is %q, want a value that is the same each time", one)
+	}
+	if one == SidecarsRevision([]string{SidecarTor, "other"}) {
+		t.Fatal("two different lists have the same revision")
 	}
 }

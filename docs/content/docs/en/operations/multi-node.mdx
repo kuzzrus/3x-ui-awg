@@ -167,6 +167,22 @@ nodes sends to an outbound that a node with that rule does not have, the node st
 config, with the traffic of that rule blocked, and its status says which outbound is missing
 and which tags give it.
 
+### Tor on an agent node
+
+Tick **Tor** under **Helper programs** in the settings of an agent node and the agent runs a
+Tor client beside Xray: a SOCKS proxy on `127.0.0.1:19050` of that server, started again with
+the agent even when the master is out of reach. If the server lacks Tor, the agent installs it
+with the package manager of the server, which can take a few minutes. The chip beside the
+node's tags says **installing**, then **running** or **failed**, and pointing at it shows the
+last line Tor printed, which tells how far it got in building a circuit, or why it failed. An
+agent that is too old for helper programs says so as the last error of the node: update it.
+Unticking Tor stops it, and ticking it again tries at once after a failure.
+
+The outbound that the panel's own Tor uses, a `socks` outbound to `127.0.0.1` port `19050`,
+works as it is on an agent node that runs Tor, and an agent node that does not run it drops
+the traffic that a rule sends there. When only some nodes run Tor, limit the outbound to them
+with its **Agent nodes** field; the panel's own core then no longer has it.
+
 ## Managed hosts
 
 A **managed host** is an override endpoint attached to an inbound. At

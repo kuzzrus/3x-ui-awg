@@ -33,6 +33,8 @@ const (
 	agentRestartTimeout = 25 * time.Second
 	agentGeoListTimeout = 10 * time.Second
 	agentLogsTimeout    = 10 * time.Second
+	// The agent answers at once, before an install that the list may start has run.
+	agentSidecarsTimeout = 10 * time.Second
 	// A geo file is tens of megabytes and the link to a node may be slow.
 	agentGeoSendTimeout = 15 * time.Minute
 	// The agent downloads the installer, in up to 10 s, before it answers that an update has started.
@@ -219,6 +221,20 @@ func (c *AgentClient) Logs(ctx context.Context, count int, level string) (*agent
 	query := url.Values{agentproto.QueryLogCount: {strconv.Itoa(count)}, agentproto.QueryLogLevel: {level}}
 	var out agentproto.Logs
 	if err := c.do(ctx, http.MethodGet, agentproto.PathLogs, query, nil, agentLogsTimeout, maxLogsBytes, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// PutSidecars tells the agent which helper programs to run, in place of the list it had. It answers
+// before an install that the list starts has finished, with how each program stands then.
+func (c *AgentClient) PutSidecars(ctx context.Context, names []string) (*agentproto.Sidecars, error) {
+	body, err := json.Marshal(agentproto.SidecarsSpec{Enabled: append([]string{}, names...)})
+	if err != nil {
+		return nil, err
+	}
+	var out agentproto.Sidecars
+	if err := c.do(ctx, http.MethodPut, agentproto.PathSidecars, nil, body, agentSidecarsTimeout, maxAnswerBytes, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

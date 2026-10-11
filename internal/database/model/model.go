@@ -821,6 +821,9 @@ type Node struct {
 	// Tags label an agent node: a routing rule whose nodeTags name one of them is part of its config.
 	Tags []string `json:"tags" form:"tags" gorm:"serializer:json;column:tags"`
 
+	// Sidecars are the helper programs, such as Tor, that an agent node runs beside its core.
+	Sidecars []string `json:"sidecars" form:"sidecars" gorm:"serializer:json;column:sidecars"`
+
 	// Guid is the remote panel's stable self-identifier (its panelGuid),
 	// learned from each heartbeat. It is the globally stable node identity used
 	// to attribute online clients/inbounds to the physical node across a chain
@@ -849,6 +852,9 @@ type Node struct {
 	XrayState string `json:"xrayState" gorm:"column:xray_state"`
 	XrayError string `json:"xrayError" gorm:"column:xray_error"`
 
+	// SidecarStates is how each of the node's helper programs stood at the last heartbeat.
+	SidecarStates []NodeSidecar `json:"sidecarStates" gorm:"serializer:json;column:sidecar_states"`
+
 	ConfigDirty   bool  `json:"configDirty" gorm:"default:false"`
 	ConfigDirtyAt int64 `json:"configDirtyAt"`
 
@@ -876,6 +882,14 @@ type Node struct {
 
 	CreatedAt int64 `json:"createdAt" gorm:"autoCreateTime:milli" example:"1700000000"`
 	UpdatedAt int64 `json:"updatedAt" gorm:"autoUpdateTime:milli" example:"1700000000"`
+}
+
+// NodeSidecar is how one helper program of an agent node stood when the agent last reported:
+// installing, running or failed, and the last thing it said or why it failed.
+type NodeSidecar struct {
+	Name    string `json:"name" example:"tor"`
+	State   string `json:"state" example:"running"`
+	Message string `json:"message" example:"Bootstrapped 100% (done): Done"`
 }
 
 // NodeSummary is the read-only identity of a node as published one hop up: the

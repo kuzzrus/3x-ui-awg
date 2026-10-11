@@ -34,6 +34,32 @@
   line-height: 18px;
 }
 
+.node-sidecars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  margin-top: 2px;
+}
+
+.node-sidecars .ant-tag {
+  margin-inline-end: 4px;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.node-sidecars.is-detailed {
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: end;
+}
+
+.node-sidecars .sidecar-message {
+  display: block;
+  font-size: 11px;
+  opacity: 0.65;
+  overflow-wrap: anywhere;
+}
+
 .address-header {
   display: inline-flex;
   align-items: center;

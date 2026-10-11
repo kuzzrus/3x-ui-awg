@@ -1,6 +1,7 @@
 package service
 
 import (
+	"slices"
 	"strings"
 	"sync"
 )
@@ -23,6 +24,32 @@ func agentConfigProblem(nodeID int) string {
 	problem, _ := agentConfigProblems.Load(nodeID)
 	text, _ := problem.(string)
 	return text
+}
+
+// agentSidecarProblems holds, per agent node, why its helper programs could not be set, which the sync can only
+// log and the heartbeat shows beside the problem with the config.
+var agentSidecarProblems sync.Map // node id -> string
+
+// setAgentSidecarProblem records why the helper programs of a node could not be set, and forgets it when problem is empty.
+func setAgentSidecarProblem(nodeID int, problem string) {
+	if problem == "" {
+		agentSidecarProblems.Delete(nodeID)
+		return
+	}
+	agentSidecarProblems.Store(nodeID, problem)
+}
+
+func agentSidecarProblem(nodeID int) string {
+	problem, _ := agentSidecarProblems.Load(nodeID)
+	text, _ := problem.(string)
+	return text
+}
+
+// agentProblems is the last error the heartbeat shows for an agent node: what is wrong with its config
+// and with its helper programs.
+func agentProblems(nodeID int) string {
+	problems := slices.DeleteFunc([]string{agentConfigProblem(nodeID), agentSidecarProblem(nodeID)}, func(problem string) bool { return problem == "" })
+	return strings.Join(problems, "; ")
 }
 
 func unbuildableConfigProblem(err error) string {
