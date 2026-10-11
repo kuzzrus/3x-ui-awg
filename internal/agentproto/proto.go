@@ -110,12 +110,15 @@ type Stats struct {
 	SidecarsRevision string `json:"sidecarsRevision"`
 }
 
-// SidecarTor is the Tor client the agent runs on a loopback SOCKS port, for an outbound of the
-// config to send traffic through.
-const SidecarTor = "tor"
+// The helper programs an agent runs, each a client on a loopback SOCKS port for an outbound of the
+// config to send traffic through: Tor on 19050 and Psiphon on 19060, the ports the panel's own use.
+const (
+	SidecarTor     = "tor"
+	SidecarPsiphon = "psiphon"
+)
 
 // KnownSidecars are the helper programs an agent can run, in the order they are listed.
-var KnownSidecars = []string{SidecarTor}
+var KnownSidecars = []string{SidecarTor, SidecarPsiphon}
 
 // How a helper program stands on the agent; pending is one that is listed and not looked at yet.
 const (

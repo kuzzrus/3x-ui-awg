@@ -1772,7 +1772,7 @@ export const sections: readonly Section[] = [
         method: 'POST',
         path: '/panel/api/nodes/addAgent',
         summary:
-          'Register a node that runs the thin x-ui-agent instead of a full panel. The agent is not installed yet, so the node is not probed. The panel mints the secret and the certificate of the agent and returns the pairing bundle once: it holds the private key, is never stored, and is what install-agent.sh asks for on the node. tags label the node: a routing rule whose nodeTags name one of them is part of the agent\u2019s config. sidecars lists the helper programs the agent runs beside its core (only "tor" for now); the agent installs one that the server lacks.',
+          'Register a node that runs the thin x-ui-agent instead of a full panel. The agent is not installed yet, so the node is not probed. The panel mints the secret and the certificate of the agent and returns the pairing bundle once: it holds the private key, is never stored, and is what install-agent.sh asks for on the node. tags label the node: a routing rule whose nodeTags name one of them is part of the agent\u2019s config. sidecars lists the helper programs the agent runs beside its core ("tor", "psiphon"); the agent installs one that the server lacks.',
         body: '{\n  "name": "de-fra-2",\n  "remark": "",\n  "address": "node2.example.com",\n  "port": 8443,\n  "allowPrivateAddress": false,\n  "outboundTag": "",\n  "tags": ["eu"],\n  "sidecars": ["tor"]\n}',
         responseSchema: 'AgentPairing',
       },

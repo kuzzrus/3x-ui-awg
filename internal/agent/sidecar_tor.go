@@ -6,7 +6,6 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/mhsanaei/3x-ui/v3/internal/agentproto"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/tor"
 )
@@ -66,7 +65,3 @@ func (torProgram) Result() string { return tidyTorLine(tor.GetManager().LastResu
 
 // tidyTorLine is a line of Tor's log without the date, which the panel shows beside the state.
 func tidyTorLine(line string) string { return torLinePrefix.ReplaceAllString(line, "") }
-
-func defaultSidecars() map[string]sidecar {
-	return map[string]sidecar{agentproto.SidecarTor: torProgram{}}
-}

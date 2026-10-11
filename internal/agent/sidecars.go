@@ -33,6 +33,11 @@ type sidecar interface {
 	Result() string
 }
 
+// defaultSidecars are the programs this build can run, by the names of the protocol.
+func defaultSidecars() map[string]sidecar {
+	return map[string]sidecar{agentproto.SidecarTor: torProgram{}, agentproto.SidecarPsiphon: &psiphonProgram{}}
+}
+
 // sidecarSlot is what the host knows of one program between two passes.
 type sidecarSlot struct {
 	state   string

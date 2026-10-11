@@ -433,6 +433,19 @@ func TestSidecarHostGivesUpAnInstallWhenTheContextEnds(t *testing.T) {
 	}
 }
 
+// A name the protocol lists and the host has no program for would be taken by the agent and never run.
+func TestEveryKnownSidecarHasAProgramAndNothingElseDoes(t *testing.T) {
+	programs := defaultSidecars()
+	for _, name := range agentproto.KnownSidecars {
+		if programs[name] == nil {
+			t.Errorf("no program runs %q, which the protocol lists", name)
+		}
+	}
+	if len(programs) != len(agentproto.KnownSidecars) {
+		t.Errorf("the host has %d programs, the protocol lists %d", len(programs), len(agentproto.KnownSidecars))
+	}
+}
+
 func TestTidyTorLineDropsTheDateAndTheNoticeLevel(t *testing.T) {
 	for line, want := range map[string]string{
 		"Oct 11 14:27:10.000 [notice] Bootstrapped 10% (conn_done): Connected to a relay": "Bootstrapped 10% (conn_done): Connected to a relay",

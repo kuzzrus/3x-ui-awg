@@ -2,7 +2,7 @@
 
 Design for an optional third kind of node: a thin, DB-less agent that only runs
 Xray-core for a master panel. The agent, its installer and the master side with its UI
-exist (phases 1 to 11 of [Phasing](#phasing)); the later items are not built.
+exist (phases 1 to 12 of [Phasing](#phasing)); the later items are not built.
 
 ## Problem
 
@@ -32,7 +32,7 @@ Non-goals (for v1):
   node, forever.
 - Sidecar protocols on the node (MTProto, AmneziaWG, TUIC, tproxy, NaiveProxy).
   `nodeEligibleProtocols` already excludes them; agents run Xray-native inbounds only. The
-  helper programs that an outbound reaches on the node's loopback (Tor) are another matter:
+  helper programs that an outbound reaches on the node's loopback (Tor, Psiphon) are another matter:
   see [Helper programs](#helper-programs).
 - Per-client IP limits on agent nodes.
 - Pull mode (agent dials the master). Addable later.
@@ -137,9 +137,10 @@ push made meanwhile waits for the start attempt to end.
 
 An agent can run programs beside its core that an outbound of the config reaches on the
 loopback of the server. The node carries the list (`Node.Sidecars`, agents only, replaced by
-each save like the tags), and today the only entry is `tor`: a Tor client with its SOCKS port on
-`127.0.0.1:19050`, the one the panel runs for itself. The outbound that uses it is an ordinary
-`socks` outbound of the template, limited to the nodes that run Tor with `nodeTags`.
+each save like the tags). The entries are `tor`, a Tor client with its SOCKS port on `127.0.0.1:19050`,
+and `psiphon`, a Psiphon client on `127.0.0.1:19060`: the ports the panel's own use. The outbound
+that uses one is an ordinary `socks` outbound of the template, limited to the nodes that run the
+program with `nodeTags`.
 
 The master compares the `sidecarsRevision` of `GET /v1/stats` with that of the list it wants on
 every tick and sends `PUT /v1/sidecars` when they differ, the revision of an empty list being
@@ -150,14 +151,17 @@ again after 15 seconds. The reason shows as the last error of the node.
 
 The agent keeps the list in `sidecars.json` of its state folder and brings the programs up
 from it when it starts, with the master out of reach. One loop looks at them every 10 seconds:
-it installs a program the server lacks (Tor through the package manager of the server, which
-can take minutes, so the request that sets the list does not wait for it), starts one that is
+it installs a program the server lacks (Tor through the package manager of the server, Psiphon by
+downloading the one binary the panel pins by its checksum, linux/amd64 only; either can take minutes,
+so the request that sets the list does not wait for it), starts one that is
 not running, and stops one that left the list. A program that died or would not start is left
 alone for 30 seconds, and one that could not be installed for 5 minutes; taking it off the
 list and putting it back tries at once. Every program is stopped when the agent stops.
 `GET /v1/status` carries the state of each program, `pending`, `installing`, `running` or
 `failed`, with the last thing it said or why it failed, which for Tor tells how far it got in
-building a circuit. The Nodes page shows them beside the node's tags.
+building a circuit and for Psiphon whether its tunnel is up. Psiphon runs with the config this
+build bundles, the same one the panel seeds for itself. The Nodes page shows the programs beside
+the node's tags.
 
 ### Geo files
 
@@ -270,7 +274,7 @@ when it differs from what the agent holds:
 
 The master template (routing, outbounds, DNS, policy) is the same for every agent in
 v1, minus the local-only injections (sidecar bridges, panel egress, node egresses).
-An outbound that points at the loopback port of a helper program (Tor) works on an agent
+An outbound that points at the loopback port of a helper program (Tor, Psiphon) works on an agent
 that runs the program, and fails its dial on one that does not, so such an outbound is
 limited to the nodes that run it with `nodeTags`. A WARP outbound is an Xray outbound and
 needs no helper program. An amneziawg outbound of the template, whose master-side bridge
@@ -423,8 +427,8 @@ says so; a tag or archive given explicitly is never swapped.
 10. **Per-node routing**. Done: tags on an agent node, `nodeTags` on a routing rule and on an
     outbound.
 11. **Helper programs**. Done: the Tor client of an agent node, set with `PUT /v1/sidecars`.
-12. Later, each on its own: Psiphon as a helper program, AdGuard Home as the node's decoy,
-    pull mode.
+12. **Psiphon**. Done: the second helper program, beside Tor.
+13. Later, each on its own: AdGuard Home as the node's decoy, pull mode.
 
 ## Open questions
 
