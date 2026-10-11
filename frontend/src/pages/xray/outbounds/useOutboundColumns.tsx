@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Button, Dropdown, Tag, Tooltip } from 'antd';
 import {
   RetweetOutlined,
+  CloudServerOutlined,
   MoreOutlined,
   EditOutlined,
   DeleteOutlined,
@@ -180,6 +181,16 @@ export function useOutboundColumns({
                 </>
               )}
             </div>
+            {!!record.nodeTags?.length && (
+              <Tooltip title={t('pages.xray.outboundForm.nodeTags')}>
+                <div className="protocol-line">
+                  <CloudServerOutlined aria-hidden="true" />
+                  {record.nodeTags.map((nodeTag) => (
+                    <Tag key={nodeTag}>{nodeTag}</Tag>
+                  ))}
+                </div>
+              </Tooltip>
+            )}
           </div>
         ),
       },

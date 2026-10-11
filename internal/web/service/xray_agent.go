@@ -9,14 +9,14 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
 
-// GetAgentConfig is the whole Xray config an agent node runs: the template with the rules its tags pick,
-// the subscription outbounds and the node's own enabled inbounds, and nothing only the master can serve.
+// GetAgentConfig is the whole Xray config an agent node runs: the template with the rules and outbounds
+// its tags pick, the subscription outbounds and its own enabled inbounds, and nothing only the master can serve.
 func (s *XrayService) GetAgentConfig(nodeID int) (*xray.Config, error) {
 	tags, err := s.nodeService.AgentTags(nodeID)
 	if err != nil {
 		return nil, err
 	}
-	xrayConfig, err := s.newConfigFromTemplate(ruleScope{agent: true, tags: tags})
+	xrayConfig, left, err := s.newConfigFromTemplate(configScope{agent: true, tags: tags})
 	if err != nil {
 		return nil, err
 	}
@@ -38,6 +38,9 @@ func (s *XrayService) GetAgentConfig(nodeID int) (*xray.Config, error) {
 		xrayConfig.InboundConfigs = append(xrayConfig.InboundConfigs, *inboundConfig)
 	}
 	mergeActiveSubscriptionOutbounds(xrayConfig)
+	if err := checkRulesReachTheirOutbounds(xrayConfig, left); err != nil {
+		return nil, err
+	}
 	return xrayConfig, nil
 }
 

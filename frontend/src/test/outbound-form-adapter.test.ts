@@ -814,3 +814,21 @@ describe('outbound-form-adapter: full optional-block round-trip', () => {
     expect(back.mux).toMatchObject({ enabled: true });
   });
 });
+
+describe('outbound-form-adapter: nodeTags', () => {
+  const freedom = { protocol: 'freedom', tag: 'eu-hop', settings: {} };
+
+  it('keeps the node tags of an outbound through a load and a save, trimmed and once each', () => {
+    const form = rawOutboundToFormValues({ ...freedom, nodeTags: ['eu', ' exit ', 'eu', 7] });
+    expect(form.nodeTags).toEqual(['eu', ' exit ', 'eu']);
+
+    expect(formValuesToWirePayload(form).nodeTags).toEqual(['eu', 'exit']);
+  });
+
+  it('leaves the key out of an outbound that is for every node', () => {
+    for (const nodeTags of [undefined, [], '', ['  '], 'eu']) {
+      const wire = formValuesToWirePayload(rawOutboundToFormValues({ ...freedom, nodeTags }));
+      expect(wire).not.toHaveProperty('nodeTags');
+    }
+  });
+});

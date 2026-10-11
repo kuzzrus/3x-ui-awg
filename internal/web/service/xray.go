@@ -378,26 +378,28 @@ func (s *XrayService) renderInboundConfig(inbound *model.Inbound) (*xray.Inbound
 
 // newConfigFromTemplate is the panel's Xray template with the fixes every config built
 // from it gets, whether it is for the master's own core or for an agent node's.
-func (s *XrayService) newConfigFromTemplate(scope ruleScope) (*xray.Config, error) {
+func (s *XrayService) newConfigFromTemplate(scope configScope) (*xray.Config, map[string][]string, error) {
 	templateConfig, err := s.settingService.GetXrayConfigTemplate()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	xrayConfig := &xray.Config{}
 	err = json.Unmarshal([]byte(templateConfig), xrayConfig)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	xrayConfig.LogConfig = resolveXrayLogPaths(xrayConfig.LogConfig)
 	xrayConfig.API = ensureAPIServices(xrayConfig.API)
 	xrayConfig.Policy = ensureStatsPolicy(xrayConfig.Policy)
 	xrayConfig.RouterConfig = stripDisabledRules(xrayConfig.RouterConfig, scope)
+	var left map[string][]string
+	xrayConfig.OutboundConfigs, left = scopeOutbounds(xrayConfig.OutboundConfigs, scope)
 	// Template outbounds authored before the xray-core #6258 XHTTP rename may
 	// still carry sessionPlacement/sessionKey; lift them too (same reason as
 	// the per-inbound lift in renderInboundConfig).
 	xrayConfig.OutboundConfigs = liftOutboundsXhttpSessionIDKeys(xrayConfig.OutboundConfigs)
-	return xrayConfig, nil
+	return xrayConfig, left, nil
 }
 
 // mergeActiveSubscriptionOutbounds adds the active subscriptions' outbounds before or after the
@@ -411,7 +413,7 @@ func mergeActiveSubscriptionOutbounds(cfg *xray.Config) {
 
 // GetXrayConfig retrieves and builds the Xray configuration from settings and inbounds.
 func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
-	xrayConfig, err := s.newConfigFromTemplate(ruleScope{})
+	xrayConfig, _, err := s.newConfigFromTemplate(configScope{})
 	if err != nil {
 		return nil, err
 	}
@@ -1240,16 +1242,16 @@ func resolveXrayLogPaths(logCfg json_util.RawMessage) json_util.RawMessage {
 	return out
 }
 
-// ruleScope is whose config the template is rendered for: the panel's own core, or an agent node
-// that carries these tags.
-type ruleScope struct {
+// configScope is whose config the template is rendered for: the panel's own core, or an agent node
+// that carries these tags. Its rules and outbounds are the ones their nodeTags pick for it.
+type configScope struct {
 	agent bool
 	tags  []string
 }
 
 // stripDisabledRules drops `enabled: false` rules and those `nodeTags` keeps out of this scope, and
 // strips the panel-only `enabled`/`comment`/`nodeTags` keys from the rest, only in the generated config.
-func stripDisabledRules(routerCfg json_util.RawMessage, scope ruleScope) json_util.RawMessage {
+func stripDisabledRules(routerCfg json_util.RawMessage, scope configScope) json_util.RawMessage {
 	if len(routerCfg) == 0 {
 		return routerCfg
 	}
@@ -1289,7 +1291,7 @@ func stripDisabledRules(routerCfg json_util.RawMessage, scope ruleScope) json_ut
 		if rawTags, exists := rule["nodeTags"]; exists {
 			delete(rule, "nodeTags")
 			changed = true
-			if !isApiRule(rule) && !ruleIsForScope(rawTags, scope) {
+			if !isApiRule(rule) && !nodeTagsFit(rawTags, scope) {
 				continue
 			}
 		}
@@ -1308,9 +1310,9 @@ func stripDisabledRules(routerCfg json_util.RawMessage, scope ruleScope) json_ut
 	return out
 }
 
-// ruleIsForScope reports whether a rule with these nodeTags is in a config. No tags: everywhere;
+// nodeTagsFit reports whether a rule with these nodeTags is in a config. No tags: everywhere;
 // tags: only the agent nodes that carry one; an unreadable list: nowhere.
-func ruleIsForScope(rawTags any, scope ruleScope) bool {
+func nodeTagsFit(rawTags any, scope configScope) bool {
 	tags, ok := ruleNodeTags(rawTags)
 	if !ok {
 		logger.Warning("routing rule with unreadable nodeTags left out of the config:", rawTags)

@@ -57,6 +57,12 @@ func (s *XraySettingService) CheckXrayConfig(XrayTemplateConfig string) error {
 	if err := checkRuleNodeTags(xrayConfig.RouterConfig); err != nil {
 		return err
 	}
+	if err := checkOutboundNodeTags(xrayConfig.OutboundConfigs); err != nil {
+		return err
+	}
+	if err := checkSharedRulesReachTheirOutbounds(xrayConfig.RouterConfig, xrayConfig.OutboundConfigs); err != nil {
+		return err
+	}
 	if len(xrayConfig.OutboundConfigs) > 0 {
 		var outbounds []json.RawMessage
 		if err := json.Unmarshal(xrayConfig.OutboundConfigs, &outbounds); err != nil {
