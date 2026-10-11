@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 )
 
@@ -115,5 +116,31 @@ func TestOnlyAnAgentNodeCarriesTags(t *testing.T) {
 	}
 	if len(node.Tags) != 0 {
 		t.Fatalf("Create left tags %q on a stock panel node", node.Tags)
+	}
+}
+
+// A row written before the column existed holds NULL there, and it must load like a node with no
+// tags: an operator upgrades in place, over the database they already have.
+func TestAgentRowFromBeforeTheTagsColumnReadsAsNoTags(t *testing.T) {
+	setupConflictDB(t)
+	svc := &NodeService{}
+	pairing, err := svc.CreateAgent(&AgentNodeRequest{Name: "edge", Address: "203.0.113.7", Port: 8443, Tags: []string{"eu"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := pairing.Node.Id
+	if err := database.GetDB().Exec("UPDATE nodes SET tags = NULL WHERE id = ?", id).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if tags, err := svc.AgentTags(id); err != nil || len(tags) != 0 {
+		t.Fatalf("AgentTags of a row with NULL tags = %q, %v, want none", tags, err)
+	}
+	view, err := svc.GetViewById(id)
+	if err != nil || view.Tags == nil || len(view.Tags) != 0 {
+		t.Fatalf("view of a row with NULL tags = %#v, %v, want an empty list", view, err)
+	}
+	if nodes, err := svc.GetAll(); err != nil || len(nodes) != 1 {
+		t.Fatalf("GetAll = %d nodes, %v, want the row to load", len(nodes), err)
 	}
 }
