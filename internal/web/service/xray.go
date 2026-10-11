@@ -619,8 +619,32 @@ func outboundTagExists(outbounds json_util.RawMessage, tag string) bool {
 	return false
 }
 
+// routingTargetExists reports whether a rule can send to the tag: an outbound, or a balancer that selects one.
+// The core sends what a rule hands a balancer without outbounds out of the default outbound.
 func routingTargetExists(routing map[string]any, outbounds json_util.RawMessage, tag string) bool {
-	return routingTagIsBalancer(routing, tag) || outboundTagExists(outbounds, tag)
+	return outboundTagExists(outbounds, tag) || balancerHasOutbounds(routing, outbounds, tag)
+}
+
+func balancerHasOutbounds(routing map[string]any, outbounds json_util.RawMessage, tag string) bool {
+	if !routingTagIsBalancer(routing, tag) {
+		return false
+	}
+	balancers, _ := routing["balancers"].([]any)
+	for _, raw := range balancers {
+		balancer, ok := raw.(map[string]any)
+		if !ok || balancer["tag"] != tag {
+			continue
+		}
+		selector, _ := balancer["selector"].([]any)
+		for outbound := range outboundTagSet(outbounds) {
+			for _, entry := range selector {
+				if prefix, ok := entry.(string); ok && strings.HasPrefix(outbound, prefix) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // NodeEgressInboundTag returns the loopback SOCKS inbound tag for a given node.

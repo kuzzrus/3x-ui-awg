@@ -140,7 +140,7 @@ func chainsThroughGone(outbounds json_util.RawMessage, gone map[string][]string)
 }
 
 // repairLeftOut repairs what scopeOutbounds left dangling and lists what it found: a rule whose outbound or
-// balancer is gone sends to a blackhole, a fallback that is gone is dropped, and a chain through one is reported.
+// balancer is gone sends to a blackhole, so does a fallback that is gone, and a chain through one is reported.
 func repairLeftOut(cfg *xray.Config, left map[string][]string) []string {
 	if len(left) == 0 {
 		return nil
@@ -166,6 +166,7 @@ func repairRouting(cfg *xray.Config, have map[string]bool, gone map[string][]str
 	}
 
 	var notes []string
+	blocked := false
 	emptied := map[string]bool{}
 	balancers, _ := routing["balancers"].([]any)
 	for _, raw := range balancers {
@@ -176,8 +177,9 @@ func repairRouting(cfg *xray.Config, have map[string]bool, gone map[string][]str
 		tag, _ := balancer["tag"].(string)
 		if fallback, _ := balancer["fallbackTag"].(string); fallback != "" {
 			if tags, isGone := gone[fallback]; isGone {
-				delete(balancer, "fallbackTag")
-				notes = append(notes, fmt.Sprintf("balancer %q falls back to outbound %q, which this config does not have%s: the fallback is dropped",
+				balancer["fallbackTag"] = missingOutboundTag
+				blocked = true
+				notes = append(notes, fmt.Sprintf("balancer %q falls back to outbound %q, which this config does not have%s: its fallback is a blackhole",
 					tag, fallback, onlyNodesTagged(tags)))
 			}
 		}
@@ -186,7 +188,6 @@ func repairRouting(cfg *xray.Config, have map[string]bool, gone map[string][]str
 		}
 	}
 
-	blocked := false
 	rules, _ := routing["rules"].([]any)
 	for _, raw := range rules {
 		rule, ok := raw.(map[string]any)

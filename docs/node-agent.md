@@ -269,12 +269,13 @@ node-only outbounds only, and the pickers of those features leave both out.
 
 What the tags leave dangling is repaired and never refused: an agent is kept in step by the config it
 is sent, and a client is removed by being left out of it, so a config that is not rendered keeps
-serving what was revoked. Xray 26.9.9 loads a rule that names no outbound and drops its traffic, and
-a balancer left without outbounds sends its traffic out of the default outbound. So, in a config that
-lacks an outbound the tags took away, the rules that send to it, or to a balancer it emptied, send to
-a blackhole tagged `x-ui-missing-outbound`, which does not depend on the version of the core, a
-fallback to it is dropped like the panel's own cleanup does when it deletes an outbound, and the last
-error of the node says what was changed. The panel's own core is repaired the same way and logs it.
+serving what was revoked. Xray 26.9.9 loads a rule that names no outbound and drops its traffic, a
+balancer left without outbounds sends its traffic out of the default outbound, and so does a balancer
+whose members are all down and that has no fallback. So, in a config that lacks an outbound the tags
+took away, the rules that send to it, or to a balancer it emptied, send to a blackhole tagged
+`x-ui-missing-outbound`, which does not depend on the version of the core, a fallback to it is that
+blackhole too, and the last error of the node says what was changed. The panel's own core is repaired
+the same way and logs it. The bridges of the panel are not injected towards a balancer without outbounds.
 An outbound chained through a missing one by `sockopt.dialerProxy` fails its dials by itself, so it is
 only reported. The template is refused when a rule or an outbound for every core, an empty
 `nodeTags` included, sends to, or is chained through, a node-only outbound or a balancer of those

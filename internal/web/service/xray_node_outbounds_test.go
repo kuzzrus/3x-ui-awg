@@ -214,7 +214,7 @@ func TestAgentConfigBlocksARuleToAnOutboundTheNodeLacks(t *testing.T) {
 }
 
 // A balancer left without outbounds sends its traffic out of the default one, so the rules that use it are
-// blocked, and a fallback to an outbound the node lacks is dropped like the panel's own cleanup does.
+// blocked, and so is the traffic of a balancer whose members are all down and whose fallback the node lacks.
 func TestAgentConfigRepairsABalancerTheNodeLacksTheOutboundsOf(t *testing.T) {
 	setupSettingTestDB(t)
 	addTemplateOutbounds(t, hop("us-hop", map[string]any{"nodeTags": []any{"us"}}), hop("eu-hop", map[string]any{"nodeTags": []any{"eu"}}))
@@ -260,8 +260,8 @@ func TestAgentConfigRepairsABalancerTheNodeLacksTheOutboundsOf(t *testing.T) {
 		t.Fatalf("the rule of a balancer that still has outbounds sends to %q, want it left alone", targets["eu-pool"])
 	}
 	fallbacks := balancerFallbacks(cfg)
-	if fallbacks["us-pool"] != "" || fallbacks["eu-pool"] != "eu-hop" {
-		t.Fatalf("fallbacks = %v, want the one that is gone dropped and the one the node has kept", fallbacks)
+	if fallbacks["us-pool"] != missingOutboundTag || fallbacks["eu-pool"] != "eu-hop" {
+		t.Fatalf("fallbacks = %v, want the one that is gone sent to the blackhole and the one the node has kept", fallbacks)
 	}
 	if problem := agentConfigProblem(eu); !strings.Contains(problem, "us-pool") || !strings.Contains(problem, "falls back") {
 		t.Fatalf("problem = %q, want the balancer and the fallback named", problem)
@@ -271,15 +271,19 @@ func TestAgentConfigRepairsABalancerTheNodeLacksTheOutboundsOf(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := balancerFallbacks(cfg)["us-pool"]; got != "us-hop" {
-		t.Fatalf("a node that has us-hop lost its fallback: %q", got)
+	fallbacks = balancerFallbacks(cfg)
+	if fallbacks["us-pool"] != "us-hop" || fallbacks["eu-pool"] != missingOutboundTag {
+		t.Fatalf("fallbacks of a node that has us-hop = %v, want its own kept and eu-pool's, which it lacks, sent to the blackhole", fallbacks)
+	}
+	if !outboundTagsOf(t, cfg)[missingOutboundTag] {
+		t.Fatal("a fallback that goes to the blackhole needs the blackhole in the config, even when no rule does")
 	}
 	master, err := svc.GetXrayConfig()
 	if err != nil {
 		t.Fatalf("the panel's own core has no node-only outbound at all: %v", err)
 	}
-	if got := balancerFallbacks(master); got["us-pool"] != "" || got["eu-pool"] != "" {
-		t.Fatalf("the panel's own core kept fallbacks %v to outbounds it does not have, and would not start", got)
+	if got := balancerFallbacks(master); got["us-pool"] != missingOutboundTag || got["eu-pool"] != missingOutboundTag {
+		t.Fatalf("the fallbacks of the panel's own core = %v, want the ones to outbounds it lacks sent to the blackhole", got)
 	}
 }
 
@@ -512,5 +516,27 @@ func TestSavingTheTemplateKeepsWhatThePanelUsesOutOfBalancersOfNodeOnlyOutbounds
 	geodata := limited + `,"geodata":{"outbound":"eu-hop"}}`
 	if err := svc.CheckXrayConfig(geodata); err == nil || !strings.Contains(err.Error(), `outbound "eu-hop" is used by the geodata outbound`) {
 		t.Fatalf("CheckXrayConfig = %v, want a refusal of a geodata outbound that the panel's own core lacks", err)
+	}
+}
+
+// The core sends what a rule hands a balancer without outbounds out of the default outbound, so a bridge of the
+// panel must not be injected towards one.
+func TestRoutingTargetNeedsAnOutboundOrABalancerThatHasOne(t *testing.T) {
+	routing := map[string]any{"balancers": []any{
+		map[string]any{"tag": "pool", "selector": []any{"a-"}},
+		map[string]any{"tag": "ghost", "selector": []any{"zzz-"}},
+		map[string]any{"tag": "bare"},
+	}}
+	outbounds := json_util.RawMessage(`[{"tag":"direct"},{"tag":"a-1"}]`)
+	for tag, want := range map[string]bool{"direct": true, "a-1": true, "pool": true, "ghost": false, "bare": false, "nowhere": false, "": false} {
+		if got := routingTargetExists(routing, outbounds, tag); got != want {
+			t.Errorf("routingTargetExists(%q) = %v, want %v", tag, got, want)
+		}
+	}
+
+	cfg := &xray.Config{OutboundConfigs: outbounds, RouterConfig: json_util.RawMessage(`{"balancers":[{"tag":"ghost","selector":["zzz-"]}],"rules":[]}`)}
+	injectPanelEgress(cfg, "ghost")
+	if len(cfg.InboundConfigs) != 0 {
+		t.Fatalf("a panel egress bridge was injected towards a balancer that has no outbounds: %v", inboundTags(cfg))
 	}
 }
