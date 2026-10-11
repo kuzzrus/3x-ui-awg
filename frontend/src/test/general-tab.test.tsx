@@ -35,6 +35,12 @@ describe('GeneralTab', () => {
           { tag: 'eu-hop', protocol: 'freedom', nodeTags: ['eu'] },
           { tag: 'any-hop', protocol: 'freedom', nodeTags: [] },
         ],
+        routing: {
+          balancers: [
+            { tag: 'nodes-only', selector: ['eu-hop'] },
+            { tag: 'with-direct', selector: ['eu-hop', 'direct'] },
+          ],
+        },
       },
       subscriptionOutboundTags: [],
     };
@@ -62,7 +68,9 @@ describe('GeneralTab', () => {
 
     expect(offered).toContain('direct');
     expect(offered).toContain('any-hop');
+    expect(offered).toContain('with-direct');
     expect(offered).not.toContain('eu-hop');
+    expect(offered).not.toContain('nodes-only');
   });
 
   it('forwards typed page sizes unchanged, zero included', () => {

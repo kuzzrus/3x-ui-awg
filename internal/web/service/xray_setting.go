@@ -60,10 +60,11 @@ func (s *XraySettingService) CheckXrayConfig(XrayTemplateConfig string) error {
 	if err := checkOutboundNodeTags(xrayConfig.OutboundConfigs); err != nil {
 		return err
 	}
-	if err := checkSharedEntriesReachTheirOutbounds(xrayConfig.RouterConfig, xrayConfig.OutboundConfigs); err != nil {
+	shared := subscriptionOutboundTags()
+	if err := checkSharedEntriesReachTheirOutbounds(xrayConfig.RouterConfig, xrayConfig.OutboundConfigs, shared); err != nil {
 		return err
 	}
-	if err := checkPanelUsesKeepTheirOutbounds(s, xrayConfig.OutboundConfigs); err != nil {
+	if err := checkPanelUsesKeepTheirOutbounds(s, xrayConfig, shared); err != nil {
 		return err
 	}
 	if len(xrayConfig.OutboundConfigs) > 0 {

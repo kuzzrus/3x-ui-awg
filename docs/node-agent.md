@@ -263,8 +263,9 @@ included, and the key is stripped. The first outbound is the default of every co
 `nodeTags`, or the cores without them would get another default: to send the other traffic of some
 nodes through a node-only outbound, give those nodes a rule that matches everything, with their tags.
 The panel's own core needs outbounds too, for the panel outbound, the outbound a node is reached
-through and the egress of an inbound's bridge, so the template is refused when it limits one of
-those to agent nodes, and the pickers of those features leave node-only outbounds out.
+through, the egress of an inbound's bridge and the download of the geo files, so the template is
+refused when it limits one of those to agent nodes, or leaves a balancer that one of them uses with
+node-only outbounds only, and the pickers of those features leave both out.
 
 What the tags leave dangling is repaired and never refused: an agent is kept in step by the config it
 is sent, and a client is removed by being left out of it, so a config that is not rendered keeps
@@ -276,8 +277,8 @@ fallback to it is dropped like the panel's own cleanup does when it deletes an o
 error of the node says what was changed. The panel's own core is repaired the same way and logs it.
 An outbound chained through a missing one by `sockopt.dialerProxy` fails its dials by itself, so it is
 only reported. The template is refused when a rule or an outbound for every core, an empty
-`nodeTags` included, sends to or is chained through a node-only outbound, since the panel's own core
-would lack it. A rule that names an outbound the template does not hold at all is left as it was, for
+`nodeTags` included, sends to, or is chained through, a node-only outbound or a balancer of those
+only, since the panel's own core would lack it. A rule that names an outbound the template does not hold at all is left as it was, for
 templates in the field are full of them.
 
 ## Traffic accounting

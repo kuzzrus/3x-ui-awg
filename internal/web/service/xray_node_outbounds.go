@@ -269,9 +269,61 @@ func nodeOnlyOutbounds(list []map[string]any) map[string][]string {
 	return nodeOnly
 }
 
-// checkSharedEntriesReachTheirOutbounds refuses a rule or an outbound that is for every core but sends to,
-// or is chained through, an outbound only some agent nodes have, which the panel's own core would be left without.
-func checkSharedEntriesReachTheirOutbounds(routerCfg, outbounds json_util.RawMessage) error {
+// sortedTags is tags in the order the messages tell them.
+func sortedTags(tags []string) string {
+	sorted := slices.Clone(tags)
+	slices.SortFunc(sorted, func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) })
+	return strings.Join(slices.CompactFunc(sorted, strings.EqualFold), ", ")
+}
+
+// balancersLimitedToNodes maps the tag of each balancer that selects outbounds, all of them limited to agent
+// nodes, to the nodeTags that give them: the panel's own core would have it empty. shared lists tags every core has.
+func balancersLimitedToNodes(routerCfg json_util.RawMessage, list []map[string]any, shared []string) map[string][]string {
+	var routing struct {
+		Balancers []struct {
+			Tag      string `json:"tag"`
+			Selector []any  `json:"selector"`
+		} `json:"balancers"`
+	}
+	if len(routerCfg) == 0 || json.Unmarshal(routerCfg, &routing) != nil {
+		return nil
+	}
+	nodeOnly := nodeOnlyOutbounds(list)
+	limited := map[string][]string{}
+	for _, balancer := range routing.Balancers {
+		selects := func(tag string) bool {
+			for _, entry := range balancer.Selector {
+				if prefix, ok := entry.(string); ok && strings.HasPrefix(tag, prefix) {
+					return true
+				}
+			}
+			return false
+		}
+		var via []string
+		members, everyCoreHasOne := 0, slices.ContainsFunc(shared, selects)
+		for _, outbound := range list {
+			tag, _ := outbound["tag"].(string)
+			if tag == "" || !selects(tag) {
+				continue
+			}
+			members++
+			if tags, only := nodeOnly[tag]; only {
+				via = append(via, tags...)
+			} else {
+				everyCoreHasOne = true
+			}
+		}
+		if balancer.Tag != "" && members > 0 && !everyCoreHasOne {
+			limited[balancer.Tag] = via
+		}
+	}
+	return limited
+}
+
+// checkSharedEntriesReachTheirOutbounds refuses a rule or an outbound that is for every core but sends to, or
+// is chained through, an outbound only some agent nodes have, or sends to a balancer of such outbounds only:
+// the panel's own core would be left without them. shared lists the tags of the outbounds every core has besides the template's.
+func checkSharedEntriesReachTheirOutbounds(routerCfg, outbounds json_util.RawMessage, shared []string) error {
 	var list []map[string]any
 	if len(outbounds) == 0 || json.Unmarshal(outbounds, &list) != nil {
 		return nil
@@ -288,9 +340,8 @@ func checkSharedEntriesReachTheirOutbounds(routerCfg, outbounds json_util.RawMes
 		sockopt, _ := stream["sockopt"].(map[string]any)
 		via, _ := sockopt["dialerProxy"].(string)
 		if tags, only := nodeOnly[via]; via != "" && only {
-			slices.SortFunc(tags, func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) })
 			return common.NewErrorf("xray template config invalid: outbound %d is for every core but is chained through outbound %q, which only the agent nodes tagged %s have",
-				i+1, via, strings.Join(tags, ", "))
+				i+1, via, sortedTags(tags))
 		}
 	}
 	var routing struct {
@@ -299,6 +350,7 @@ func checkSharedEntriesReachTheirOutbounds(routerCfg, outbounds json_util.RawMes
 	if json.Unmarshal(routerCfg, &routing) != nil {
 		return nil
 	}
+	limited := balancersLimitedToNodes(routerCfg, list, shared)
 	for i, rule := range routing.Rules {
 		if enabled, ok := rule["enabled"].(bool); ok && !enabled && !isApiRule(rule) {
 			continue
@@ -308,9 +360,13 @@ func checkSharedEntriesReachTheirOutbounds(routerCfg, outbounds json_util.RawMes
 		}
 		target, _ := rule["outboundTag"].(string)
 		if tags, only := nodeOnly[target]; only {
-			slices.SortFunc(tags, func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) })
 			return common.NewErrorf("xray template config invalid: routing rule %d is for every core but sends to outbound %q, which only the agent nodes tagged %s have",
-				i+1, target, strings.Join(tags, ", "))
+				i+1, target, sortedTags(tags))
+		}
+		balancer, _ := rule["balancerTag"].(string)
+		if tags, only := limited[balancer]; only {
+			return common.NewErrorf("xray template config invalid: routing rule %d is for every core but sends to balancer %q, whose outbounds only the agent nodes tagged %s have",
+				i+1, balancer, sortedTags(tags))
 		}
 	}
 	return nil
@@ -346,23 +402,56 @@ func panelOutboundUses(settings *SettingService) map[string][]string {
 	return uses
 }
 
+// subscriptionOutboundTags is the tags of the outbounds of the active subscriptions, which every core gets
+// besides the template's.
+func subscriptionOutboundTags() []string {
+	if database.GetDB() == nil {
+		return nil
+	}
+	tags, err := (&OutboundSubscriptionService{}).AllActiveOutboundTags()
+	if err != nil {
+		return nil
+	}
+	return tags
+}
+
 // checkPanelUsesKeepTheirOutbounds refuses to limit to agent nodes an outbound that the panel's own core is
-// asked to use: the core would lack it, and the panel would go on with a direct connection and only a log line.
-func checkPanelUsesKeepTheirOutbounds(settings *XraySettingService, outbounds json_util.RawMessage) error {
+// asked to use, or a balancer of such outbounds only: the core would lack it, and the panel would go on direct.
+func checkPanelUsesKeepTheirOutbounds(settings *XraySettingService, cfg *xray.Config, shared []string) error {
 	var list []map[string]any
-	if len(outbounds) == 0 || json.Unmarshal(outbounds, &list) != nil || database.GetDB() == nil {
+	if len(cfg.OutboundConfigs) == 0 || json.Unmarshal(cfg.OutboundConfigs, &list) != nil {
 		return nil
 	}
 	nodeOnly := nodeOnlyOutbounds(list)
 	if len(nodeOnly) == 0 {
 		return nil
 	}
-	uses := panelOutboundUses(&settings.SettingService)
-	for _, outbound := range list {
-		tag, _ := outbound["tag"].(string)
-		if _, only := nodeOnly[tag]; only && len(uses[tag]) > 0 {
-			return common.NewErrorf("xray template config invalid: outbound %q is used by %s, which the panel's own core serves, so it cannot be limited to agent nodes",
-				tag, strings.Join(uses[tag], ", "))
+	uses := map[string][]string{}
+	var geodata struct {
+		Outbound string `json:"outbound"`
+	}
+	if json.Unmarshal(cfg.Geodata, &geodata) == nil && geodata.Outbound != "" {
+		uses[geodata.Outbound] = append(uses[geodata.Outbound], "the geodata outbound")
+	}
+	if database.GetDB() != nil {
+		for tag, users := range panelOutboundUses(&settings.SettingService) {
+			uses[tag] = append(uses[tag], users...)
+		}
+	}
+	limited := balancersLimitedToNodes(cfg.RouterConfig, list, shared)
+	tags := make([]string, 0, len(uses))
+	for tag := range uses {
+		tags = append(tags, tag)
+	}
+	slices.Sort(tags)
+	for _, tag := range tags {
+		if via, only := nodeOnly[tag]; only {
+			return common.NewErrorf("xray template config invalid: outbound %q is used by %s, which the panel's own core serves, so it cannot be limited to agent nodes (tagged %s)",
+				tag, strings.Join(uses[tag], ", "), sortedTags(via))
+		}
+		if via, only := limited[tag]; only {
+			return common.NewErrorf("xray template config invalid: balancer %q is used by %s, which the panel's own core serves, but all its outbounds are limited to agent nodes (tagged %s)",
+				tag, strings.Join(uses[tag], ", "), sortedTags(via))
 		}
 	}
 	return nil

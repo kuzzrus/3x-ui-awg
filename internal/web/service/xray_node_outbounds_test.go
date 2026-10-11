@@ -8,6 +8,7 @@ import (
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
+	"github.com/mhsanaei/3x-ui/v3/internal/util/json_util"
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
 
@@ -430,5 +431,86 @@ func TestAgentConfigSaysWhatIsChainedThroughAnOutboundTheNodeLacks(t *testing.T)
 	}
 	if _, err := svc.GetAgentConfig(both); err != nil || agentConfigProblem(both) != "" {
 		t.Fatalf("a node that has both outbounds: %v, problem %q", err, agentConfigProblem(both))
+	}
+}
+
+// A balancer of outbounds that only some agent nodes have is empty on the panel's own core, and the core
+// sends what a rule hands such a balancer out of the default outbound.
+func TestSavingTheTemplateKeepsSharedRulesOffBalancersOfNodeOnlyOutbounds(t *testing.T) {
+	setupSettingTestDB(t)
+	svc := &XraySettingService{}
+	template := func(rule string) string {
+		return `{"outbounds":[{"tag":"direct","protocol":"freedom"},` +
+			`{"tag":"eu-hop","protocol":"freedom","nodeTags":["eu"]},` +
+			`{"tag":"us-hop","protocol":"freedom","nodeTags":["us"]},` +
+			`{"tag":"shared-hop","protocol":"freedom"}],` +
+			`"routing":{"balancers":[` +
+			`{"tag":"hops","selector":["eu-hop","us-hop"]},` +
+			`{"tag":"mixed","selector":["eu-hop","shared-hop"]},` +
+			`{"tag":"stale","selector":["nothing-"]}],` +
+			`"rules":[` + rule + `]}}`
+	}
+	to := func(balancer, extra string) string {
+		return `{"type":"field","balancerTag":"` + balancer + `"` + extra + `}`
+	}
+	for name, tc := range map[string]struct {
+		rule string
+		bad  string
+	}{
+		"a shared rule to a balancer of node-only outbounds": {to("hops", ""), `routing rule 1 is for every core but sends to balancer "hops", whose outbounds only the agent nodes tagged eu, us have`},
+		"a rule of nodes to the same balancer":               {to("hops", `,"nodeTags":["eu"]`), ""},
+		"a disabled shared rule":                             {to("hops", `,"enabled":false`), ""},
+		"a shared rule to a balancer that has a shared one":  {to("mixed", ""), ""},
+		"a shared rule to a balancer that selects nothing":   {to("stale", ""), ""},
+	} {
+		err := svc.CheckXrayConfig(template(tc.rule))
+		switch {
+		case tc.bad != "" && (err == nil || !strings.Contains(err.Error(), tc.bad)):
+			t.Errorf("%s: CheckXrayConfig = %v, want a refusal that says %q", name, err, tc.bad)
+		case tc.bad == "" && err != nil:
+			t.Errorf("%s: CheckXrayConfig = %v, want it accepted", name, err)
+		}
+	}
+}
+
+func TestBalancersLimitedToNodesCountsTheOutboundsEveryCoreHasBesides(t *testing.T) {
+	router := json_util.RawMessage(`{"balancers":[{"tag":"pool","selector":["eu-","sub-"]}]}`)
+	list := []map[string]any{
+		{"tag": "eu-hop", "protocol": "freedom", "nodeTags": []any{"eu"}},
+		{"tag": "eu-two", "protocol": "freedom", "nodeTags": []any{"EU", "x"}},
+	}
+	got := balancersLimitedToNodes(router, list, nil)
+	if tags, ok := got["pool"]; !ok || len(tags) != 3 {
+		t.Fatalf("limited = %v, want the pool, which only agent nodes can fill", got)
+	}
+	if got := balancersLimitedToNodes(router, list, []string{"sub-1"}); len(got) != 0 {
+		t.Fatalf("limited = %v, want none: every core has the outbounds of a subscription", got)
+	}
+}
+
+func TestSavingTheTemplateKeepsWhatThePanelUsesOutOfBalancersOfNodeOnlyOutbounds(t *testing.T) {
+	setupSettingTestDB(t)
+	settings := &SettingService{}
+	svc := &XraySettingService{}
+	limited := `{"outbounds":[{"tag":"direct","protocol":"freedom"},{"tag":"eu-hop","protocol":"freedom","nodeTags":["eu"]}],` +
+		`"routing":{"balancers":[{"tag":"hops","selector":["eu-"]}]}`
+	if err := svc.CheckXrayConfig(limited + `}`); err != nil {
+		t.Fatalf("setup: CheckXrayConfig = %v, want it accepted while nothing uses the balancer", err)
+	}
+
+	if err := settings.SetPanelOutbound("hops"); err != nil {
+		t.Fatal(err)
+	}
+	err := svc.CheckXrayConfig(limited + `}`)
+	if err == nil || !strings.Contains(err.Error(), `balancer "hops" is used by the panel outbound`) {
+		t.Fatalf("CheckXrayConfig = %v, want a refusal that names the balancer and the panel outbound", err)
+	}
+	if err := settings.SetPanelOutbound(""); err != nil {
+		t.Fatal(err)
+	}
+
+	geodata := limited + `,"geodata":{"outbound":"eu-hop"}}`
+	if err := svc.CheckXrayConfig(geodata); err == nil || !strings.Contains(err.Error(), `outbound "eu-hop" is used by the geodata outbound`) {
+		t.Fatalf("CheckXrayConfig = %v, want a refusal of a geodata outbound that the panel's own core lacks", err)
 	}
 }

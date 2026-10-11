@@ -2,12 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 
 import { keys } from '@/api/queryKeys';
 import { fetchXrayConfig } from '@/hooks/useXraySetting';
+import { isNodeOnly, nodeOnlyBalancers } from '@/lib/xray/node-only';
 import { isOutboundProtocol } from '@/schemas/primitives';
-
-// An outbound with nodeTags is only on some agent nodes, so the panel's own features cannot use it.
-function isNodeOnly(outbound: { nodeTags?: unknown } | null): boolean {
-  return Array.isArray(outbound?.nodeTags) && outbound.nodeTags.length > 0;
-}
 
 // Available outbound (and balancer-eligible) tags the user can route an mtproto
 // inbound's Telegram traffic to. Shares the cached xray config query so opening
@@ -36,8 +32,13 @@ export function useOutboundTags(opts?: { excludeBlackhole?: boolean }) {
       const balancers = (
         data?.xraySetting?.routing as { balancers?: Array<{ tag?: string }> } | undefined
       )?.balancers;
+      const limited = nodeOnlyBalancers(
+        data?.xraySetting?.outbounds ?? [],
+        balancers ?? [],
+        data?.subscriptionOutboundTags ?? [],
+      );
       for (const b of balancers ?? []) {
-        if (b?.tag) tags.add(b.tag);
+        if (b?.tag && !limited.has(b.tag)) tags.add(b.tag);
       }
       return [...tags];
     },
@@ -74,8 +75,13 @@ export function useOutboundTagGroups(opts?: { excludeBlackhole?: boolean }) {
       const bal = (
         data?.xraySetting?.routing as { balancers?: Array<{ tag?: string }> } | undefined
       )?.balancers;
+      const limited = nodeOnlyBalancers(
+        data?.xraySetting?.outbounds ?? [],
+        bal ?? [],
+        data?.subscriptionOutboundTags ?? [],
+      );
       for (const b of bal ?? []) {
-        if (b?.tag && !outbounds.has(b.tag)) balancers.push(b.tag);
+        if (b?.tag && !outbounds.has(b.tag) && !limited.has(b.tag)) balancers.push(b.tag);
       }
       return { outbounds: [...outbounds], balancers };
     },

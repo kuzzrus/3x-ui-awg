@@ -4,6 +4,7 @@ import { Alert, Button, Form, Input, Modal, Select, Space, Spin, Typography, mes
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 
 import { XrayConfigPayloadSchema } from '@/schemas/xray';
+import { isNodeOnly } from '@/lib/xray/node-only';
 import { isOutboundProtocol } from '@/schemas/primitives';
 import { HttpUtil } from '@/utils';
 
@@ -77,6 +78,7 @@ export default function GeodataSection({ active, onBusy, onClose }: GeodataSecti
         if (!o || typeof o !== 'object') continue;
         const rec = o as Record<string, unknown>;
         if (isOutboundProtocol(rec, 'blackhole')) continue;
+        if (isNodeOnly(rec)) continue; // not in the panel's own core, which downloads through it
         const tag = rec.tag;
         if (typeof tag === 'string' && tag) tags.add(tag);
       }

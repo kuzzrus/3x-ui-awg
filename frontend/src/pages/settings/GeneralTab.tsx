@@ -10,6 +10,7 @@ import {
   SettingOutlined,
 } from '@ant-design/icons';
 import type { AllSetting } from '@/models/setting';
+import { isNodeOnly, nodeOnlyBalancers } from '@/lib/xray/node-only';
 import { isOutboundProtocol } from '@/schemas/primitives';
 import { HttpUtil, LanguageManager } from '@/utils';
 import { onNumber } from '@/utils/onNumber';
@@ -89,7 +90,7 @@ export default function GeneralTab({ allSetting, updateSetting }: GeneralTabProp
           const rec = o as Record<string, unknown>;
           if (isOutboundProtocol(rec, 'blackhole')) continue; // never a useful egress
           // On some agent nodes only, so not in the panel's own core, which is what this picks for.
-          if (Array.isArray(rec.nodeTags) && rec.nodeTags.length > 0) continue;
+          if (isNodeOnly(rec)) continue;
           const tag = rec.tag;
           if (typeof tag === 'string' && tag) tags.add(tag);
         }
@@ -102,10 +103,17 @@ export default function GeneralTab({ allSetting, updateSetting }: GeneralTabProp
         const balancerTags: string[] = [];
         const routing = (template.routing || {}) as Record<string, unknown>;
         const balancers = Array.isArray(routing.balancers) ? routing.balancers : [];
+        const limited = nodeOnlyBalancers(
+          outbounds,
+          balancers,
+          subTags.filter((tag): tag is string => typeof tag === 'string'),
+        );
         for (const b of balancers) {
           if (!b || typeof b !== 'object') continue;
           const tag = (b as Record<string, unknown>).tag;
-          if (typeof tag === 'string' && tag && !tags.has(tag)) balancerTags.push(tag);
+          if (typeof tag === 'string' && tag && !tags.has(tag) && !limited.has(tag)) {
+            balancerTags.push(tag);
+          }
         }
         setOutboundTagList([...tags]);
         setBalancerTagList(balancerTags);
