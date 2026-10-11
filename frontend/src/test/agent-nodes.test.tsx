@@ -284,6 +284,26 @@ describe('NodeList with an agent node', () => {
     expect(onRestartXray).toHaveBeenCalledWith(expect.objectContaining({ id: 2, kind: 'agent' }));
   });
 
+  it('tells both why the config of an agent is adjusted and why its core failed', async () => {
+    renderList(noop, noop, noop, noop, {
+      list: [
+        {
+          ...nodes[1],
+          lastError: 'the config of this node was adjusted: a rule is blocked',
+          xrayState: 'error',
+          xrayError: 'core failed to start',
+        },
+      ],
+    });
+
+    const icon = document.querySelector('.anticon-exclamation-circle');
+    if (!icon) throw new Error('the status cell has no issue icon');
+    fireEvent.mouseEnter(icon);
+
+    await waitFor(() => expect(document.body.textContent).toContain('a rule is blocked'));
+    expect(document.body.textContent).toContain('core failed to start');
+  });
+
   it('has a button to add an agent', () => {
     renderList();
     expect(screen.getByRole('button', { name: /Add agent/ })).toBeTruthy();

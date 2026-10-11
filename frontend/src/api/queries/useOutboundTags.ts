@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { keys } from '@/api/queryKeys';
 import { fetchXrayConfig } from '@/hooks/useXraySetting';
+import { isNodeOnly, nodeOnlyBalancers } from '@/lib/xray/node-only';
 import { isOutboundProtocol } from '@/schemas/primitives';
 
 // Available outbound (and balancer-eligible) tags the user can route an mtproto
@@ -17,9 +18,10 @@ export function useOutboundTags(opts?: { excludeBlackhole?: boolean }) {
     select: (data): string[] => {
       const tags = new Set<string>();
       for (const o of data?.xraySetting?.outbounds ?? []) {
-        const ob = o as { tag?: string; protocol?: string } | null;
+        const ob = o as { tag?: string; protocol?: string; nodeTags?: unknown } | null;
         if (!ob?.tag) continue;
         if (excludeBlackhole && isOutboundProtocol(ob, 'blackhole')) continue;
+        if (isNodeOnly(ob)) continue;
         tags.add(ob.tag);
       }
       for (const t of data?.subscriptionOutboundTags ?? []) {
@@ -30,8 +32,13 @@ export function useOutboundTags(opts?: { excludeBlackhole?: boolean }) {
       const balancers = (
         data?.xraySetting?.routing as { balancers?: Array<{ tag?: string }> } | undefined
       )?.balancers;
+      const limited = nodeOnlyBalancers(
+        data?.xraySetting?.outbounds ?? [],
+        balancers ?? [],
+        data?.subscriptionOutboundTags ?? [],
+      );
       for (const b of balancers ?? []) {
-        if (b?.tag) tags.add(b.tag);
+        if (b?.tag && !limited.has(b.tag)) tags.add(b.tag);
       }
       return [...tags];
     },
@@ -55,9 +62,10 @@ export function useOutboundTagGroups(opts?: { excludeBlackhole?: boolean }) {
     select: (data): OutboundTagGroups => {
       const outbounds = new Set<string>();
       for (const o of data?.xraySetting?.outbounds ?? []) {
-        const ob = o as { tag?: string; protocol?: string } | null;
+        const ob = o as { tag?: string; protocol?: string; nodeTags?: unknown } | null;
         if (!ob?.tag) continue;
         if (excludeBlackhole && isOutboundProtocol(ob, 'blackhole')) continue;
+        if (isNodeOnly(ob)) continue;
         outbounds.add(ob.tag);
       }
       for (const t of data?.subscriptionOutboundTags ?? []) {
@@ -67,8 +75,13 @@ export function useOutboundTagGroups(opts?: { excludeBlackhole?: boolean }) {
       const bal = (
         data?.xraySetting?.routing as { balancers?: Array<{ tag?: string }> } | undefined
       )?.balancers;
+      const limited = nodeOnlyBalancers(
+        data?.xraySetting?.outbounds ?? [],
+        bal ?? [],
+        data?.subscriptionOutboundTags ?? [],
+      );
       for (const b of bal ?? []) {
-        if (b?.tag && !outbounds.has(b.tag)) balancers.push(b.tag);
+        if (b?.tag && !outbounds.has(b.tag) && !limited.has(b.tag)) balancers.push(b.tag);
       }
       return { outbounds: [...outbounds], balancers };
     },

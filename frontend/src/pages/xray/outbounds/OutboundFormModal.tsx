@@ -1,9 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Form, Input, InputNumber, Modal, Radio, Select, Space, Tabs, message } from 'antd';
+import {
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Radio,
+  Select,
+  Space,
+  Tabs,
+  Tooltip,
+  message,
+} from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import { Controller, FormProvider, useForm, useWatch } from 'react-hook-form';
 import { FinalMaskField, SniffingField } from '@/lib/xray/forms/fields';
 import { FormField, rhfZodValidate } from '@/components/form/rhf';
+import { useNodeTags } from '@/api/queries/useNodeTags';
 import { JsonEditor } from '@/components/form';
 import { Wireguard } from '@/utils';
 import { formValuesToWirePayload, rawOutboundToFormValues } from '@/lib/xray/outbound-form-adapter';
@@ -81,6 +94,8 @@ export default function OutboundFormModal({
 }: OutboundFormModalProps) {
   const { t } = useTranslation();
   const [messageApi, messageContextHolder] = message.useMessage();
+  // A tag no node carries yet can be typed in; the nodes are asked for only once the form opens.
+  const nodeTagOptions = useNodeTags(open).map((nodeTag) => ({ label: nodeTag, value: nodeTag }));
   const methods = useForm<OutboundFormValues>({ defaultValues: buildAddModeValues() });
   const [activeKey, setActiveKey] = useState('1');
   const [jsonText, setJsonText] = useState('');
@@ -125,6 +140,7 @@ export default function OutboundFormModal({
     }
     const currentTag = methods.getValues('tag');
     if (!parsed.tag && currentTag) parsed.tag = currentTag;
+    parsed.nodeTags = methods.getValues('nodeTags');
     const next = rawOutboundToFormValues(parsed);
     methods.reset(next);
     setJsonText(JSON.stringify(formValuesToWirePayload(next), null, 2));
@@ -412,6 +428,24 @@ export default function OutboundFormModal({
                           );
                         }}
                       />
+
+                      <FormField
+                        name="nodeTags"
+                        label={
+                          <Tooltip title={t('pages.xray.outboundForm.nodeTagsHint')}>
+                            {t('pages.xray.outboundForm.nodeTags')}{' '}
+                            <QuestionCircleOutlined aria-hidden="true" />
+                          </Tooltip>
+                        }
+                      >
+                        <Select
+                          mode="tags"
+                          tokenSeparators={[',']}
+                          allowClear
+                          placeholder={t('pages.xray.outboundForm.nodeTagsPlaceholder')}
+                          options={nodeTagOptions}
+                        />
+                      </FormField>
 
                       <FormField label={t('pages.xray.outbound.sendThrough')} name="sendThrough">
                         <Input placeholder={t('pages.xray.outboundForm.localIpPlaceholder')} />

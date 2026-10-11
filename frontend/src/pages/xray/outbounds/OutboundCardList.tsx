@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Button, Dropdown, Tag, Tooltip } from 'antd';
 import {
   RetweetOutlined,
+  CloudServerOutlined,
   MoreOutlined,
   EditOutlined,
   DeleteOutlined,
@@ -157,6 +158,16 @@ export default function OutboundCardList({
                     <Tag color="purple">{record.streamSettings?.security}</Tag>
                   )}
                 </>
+              )}
+              {!!record.nodeTags?.length && (
+                <Tooltip title={t('pages.xray.outboundForm.nodeTags')}>
+                  <span>
+                    <CloudServerOutlined aria-hidden="true" />
+                    {record.nodeTags.map((nodeTag) => (
+                      <Tag key={nodeTag}>{nodeTag}</Tag>
+                    ))}
+                  </span>
+                </Tooltip>
               )}
             </div>
             <Dropdown

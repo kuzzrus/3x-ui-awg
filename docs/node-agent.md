@@ -255,8 +255,32 @@ agent nodes that carry one of the tags and in no other, the panel's own core inc
 stripped from every rendered rule. A rule without `nodeTags`, or with an empty list, is for every
 core. The template is refused when a `nodeTags` is not a list of tags, a rule that holds one
 anyway is left out of every config, and the internal api rule is never left out. A save of a node
-replaces its tags like every other field, and no tags clears them. Outbounds are still the same on
-every agent: per-node outbounds are the next phase.
+replaces its tags like every other field, and no tags clears them.
+
+An outbound is picked the same way: a `nodeTags` list on an entry of the template's `outbounds` puts
+it in the config of the agent nodes that carry one of the tags and in no other, the panel's own core
+included, and the key is stripped. The first outbound is the default of every core, so it cannot carry
+`nodeTags`, or the cores without them would get another default: to send the other traffic of some
+nodes through a node-only outbound, give those nodes a rule that matches everything, with their tags.
+The panel's own core needs outbounds too, for the panel outbound, the outbound a node is reached
+through, the egress of an inbound's bridge and the download of the geo files, so the template is
+refused when it limits one of those to agent nodes, or leaves a balancer that one of them uses with
+node-only outbounds only, and the pickers of those features leave both out.
+
+What the tags leave dangling is repaired and never refused: an agent is kept in step by the config it
+is sent, and a client is removed by being left out of it, so a config that is not rendered keeps
+serving what was revoked. Xray 26.9.9 loads a rule that names no outbound and drops its traffic, a
+balancer left without outbounds sends its traffic out of the default outbound, and so does a balancer
+whose members are all down and that has no fallback. So, in a config that lacks an outbound the tags
+took away, the rules that send to it, or to a balancer it emptied, send to a blackhole tagged
+`x-ui-missing-outbound`, which does not depend on the version of the core, a fallback to it is that
+blackhole too, and the last error of the node says what was changed. The panel's own core is repaired
+the same way and logs it. The bridges of the panel are not injected towards a balancer without outbounds.
+An outbound chained through a missing one by `sockopt.dialerProxy` fails its dials by itself, so it is
+only reported. The template is refused when a rule or an outbound for every core, an empty
+`nodeTags` included, sends to, or is chained through, a node-only outbound or a balancer of those
+only, since the panel's own core would lack it. A rule that names an outbound the template does not hold at all is left as it was, for
+templates in the field are full of them.
 
 ## Traffic accounting
 
@@ -368,8 +392,8 @@ says so; a tag or archive given explicitly is never swapped.
    `POST /v1/update`.
 9. **Management**. Done: the Nodes page shows an agent's log (`GET /v1/logs`) and restarts its
    core (`POST /v1/restart`).
-10. **Per-node routing**. Done for rules: `nodeTags` on a routing rule, tags on an agent node.
-    Outbounds per node follow.
+10. **Per-node routing**. Done: tags on an agent node, `nodeTags` on a routing rule and on an
+    outbound.
 11. Later, each on its own: outbound sidecars on the node (Tor, WARP, Psiphon) and
     AdGuard Home as the node's decoy, pull mode.
 

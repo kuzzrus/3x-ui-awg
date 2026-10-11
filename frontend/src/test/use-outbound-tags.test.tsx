@@ -56,6 +56,61 @@ describe('outbound tag pickers', () => {
     expect(result.current.data?.outbounds).toEqual(['direct', 'warp']);
   });
 
+  it('leaves out an outbound that only some agent nodes have, which the panel itself lacks', async () => {
+    const payload = {
+      xraySetting: {
+        outbounds: [
+          { tag: 'direct', protocol: 'freedom' },
+          { tag: 'eu-hop', protocol: 'freedom', nodeTags: ['eu'] },
+          { tag: 'any-hop', protocol: 'freedom', nodeTags: [] },
+        ],
+      },
+    };
+    vi.spyOn(HttpUtil, 'post').mockResolvedValue(new Msg(true, '', JSON.stringify(payload)));
+
+    const flat = renderHook(() => useOutboundTags(), { wrapper: wrapperFor() });
+    const grouped = renderHook(() => useOutboundTagGroups(), { wrapper: wrapperFor() });
+
+    await waitFor(() => expect(flat.result.current.data).toBeDefined());
+    await waitFor(() => expect(grouped.result.current.data).toBeDefined());
+    expect(flat.result.current.data).toEqual(['direct', 'any-hop']);
+    expect(grouped.result.current.data?.outbounds).toEqual(['direct', 'any-hop']);
+  });
+
+  it('leaves out a balancer whose outbounds only some agent nodes have', async () => {
+    const payload = {
+      xraySetting: {
+        outbounds: [
+          { tag: 'direct', protocol: 'freedom' },
+          { tag: 'eu-hop', protocol: 'freedom', nodeTags: ['eu'] },
+          { tag: 'us-hop', protocol: 'freedom', nodeTags: ['us'] },
+        ],
+        routing: {
+          balancers: [
+            { tag: 'nodes-only', selector: ['eu-hop', 'us-hop'] },
+            { tag: 'with-direct', selector: ['eu-hop', 'direct'] },
+            { tag: 'from-subscription', selector: ['eu-hop', 'sub-'] },
+          ],
+        },
+      },
+      subscriptionOutboundTags: ['sub-1'],
+    };
+    vi.spyOn(HttpUtil, 'post').mockResolvedValue(new Msg(true, '', JSON.stringify(payload)));
+
+    const flat = renderHook(() => useOutboundTags(), { wrapper: wrapperFor() });
+    const grouped = renderHook(() => useOutboundTagGroups(), { wrapper: wrapperFor() });
+
+    await waitFor(() => expect(flat.result.current.data).toBeDefined());
+    await waitFor(() => expect(grouped.result.current.data).toBeDefined());
+    expect(flat.result.current.data).toEqual([
+      'direct',
+      'sub-1',
+      'with-direct',
+      'from-subscription',
+    ]);
+    expect(grouped.result.current.data?.balancers).toEqual(['with-direct', 'from-subscription']);
+  });
+
   it('offers every tag when the caller does not exclude blocks', async () => {
     mockConfig();
 

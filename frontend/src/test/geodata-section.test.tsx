@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -42,6 +42,37 @@ afterEach(() => {
 });
 
 describe('GeodataSection', () => {
+  it('offers the download outbound only the outbounds the panel itself has', async () => {
+    vi.spyOn(HttpUtil, 'post').mockResolvedValue(
+      new Msg(
+        true,
+        '',
+        JSON.stringify({
+          xraySetting: {
+            outbounds: [
+              { tag: 'direct', protocol: 'freedom' },
+              { tag: 'eu-hop', protocol: 'freedom', nodeTags: ['eu'] },
+            ],
+            geodata: { assets: [] },
+          },
+          geodataSources: STANDARD_SOURCES,
+        }),
+      ),
+    );
+
+    render(<GeodataSection active onBusy={vi.fn()} onClose={vi.fn()} />);
+    await screen.findByRole('button', { name: 'Use standard sources' });
+    await waitFor(() => expect(document.querySelector('.ant-select')).toBeTruthy());
+    const select = document.querySelector('.ant-select') as HTMLElement;
+    fireEvent.mouseDown(select.querySelector('.ant-select-selector') ?? select);
+
+    const offered = Array.from(document.querySelectorAll('.ant-select-item-option')).map(
+      (option) => option.getAttribute('title') ?? option.textContent,
+    );
+    expect(offered).toContain('direct');
+    expect(offered).not.toContain('eu-hop');
+  });
+
   it('adds the standard sources without removing custom sources', async () => {
     vi.spyOn(HttpUtil, 'post').mockResolvedValue(
       new Msg(

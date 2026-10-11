@@ -21,14 +21,14 @@ func rulesOf(t *testing.T, raw json_util.RawMessage) []map[string]any {
 
 func TestStripDisabledRules(t *testing.T) {
 	t.Run("empty config is returned untouched", func(t *testing.T) {
-		if got := stripDisabledRules(nil, ruleScope{}); got != nil {
+		if got := stripDisabledRules(nil, configScope{}); got != nil {
 			t.Fatalf("expected nil passthrough, got %s", got)
 		}
 	})
 
 	t.Run("missing or empty rules is a no-op", func(t *testing.T) {
 		in := json_util.RawMessage(`{"domainStrategy":"AsIs"}`)
-		if got := stripDisabledRules(in, ruleScope{}); string(got) != string(in) {
+		if got := stripDisabledRules(in, configScope{}); string(got) != string(in) {
 			t.Fatalf("config without rules was modified: %s", got)
 		}
 	})
@@ -39,7 +39,7 @@ func TestStripDisabledRules(t *testing.T) {
 			{"outboundTag":"block","domain":["b.com"],"enabled":false},
 			{"outboundTag":"proxy","domain":["c.com"]}
 		]}`)
-		rules := rulesOf(t, stripDisabledRules(in, ruleScope{}))
+		rules := rulesOf(t, stripDisabledRules(in, configScope{}))
 		if len(rules) != 2 {
 			t.Fatalf("expected 2 active rules, got %d: %v", len(rules), rules)
 		}
@@ -58,7 +58,7 @@ func TestStripDisabledRules(t *testing.T) {
 			{"inboundTag":["api"],"outboundTag":"api","enabled":false},
 			{"outboundTag":"block","domain":["b.com"],"enabled":false}
 		]}`)
-		rules := rulesOf(t, stripDisabledRules(in, ruleScope{}))
+		rules := rulesOf(t, stripDisabledRules(in, configScope{}))
 		if len(rules) != 1 {
 			t.Fatalf("expected only the api rule to survive, got %d: %v", len(rules), rules)
 		}
@@ -75,7 +75,7 @@ func TestStripDisabledRules(t *testing.T) {
 			{"outboundTag":"direct","domain":["a.com"],"comment":"1C server subnet"},
 			{"outboundTag":"block","domain":["b.com"]}
 		]}`)
-		rules := rulesOf(t, stripDisabledRules(in, ruleScope{}))
+		rules := rulesOf(t, stripDisabledRules(in, configScope{}))
 		if len(rules) != 2 {
 			t.Fatalf("expected 2 rules, got %d: %v", len(rules), rules)
 		}
@@ -97,7 +97,7 @@ func TestStripDisabledRules(t *testing.T) {
 		var parsed struct {
 			Rules []any `json:"rules"`
 		}
-		if err := json.Unmarshal(stripDisabledRules(in, ruleScope{}), &parsed); err != nil {
+		if err := json.Unmarshal(stripDisabledRules(in, configScope{}), &parsed); err != nil {
 			t.Fatal(err)
 		}
 		if len(parsed.Rules) != 1 {

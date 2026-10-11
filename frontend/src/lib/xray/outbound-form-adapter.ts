@@ -513,6 +513,7 @@ export interface RawOutboundRow {
   tag?: string;
   protocol?: string;
   sendThrough?: string;
+  nodeTags?: unknown;
   targetStrategy?: string;
   settings?: unknown;
   streamSettings?: unknown;
@@ -547,6 +548,7 @@ export function rawOutboundToFormValues(raw: RawOutboundRow): OutboundFormValues
   const settings = asObject(raw.settings);
   const tag = asString(raw.tag);
   const sendThrough = asString(raw.sendThrough);
+  const nodeTags = asArray(raw.nodeTags).filter((tag): tag is string => typeof tag === 'string');
   const targetStrategy = targetStrategyFromWire(raw.targetStrategy);
   const freedomStrategy = freedomDomainStrategyFromWire(raw);
   const mux = muxFromWire(raw.mux);
@@ -608,6 +610,7 @@ export function rawOutboundToFormValues(raw: RawOutboundRow): OutboundFormValues
     ...typed,
     tag,
     sendThrough,
+    nodeTags,
     // The freedom card owns the strategy for freedom, so the shared root field
     // stays empty and cannot disagree with what the card is showing.
     targetStrategy: protocol === 'freedom' ? '' : targetStrategy,
@@ -938,6 +941,8 @@ export function formValuesToWirePayload(values: OutboundFormValues): WireOutboun
   }
 
   if (values.sendThrough) result.sendThrough = values.sendThrough;
+  const nodeTags = [...new Set((values.nodeTags ?? []).map((tag) => tag.trim()).filter(Boolean))];
+  if (nodeTags.length > 0) result.nodeTags = nodeTags;
   // mux may be absent when the modal didn't render the Mux switch (non-
   // stream protocols or when isMuxAllowed gated it out). validateFields()
   // only returns registered fields, so values.mux can be undefined.

@@ -1,7 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
-import { act, fireEvent } from '@testing-library/react';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { QueryClient } from '@tanstack/react-query';
 
 import OutboundFormModal from '@/pages/xray/outbounds/OutboundFormModal';
+import { keys } from '@/api/queryKeys';
+import { HttpUtil, Msg } from '@/utils';
 import {
   renderWithProviders,
   fieldLabels,
@@ -148,5 +151,93 @@ describe('OutboundFormModal', () => {
       settings: { reverse?: { tag?: string } };
     };
     expect(payload.settings.reverse?.tag).toBe('r1');
+  });
+
+  describe('node tags', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    const hop = { protocol: 'freedom', tag: 'eu-hop', settings: {}, nodeTags: ['eu'] };
+
+    async function save(outbound: Record<string, unknown> | null, edit?: () => void) {
+      const onConfirm = vi.fn();
+      renderWithProviders(
+        <OutboundFormModal
+          open
+          outbound={outbound}
+          existingTags={[]}
+          onClose={() => {}}
+          onConfirm={onConfirm}
+        />,
+      );
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+      edit?.();
+      const ok = document.querySelector('.ant-modal-footer .ant-btn-primary') as HTMLElement;
+      await act(async () => {
+        fireEvent.click(ok);
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+      return onConfirm;
+    }
+
+    it('keeps the node tags of a saved outbound, which the form used to drop', async () => {
+      const onConfirm = await save(hop);
+
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+      expect(onConfirm.mock.calls[0][0]).toMatchObject({ tag: 'eu-hop', nodeTags: ['eu'] });
+    });
+
+    it('saves the tags typed into the field', async () => {
+      const onConfirm = await save({ ...hop, nodeTags: undefined }, () => {
+        fireEvent.change(screen.getByLabelText('Agent nodes'), { target: { value: 'us,exit,' } });
+      });
+
+      expect(onConfirm.mock.calls[0][0]).toMatchObject({ nodeTags: ['us', 'exit'] });
+    });
+
+    it('leaves the key out of an outbound that is for every node', async () => {
+      const onConfirm = await save({ ...hop, nodeTags: undefined });
+
+      expect(onConfirm.mock.calls[0][0]).not.toHaveProperty('nodeTags');
+    });
+
+    it('drops the key when the last tag is removed', async () => {
+      const onConfirm = await save(hop, () => {
+        const select = screen.getByLabelText('Agent nodes').closest('.ant-select');
+        const remove = select?.querySelector('.ant-select-selection-item-remove');
+        if (!remove) throw new Error('the tag has no remove button');
+        fireEvent.click(remove);
+      });
+
+      expect(onConfirm.mock.calls[0][0]).not.toHaveProperty('nodeTags');
+    });
+
+    it('suggests the tags the agent nodes carry', async () => {
+      vi.spyOn(HttpUtil, 'get').mockImplementation(async (url: string) =>
+        url === '/panel/api/nodes/list'
+          ? new Msg(true, '', [{ id: 1, name: 'a', kind: 'agent', tags: ['eu', 'exit'] }])
+          : new Msg(false, '', null),
+      );
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      renderWithProviders(
+        <OutboundFormModal
+          open
+          outbound={null}
+          existingTags={[]}
+          onClose={() => {}}
+          onConfirm={() => {}}
+        />,
+        { queryClient },
+      );
+
+      await waitFor(() => expect(queryClient.getQueryData(keys.nodes.list())).toHaveLength(1));
+      chooseSelectOption(screen.getByLabelText('Agent nodes').id, 'exit');
+
+      const chosen = Array.from(document.querySelectorAll('.ant-select-selection-item'));
+      expect(chosen.map((item) => item.textContent)).toContain('exit');
+    });
   });
 });
