@@ -36,6 +36,27 @@ func TestReleaseSHA256Value(t *testing.T) {
 	}
 }
 
+func TestHasDigest(t *testing.T) {
+	const body = "pretend-this-is-the-psiphon-binary"
+	path := filepath.Join(t.TempDir(), "bin")
+	if err := os.WriteFile(path, []byte(body), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	right := hex.EncodeToString(sha256Sum(t, body))
+	if !hasDigest(path, right) {
+		t.Error("hasDigest = false for the digest of the file")
+	}
+	if hasDigest(path, hex.EncodeToString(sha256Sum(t, "another binary"))) {
+		t.Error("hasDigest = true for the digest of another file")
+	}
+	if hasDigest(filepath.Join(t.TempDir(), "missing"), right) {
+		t.Error("hasDigest = true for a file that is not there")
+	}
+	if MatchesPin() {
+		t.Error("MatchesPin = true with no binary installed")
+	}
+}
+
 func TestAssetPath(t *testing.T) {
 	for _, tc := range []struct {
 		goos, goarch string

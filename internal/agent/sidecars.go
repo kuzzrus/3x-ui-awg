@@ -50,8 +50,8 @@ type sidecarSlot struct {
 type sidecarHost struct {
 	state    *State
 	programs map[string]sidecar
-	now      func() time.Time // time.Now unless a test sets it
-	wake     chan struct{}
+	now      func() time.Time         // time.Now unless a test sets it
+	wake     map[string]chan struct{} // one for the supervisor of each program, which holds at most one poke
 
 	mu      sync.Mutex
 	enabled []string
@@ -63,8 +63,11 @@ func newSidecarHost(state *State, programs map[string]sidecar) *sidecarHost {
 		state:    state,
 		programs: programs,
 		now:      time.Now,
-		wake:     make(chan struct{}, 1),
+		wake:     make(map[string]chan struct{}, len(programs)),
 		slots:    map[string]*sidecarSlot{},
+	}
+	for name := range programs {
+		h.wake[name] = make(chan struct{}, 1)
 	}
 	enabled, err := state.Sidecars()
 	if err != nil {
@@ -92,9 +95,11 @@ func (h *sidecarHost) Set(names []string) (agentproto.Sidecars, error) {
 	}
 	h.mu.Unlock()
 	if changed {
-		select {
-		case h.wake <- struct{}{}:
-		default:
+		for _, wake := range h.wake {
+			select {
+			case wake <- struct{}{}:
+			default:
+			}
 		}
 	}
 	return h.View(), nil
@@ -148,36 +153,42 @@ func (h *sidecarHost) sayLatest(states []agentproto.SidecarState) {
 	}
 }
 
-// Run keeps the programs as the list says until ctx ends, and stops them then.
+// Run keeps the programs as the list says until ctx ends, and stops them then. Each program has a
+// supervisor of its own, so an install that takes minutes holds up that program and no other.
 func (h *sidecarHost) Run(ctx context.Context) {
 	defer h.stopAll()
+	var supervisors sync.WaitGroup
+	for _, name := range agentproto.KnownSidecars {
+		if program := h.programs[name]; program != nil {
+			supervisors.Go(func() { h.supervise(ctx, name, program) })
+		}
+	}
+	supervisors.Wait()
+}
+
+func (h *sidecarHost) supervise(ctx context.Context, name string, program sidecar) {
 	ticker := time.NewTicker(sidecarCheckEvery)
 	defer ticker.Stop()
 	for {
-		h.reconcile(ctx)
+		h.tend(ctx, name, program)
 		select {
 		case <-ctx.Done():
 			return
-		case <-h.wake:
+		case <-h.wake[name]:
 		case <-ticker.C:
 		}
 	}
 }
 
-func (h *sidecarHost) reconcile(ctx context.Context) {
-	for _, name := range agentproto.KnownSidecars {
-		if ctx.Err() != nil {
-			return
-		}
-		program := h.programs[name]
-		if program == nil {
-			continue
-		}
-		if h.wanted(name) {
-			h.keepRunning(ctx, name, program)
-		} else {
-			h.keepStopped(name, program)
-		}
+// tend brings one program to what the list says of it.
+func (h *sidecarHost) tend(ctx context.Context, name string, program sidecar) {
+	if ctx.Err() != nil {
+		return
+	}
+	if h.wanted(name) {
+		h.keepRunning(ctx, name, program)
+	} else {
+		h.keepStopped(name, program)
 	}
 }
 

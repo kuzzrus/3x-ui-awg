@@ -134,7 +134,7 @@ func (f *hostFixture) set(names ...string) agentproto.Sidecars {
 	return view
 }
 
-func (f *hostFixture) pass() { f.host.reconcile(context.Background()) }
+func (f *hostFixture) pass() { f.host.tend(context.Background(), agentproto.SidecarTor, f.prog) }
 
 func (f *hostFixture) stateOfTor() agentproto.SidecarState {
 	f.t.Helper()
@@ -299,7 +299,7 @@ func TestSidecarHostKeepsTheListAcrossARestart(t *testing.T) {
 	if again.Revision() != agentproto.SidecarsRevision([]string{agentproto.SidecarTor}) {
 		t.Fatalf("revision after a restart = %q, want the one of the stored list", again.Revision())
 	}
-	again.reconcile(context.Background())
+	again.tend(context.Background(), agentproto.SidecarTor, f.prog)
 	if _, starts, _ := f.prog.counts(); starts != 1 {
 		t.Fatalf("starts = %d, want the stored program started with the master out of reach", starts)
 	}
@@ -388,6 +388,55 @@ func TestSidecarHostAnswersWhileInstalling(t *testing.T) {
 	}
 }
 
+// An install takes minutes, and a program that waits for another one's is left unsupervised for as long.
+func TestSidecarHostDoesNotLetOneInstallHoldUpAnotherProgram(t *testing.T) {
+	state, err := OpenState(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tor := &fakeProgram{installed: true}
+	psiphon := &fakeProgram{installGate: make(chan struct{})}
+	host := newSidecarHost(state, map[string]sidecar{agentproto.SidecarTor: tor, agentproto.SidecarPsiphon: psiphon})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		host.Run(ctx)
+	}()
+	var release sync.Once
+	t.Cleanup(func() {
+		release.Do(func() { close(psiphon.installGate) })
+		cancel()
+		<-done
+	})
+	stateOf := func(name string) string {
+		for _, one := range host.States() {
+			if one.Name == name {
+				return one.State
+			}
+		}
+		return ""
+	}
+
+	if _, err := host.Set([]string{agentproto.SidecarTor, agentproto.SidecarPsiphon}); err != nil {
+		t.Fatal(err)
+	}
+	waitForHost(t, "Psiphon to be downloading", func() bool { return stateOf(agentproto.SidecarPsiphon) == agentproto.SidecarInstalling })
+	waitForHost(t, "Tor to run beside the download", tor.Running)
+
+	// Taking Tor off the list stops it at once, though the download is still on.
+	if _, err := host.Set([]string{agentproto.SidecarPsiphon}); err != nil {
+		t.Fatal(err)
+	}
+	waitForHost(t, "Tor to stop beside the download", func() bool { return !tor.Running() })
+	if got := stateOf(agentproto.SidecarPsiphon); got != agentproto.SidecarInstalling {
+		t.Fatalf("Psiphon is %q, want it still downloading", got)
+	}
+
+	release.Do(func() { close(psiphon.installGate) })
+	waitForHost(t, "Psiphon to run once it is there", func() bool { return stateOf(agentproto.SidecarPsiphon) == agentproto.SidecarRunning })
+}
+
 func TestSidecarHostStopsItsProgramsWhenTheContextEnds(t *testing.T) {
 	f := newHostFixture(t, &fakeProgram{installed: true})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -418,7 +467,7 @@ func TestSidecarHostGivesUpAnInstallWhenTheContextEnds(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		f.host.reconcile(ctx)
+		f.host.tend(ctx, agentproto.SidecarTor, prog)
 	}()
 	waitForHost(t, "the install to start", func() bool { return f.stateOfTor().State == agentproto.SidecarInstalling })
 

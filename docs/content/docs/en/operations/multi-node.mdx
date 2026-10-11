@@ -176,10 +176,11 @@ out of reach. If the server lacks the program, the agent installs
 it, which can take a few minutes: Tor with the package manager of the server, Psiphon by
 downloading the binary the panel pins by its checksum, which exists for x86-64 servers only,
 and it runs with the same bundled config as the panel's own Psiphon. The chip beside the
-node's tags says **installing**, then **running** or **failed**, and pointing at it shows the
-last line Tor printed, which tells how far it got in building a circuit, or why it failed. An
-agent that is too old for helper programs says so as the last error of the node: update it.
-Unticking Tor stops it, and ticking it again tries at once after a failure.
+node's tags says **installing**, then **running** or **failed**, and pointing at it shows what the
+program said last: how far Tor got in building a circuit, whether the tunnel of Psiphon is up, or
+why it failed. An agent that is too old for helper programs says so as the last error of the
+node: update it. Unticking a program stops it, and ticking it again tries at once after a
+failure.
 
 The outbound that the panel's own Tor uses, a `socks` outbound to `127.0.0.1` port `19050`
 (`19060` for Psiphon), works as it is on an agent node that runs the program, and an agent node

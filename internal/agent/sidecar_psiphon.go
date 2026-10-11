@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -22,13 +23,27 @@ const (
 // loopback, run with the config this build bundles.
 type psiphonProgram struct {
 	tunnel tunnelSummary
+	client *http.Client // the download client, unless a test sets one
 }
 
-// Installed asks for the config too: Install seeds the bundled one, and Psiphon does not start without it.
-func (*psiphonProgram) Installed() bool { return psiphon.IsInstalled() && psiphon.IsConfigured() }
+// Installed asks for the binary this build pins, so that one an earlier build downloaded is fetched again,
+// and for the config, which Install seeds and Psiphon does not start without.
+func (*psiphonProgram) Installed() bool {
+	return psiphon.IsInstalled() && psiphon.MatchesPin() && psiphon.IsConfigured()
+}
 
-func (*psiphonProgram) Install(ctx context.Context) error {
-	return psiphon.Install(ctx, &http.Client{Timeout: psiphonDownloadTimeout})
+func (p *psiphonProgram) Install(ctx context.Context) error {
+	// psiphon.Install keeps a binary that is there, so one that is not the pinned is put aside first.
+	if psiphon.IsInstalled() && !psiphon.MatchesPin() {
+		if err := os.Remove(psiphon.BinPath()); err != nil {
+			return err
+		}
+	}
+	client := p.client
+	if client == nil {
+		client = &http.Client{Timeout: psiphonDownloadTimeout}
+	}
+	return psiphon.Install(ctx, client)
 }
 
 func (p *psiphonProgram) Start() error {
