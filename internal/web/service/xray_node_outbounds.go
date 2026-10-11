@@ -320,9 +320,8 @@ func balancersLimitedToNodes(routerCfg json_util.RawMessage, list []map[string]a
 	return limited
 }
 
-// checkSharedEntriesReachTheirOutbounds refuses a rule or an outbound that is for every core but sends to, or
-// is chained through, an outbound only some agent nodes have, or sends to a balancer of such outbounds only:
-// the panel's own core would be left without them. shared lists the tags of the outbounds every core has besides the template's.
+// checkSharedEntriesReachTheirOutbounds refuses a rule or outbound for every core that reaches one only some
+// agent nodes have, or a balancer of those only, which the panel's own core lacks. shared: tags every core has too.
 func checkSharedEntriesReachTheirOutbounds(routerCfg, outbounds json_util.RawMessage, shared []string) error {
 	var list []map[string]any
 	if len(outbounds) == 0 || json.Unmarshal(outbounds, &list) != nil {
