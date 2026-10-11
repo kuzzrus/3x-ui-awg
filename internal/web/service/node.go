@@ -451,6 +451,15 @@ func (s *NodeService) Create(n *model.Node) error {
 	if err := s.normalize(n); err != nil {
 		return err
 	}
+	if n.Kind == model.NodeKindAgent {
+		tags, err := normalizeNodeTags(n.Tags)
+		if err != nil {
+			return err
+		}
+		n.Tags = tags
+	} else {
+		n.Tags = nil
+	}
 	db := database.GetDB()
 	if !nodetoken.Enabled() {
 		return db.Create(n).Error
@@ -519,6 +528,10 @@ func (s *NodeService) Update(id int, in *model.Node) error {
 	if err := db.Where("id = ?", id).First(existing).Error; err != nil {
 		return err
 	}
+	tagsJSON, err := tagsToStore(existing, in.Tags)
+	if err != nil {
+		return err
+	}
 	// Blank means keep the hidden stored token; non-blank values are encrypted.
 	apiToken := existing.ApiToken
 	if in.ApiToken != "" {
@@ -543,6 +556,7 @@ func (s *NodeService) Update(id int, in *model.Node) error {
 		"inbound_sync_mode":     in.InboundSyncMode,
 		"inbound_tags":          string(inboundTagsJSON),
 		"outbound_tag":          in.OutboundTag,
+		"tags":                  tagsJSON,
 	}
 	if nodeSelectionGrew(existing, in) {
 		updates["inbounds_adopted_at"] = 0
@@ -584,6 +598,10 @@ func (s *NodeService) UpdateFromRequest(id int, req *NodeMutationRequest) error 
 	if err != nil {
 		return err
 	}
+	tagsJSON, err := tagsToStore(existing, in.Tags)
+	if err != nil {
+		return err
+	}
 	apiToken := existing.ApiToken
 	switch {
 	case req.ClearApiToken:
@@ -612,6 +630,7 @@ func (s *NodeService) UpdateFromRequest(id int, req *NodeMutationRequest) error 
 		"inbound_sync_mode":     in.InboundSyncMode,
 		"inbound_tags":          string(inboundTagsJSON),
 		"outbound_tag":          in.OutboundTag,
+		"tags":                  tagsJSON,
 	}
 	if nodeSelectionGrew(existing, in) {
 		updates["inbounds_adopted_at"] = 0

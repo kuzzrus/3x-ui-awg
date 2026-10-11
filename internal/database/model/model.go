@@ -818,6 +818,9 @@ type Node struct {
 	InboundTags         []string `json:"inboundTags" form:"inboundTags" gorm:"serializer:json;column:inbound_tags"`
 	OutboundTag         string   `json:"outboundTag" form:"outboundTag" gorm:"column:outbound_tag"`
 
+	// Tags label an agent node: a routing rule whose nodeTags name one of them is part of its config.
+	Tags []string `json:"tags" form:"tags" gorm:"serializer:json;column:tags"`
+
 	// Guid is the remote panel's stable self-identifier (its panelGuid),
 	// learned from each heartbeat. It is the globally stable node identity used
 	// to attribute online clients/inbounds to the physical node across a chain

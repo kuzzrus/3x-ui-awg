@@ -1,13 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { QueryClient } from '@tanstack/react-query';
 
 import AgentBundleModal, { AGENT_INSTALL_COMMAND } from '@/pages/nodes/AgentBundleModal';
 import AgentNodeFormModal from '@/pages/nodes/AgentNodeFormModal';
 import NodeList from '@/pages/nodes/NodeList';
+import { keys } from '@/api/queryKeys';
 import type { NodeRecord } from '@/schemas/node';
-import { ClipboardManager, Msg } from '@/utils';
+import { ClipboardManager, HttpUtil, Msg } from '@/utils';
 
-import { renderWithProviders } from './test-utils';
+import { chooseSelectOption, renderWithProviders } from './test-utils';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -78,8 +80,42 @@ describe('AgentNodeFormModal', () => {
       address: 'node.example.com',
       port: 8443,
       allowPrivateAddress: false,
+      tags: [],
     });
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  });
+
+  it('labels the agent with tags, suggesting the ones the nodes already carry', async () => {
+    vi.spyOn(HttpUtil, 'get').mockImplementation(async (url: string) =>
+      url === '/panel/api/nodes/list'
+        ? new Msg(true, '', [{ id: 9, name: 'other', kind: 'agent', tags: ['us'] }])
+        : new Msg(false, '', null),
+    );
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
+    const node: NodeRecord = {
+      id: 4,
+      name: 'edge-4',
+      kind: 'agent',
+      address: 'a.example.com',
+      port: 9443,
+      enable: true,
+      tags: ['eu'],
+    };
+    renderWithProviders(
+      <AgentNodeFormModal open node={node} save={save} onOpenChange={() => {}} />,
+      { queryClient },
+    );
+
+    const field = screen.getByLabelText('Tags');
+    expect(document.querySelector('.ant-select-selection-item')?.textContent).toBe('eu');
+    await waitFor(() => expect(queryClient.getQueryData(keys.nodes.list())).toHaveLength(1));
+    chooseSelectOption(field.id, 'us');
+    fireEvent.change(field, { target: { value: 'exit,' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0][0]).toMatchObject({ id: 4, tags: ['eu', 'us', 'exit'] });
   });
 
   it('has no field for a secret, a scheme or a certificate', () => {
@@ -156,10 +192,17 @@ describe('NodeList with an agent node', () => {
     },
   ];
 
-  function renderList(onRepair = noop, onUpdateNode = noop, onLogs = noop, onRestartXray = noop) {
+  function renderList(
+    onRepair = noop,
+    onUpdateNode = noop,
+    onLogs = noop,
+    onRestartXray = noop,
+    { list = nodes, isMobile = false }: { list?: NodeRecord[]; isMobile?: boolean } = {},
+  ) {
     renderWithProviders(
       <NodeList
-        nodes={nodes}
+        isMobile={isMobile}
+        nodes={list}
         latestVersion="3.0.1"
         selectedIds={[]}
         onSelectionChange={noop}
@@ -202,6 +245,30 @@ describe('NodeList with an agent node', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Pair again' }));
     expect(onRepair).toHaveBeenCalledWith(expect.objectContaining({ id: 2, kind: 'agent' }));
+  });
+
+  it('shows the tags of an agent under its name, and none for a panel', () => {
+    renderList(noop, noop, noop, noop, {
+      list: [
+        { ...nodes[0], tags: ['stale'] },
+        { ...nodes[1], tags: ['eu', 'exit'] },
+      ],
+    });
+
+    expect(screen.getByText('eu')).toBeTruthy();
+    expect(screen.getByText('exit')).toBeTruthy();
+    expect(screen.queryByText('stale')).toBeNull();
+  });
+
+  it('lists the tags of an agent in its info on a phone', () => {
+    renderList(noop, noop, noop, noop, {
+      list: [{ ...nodes[1], tags: ['eu', 'exit'] }],
+      isMobile: true,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'More Information' }));
+
+    expect(document.querySelector('.card-stats')?.textContent).toContain('Tagseu, exit');
   });
 
   it('offers an agent its log and a restart of Xray, and a panel node neither', () => {

@@ -8,6 +8,21 @@ import { HttpUtil, Msg } from '@/utils';
 
 import { chooseSelectOption, renderWithProviders } from './test-utils';
 
+function renderRule(rule: Record<string, unknown> | null, onConfirm = vi.fn()) {
+  renderWithProviders(
+    <RuleFormModal
+      open
+      rule={rule}
+      inboundTags={[]}
+      outboundTags={['direct']}
+      balancerTags={[]}
+      onClose={vi.fn()}
+      onConfirm={onConfirm}
+    />,
+  );
+  return onConfirm;
+}
+
 describe('RuleFormModal edit preserves unsurfaced fields', () => {
   afterEach(() => vi.restoreAllMocks());
 
@@ -99,6 +114,78 @@ describe('RuleFormModal edit preserves unsurfaced fields', () => {
     expect(onConfirm).toHaveBeenCalledWith(
       expect.objectContaining({ user: ['removed@example.com'] }),
     );
+  });
+
+  it('saves the node tags a rule is for, trimmed and once each', () => {
+    const onConfirm = renderRule(null);
+
+    fireEvent.change(screen.getByLabelText('Agent nodes'), { target: { value: ' eu,eu,exit,' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ nodeTags: ['eu', 'exit'] }));
+  });
+
+  it('leaves the node tags out of a rule that is for every node', () => {
+    const onConfirm = renderRule(null);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(onConfirm.mock.calls[0][0]).not.toHaveProperty('nodeTags');
+  });
+
+  it('keeps the node tags of a saved rule, and drops the key with the last one', () => {
+    const kept = renderRule({ type: 'field', outboundTag: 'direct', nodeTags: ['eu', 'us'] });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    expect(kept).toHaveBeenCalledWith(expect.objectContaining({ nodeTags: ['eu', 'us'] }));
+  });
+
+  it('drops the nodeTags key when every tag is removed', () => {
+    const onConfirm = renderRule({ type: 'field', outboundTag: 'direct', nodeTags: ['eu'] });
+
+    const select = screen.getByLabelText('Agent nodes').closest('.ant-select');
+    const remove = select?.querySelector('.ant-select-selection-item-remove');
+    if (!remove) throw new Error('the tag has no remove button');
+    fireEvent.click(remove);
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onConfirm.mock.calls[0][0]).not.toHaveProperty('nodeTags');
+  });
+
+  it('suggests the tags the agent nodes carry', async () => {
+    vi.spyOn(HttpUtil, 'get').mockImplementation(async (url: string) =>
+      url === '/panel/api/nodes/list'
+        ? new Msg(true, '', [
+            { id: 1, name: 'a', kind: 'agent', tags: ['eu', 'exit'] },
+            { id: 2, name: 'b', kind: 'agent', tags: ['EU'] },
+          ])
+        : new Msg(false, '', null),
+    );
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const onConfirm = vi.fn();
+    renderWithProviders(
+      <RuleFormModal
+        open
+        rule={null}
+        inboundTags={[]}
+        outboundTags={['direct']}
+        balancerTags={[]}
+        onClose={vi.fn()}
+        onConfirm={onConfirm}
+      />,
+      { queryClient },
+    );
+
+    await waitFor(() => expect(queryClient.getQueryData(keys.nodes.list())).toHaveLength(2));
+    const field = screen.getByLabelText('Agent nodes');
+    chooseSelectOption(field.id, 'exit');
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ nodeTags: ['exit'] }));
+    const offered = Array.from(document.querySelectorAll('.ant-select-item-option')).map(
+      (o) => o.getAttribute('title') ?? o.textContent,
+    );
+    expect(offered).toEqual(['eu', 'exit']);
   });
 
   it('accepts a custom user identifier that is not a client record', async () => {

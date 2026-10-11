@@ -1772,8 +1772,8 @@ export const sections: readonly Section[] = [
         method: 'POST',
         path: '/panel/api/nodes/addAgent',
         summary:
-          'Register a node that runs the thin x-ui-agent instead of a full panel. The agent is not installed yet, so the node is not probed. The panel mints the secret and the certificate of the agent and returns the pairing bundle once: it holds the private key, is never stored, and is what install-agent.sh asks for on the node.',
-        body: '{\n  "name": "de-fra-2",\n  "remark": "",\n  "address": "node2.example.com",\n  "port": 8443,\n  "allowPrivateAddress": false,\n  "outboundTag": ""\n}',
+          'Register a node that runs the thin x-ui-agent instead of a full panel. The agent is not installed yet, so the node is not probed. The panel mints the secret and the certificate of the agent and returns the pairing bundle once: it holds the private key, is never stored, and is what install-agent.sh asks for on the node. tags label the node: a routing rule whose nodeTags name one of them is part of the agent\u2019s config.',
+        body: '{\n  "name": "de-fra-2",\n  "remark": "",\n  "address": "node2.example.com",\n  "port": 8443,\n  "allowPrivateAddress": false,\n  "outboundTag": "",\n  "tags": ["eu"]\n}',
         responseSchema: 'AgentPairing',
       },
       {
@@ -1788,7 +1788,7 @@ export const sections: readonly Section[] = [
         method: 'POST',
         path: '/panel/api/nodes/update/:id',
         summary:
-          'Replace a node\u2019s connection details. apiToken is write-only: omit it or send an empty string to keep the stored token; set clearApiToken=true to clear it.',
+          'Replace a node\u2019s connection details. apiToken is write-only: omit it or send an empty string to keep the stored token; set clearApiToken=true to clear it. For an agent node, tags is the full list of its tags: omit it to clear them.',
         params: [{ name: 'id', in: 'path', type: 'number', desc: 'Node ID.' }],
         body: '{\n  "name": "de-fra-1",\n  "remark": "",\n  "scheme": "https",\n  "address": "node1.example.com",\n  "port": 2053,\n  "basePath": "/",\n  "apiToken": "",\n  "clearApiToken": false,\n  "enable": true,\n  "allowPrivateAddress": false\n}',
       },

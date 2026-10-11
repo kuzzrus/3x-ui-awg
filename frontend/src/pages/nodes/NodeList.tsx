@@ -392,6 +392,13 @@ export default function NodeList({
               )}
             </span>
             {record.remark && <span className="remark">{record.remark}</span>}
+            {record.kind === 'agent' && !!record.tags?.length && (
+              <span className="node-tags">
+                {record.tags.map((tag) => (
+                  <Tag key={tag}>{tag}</Tag>
+                ))}
+              </span>
+            )}
           </div>
         ),
       },
@@ -838,6 +845,12 @@ export default function NodeList({
                   <div className="stat-row">
                     <span className="stat-label">{t('pages.nodes.name')}</span>
                     <span>{statsNode.remark}</span>
+                  </div>
+                )}
+                {statsNode.kind === 'agent' && !!statsNode.tags?.length && (
+                  <div className="stat-row">
+                    <span className="stat-label">{t('pages.nodes.agent.tags')}</span>
+                    <span>{statsNode.tags.join(', ')}</span>
                   </div>
                 )}
                 <div className="stat-row">

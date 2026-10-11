@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+export const MAX_NODE_TAGS = 16;
+export const MAX_NODE_TAG_LENGTH = 32;
+const TAGS_INVALID = 'pages.nodes.agent.tagsInvalid';
+
 export const NodeRecordSchema = z
   .object({
     id: z.number(),
@@ -41,6 +45,8 @@ export const NodeRecordSchema = z
     // Backend serializes a nil []string as null for nodes saved before #5178.
     inboundTags: z.array(z.string()).nullish(),
     outboundTag: z.string().optional(),
+    // An agent node's tags, which pick the routing rules it runs.
+    tags: z.array(z.string()).nullish(),
     // Multi-hop node tree (#4983): a node's stable GUID, its parent's GUID, and
     // whether it's a read-only transitive sub-node surfaced from a downstream node.
     guid: z.string().optional(),
@@ -110,6 +116,9 @@ export const AgentFormSchema = z.object({
   enable: z.boolean(),
   allowPrivateAddress: z.boolean(),
   outboundTag: z.string().optional(),
+  tags: z
+    .array(z.string().trim().min(1, TAGS_INVALID).max(MAX_NODE_TAG_LENGTH, TAGS_INVALID))
+    .max(MAX_NODE_TAGS, TAGS_INVALID),
 });
 
 export const AgentPairingSchema = z

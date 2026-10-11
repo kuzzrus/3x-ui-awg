@@ -22,6 +22,12 @@ export const SCHEMAS: Record<string, unknown> = {
       },
       "remark": {
         "type": "string"
+      },
+      "tags": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
       }
     },
     "required": [
@@ -30,7 +36,8 @@ export const SCHEMAS: Record<string, unknown> = {
       "name",
       "outboundTag",
       "port",
-      "remark"
+      "remark",
+      "tags"
     ],
     "type": "object"
   },
@@ -3431,6 +3438,13 @@ export const SCHEMAS: Record<string, unknown> = {
         "example": "online",
         "type": "string"
       },
+      "tags": {
+        "description": "Tags label an agent node: a routing rule whose nodeTags name one of them is part of its config.",
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
       "tlsVerifyMode": {
         "enum": [
           "verify",
@@ -3499,6 +3513,7 @@ export const SCHEMAS: Record<string, unknown> = {
       "remark",
       "scheme",
       "status",
+      "tags",
       "tlsVerifyMode",
       "updatedAt",
       "uptimeSecs",
@@ -3570,6 +3585,12 @@ export const SCHEMAS: Record<string, unknown> = {
         ],
         "type": "string"
       },
+      "tags": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
       "tlsVerifyMode": {
         "enum": [
           "verify",
@@ -3594,6 +3615,7 @@ export const SCHEMAS: Record<string, unknown> = {
       "port",
       "remark",
       "scheme",
+      "tags",
       "tlsVerifyMode"
     ],
     "type": "object"
@@ -3748,6 +3770,15 @@ export const SCHEMAS: Record<string, unknown> = {
         "example": "online",
         "type": "string"
       },
+      "tags": {
+        "example": [
+          "eu"
+        ],
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
       "tlsVerifyMode": {
         "example": "verify",
         "type": "string"
@@ -3813,6 +3844,7 @@ export const SCHEMAS: Record<string, unknown> = {
       "remark",
       "scheme",
       "status",
+      "tags",
       "tlsVerifyMode",
       "updatedAt",
       "uptimeSecs",

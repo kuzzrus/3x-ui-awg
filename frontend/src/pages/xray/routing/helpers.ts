@@ -98,6 +98,7 @@ export function ruleCriteriaChips(rule: RuleRow) {
   if (rule.network) chips.push({ label: 'L4', value: rule.network.toUpperCase() });
   if (rule.protocol) chips.push({ label: 'Protocol', value: rule.protocol });
   if (rule.user) chips.push({ label: 'User', value: rule.user });
+  if (rule.nodeTags) chips.push({ label: 'Nodes', value: rule.nodeTags });
   if (rule.vlessRoute) chips.push({ label: 'VLESS', value: rule.vlessRoute });
   return chips;
 }

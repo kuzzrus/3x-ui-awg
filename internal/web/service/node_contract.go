@@ -26,6 +26,7 @@ type NodeView struct {
 	InboundSyncMode     string   `json:"inboundSyncMode" example:"all"`
 	InboundTags         []string `json:"inboundTags" example:"[\"in-443-tcp\"]"`
 	OutboundTag         string   `json:"outboundTag" example:"direct"`
+	Tags                []string `json:"tags" example:"[\"eu\"]"`
 	Guid                string   `json:"guid" example:"node-guid"`
 	Status              string   `json:"status" example:"online"`
 	LastHeartbeat       int64    `json:"lastHeartbeat" example:"1700000000"`
@@ -62,6 +63,10 @@ func toNodeView(n *model.Node) *NodeView {
 	if kind == "" {
 		kind = model.NodeKindPanel
 	}
+	tags := n.Tags
+	if tags == nil {
+		tags = []string{}
+	}
 	return &NodeView{
 		Id:                  n.Id,
 		Name:                n.Name,
@@ -79,6 +84,7 @@ func toNodeView(n *model.Node) *NodeView {
 		InboundSyncMode:     n.InboundSyncMode,
 		InboundTags:         n.InboundTags,
 		OutboundTag:         n.OutboundTag,
+		Tags:                tags,
 		Guid:                n.Guid,
 		Status:              n.Status,
 		LastHeartbeat:       n.LastHeartbeat,
@@ -136,6 +142,7 @@ type NodeMutationRequest struct {
 	InboundSyncMode     string   `json:"inboundSyncMode" form:"inboundSyncMode" validate:"omitempty,oneof=all selected"`
 	InboundTags         []string `json:"inboundTags" form:"inboundTags"`
 	OutboundTag         string   `json:"outboundTag" form:"outboundTag"`
+	Tags                []string `json:"tags" form:"tags"`
 }
 
 func (r *NodeMutationRequest) validateCredentials(create bool) error {
@@ -184,6 +191,7 @@ func (r *NodeMutationRequest) toNode() *model.Node {
 		InboundSyncMode:     r.InboundSyncMode,
 		InboundTags:         r.InboundTags,
 		OutboundTag:         r.OutboundTag,
+		Tags:                r.Tags,
 	}
 	if r.ApiToken != nil {
 		n.ApiToken = *r.ApiToken

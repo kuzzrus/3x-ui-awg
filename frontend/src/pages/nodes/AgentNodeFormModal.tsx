@@ -5,8 +5,9 @@ import { FormProvider, useForm } from 'react-hook-form';
 
 import type { NodeRecord } from '@/api/queries/useNodesQuery';
 import type { Msg } from '@/utils';
-import { AgentFormSchema, type AgentFormValues } from '@/schemas/node';
+import { AgentFormSchema, MAX_NODE_TAGS, type AgentFormValues } from '@/schemas/node';
 import { FormField, rhfZodValidate } from '@/components/form/rhf';
+import { useNodeTags } from '@/api/queries/useNodeTags';
 import { useNodeOutboundOptions } from './useNodeOutboundOptions';
 
 // 8443 is what the installer's docs use; any free TCP port works.
@@ -29,6 +30,7 @@ function defaultValues(): AgentFormValues {
     enable: true,
     allowPrivateAddress: false,
     outboundTag: '',
+    tags: [],
   };
 }
 
@@ -45,6 +47,7 @@ export default function AgentNodeFormModal({
   const [messageApi, messageContextHolder] = message.useMessage();
   const [submitting, setSubmitting] = useState(false);
   const outboundOptions = useNodeOutboundOptions();
+  const tagOptions = useNodeTags().map((tag) => ({ label: tag, value: tag }));
   const editing = node !== null;
 
   // Reset during render, not in an effect, so the first frame is already clean.
@@ -66,6 +69,7 @@ export default function AgentNodeFormModal({
             enable: node.enable ?? true,
             allowPrivateAddress: node.allowPrivateAddress ?? false,
             outboundTag: node.outboundTag ?? '',
+            tags: node.tags ?? [],
           }
         : base,
     );
@@ -179,6 +183,20 @@ export default function AgentNodeFormModal({
                 showSearch
                 placeholder={t('pages.nodes.outboundTagPlaceholder')}
                 options={outboundOptions}
+              />
+            </FormField>
+
+            <FormField
+              label={t('pages.nodes.agent.tags')}
+              name="tags"
+              tooltip={t('pages.nodes.agent.tagsHint')}
+            >
+              <Select
+                mode="tags"
+                maxCount={MAX_NODE_TAGS}
+                tokenSeparators={[',']}
+                placeholder={t('pages.nodes.agent.tagsPlaceholder')}
+                options={tagOptions}
               />
             </FormField>
           </Form>

@@ -11,6 +11,7 @@ export interface RuleRow {
   sourceIP?: string;
   user?: string;
   inboundTag?: string;
+  nodeTags?: string;
   protocol?: string;
   attrs?: string;
   outboundTag?: string;

@@ -125,6 +125,7 @@ export const RuleFormSchema = z.object({
   sourceIP: z.string(),
   user: z.string(),
   inboundTag: z.array(z.string()),
+  nodeTags: z.array(z.string()),
   protocol: z.array(z.string()),
   attrs: z.array(z.tuple([z.string(), z.string()])),
   outboundTag: z.string(),

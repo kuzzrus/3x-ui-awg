@@ -9,10 +9,14 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
 
-// GetAgentConfig is the whole Xray config an agent node runs: the panel's template and subscription
-// outbounds with the node's own enabled inbounds, and none of the injections only the master can serve.
+// GetAgentConfig is the whole Xray config an agent node runs: the template with the rules its tags pick,
+// the subscription outbounds and the node's own enabled inbounds, and nothing only the master can serve.
 func (s *XrayService) GetAgentConfig(nodeID int) (*xray.Config, error) {
-	xrayConfig, err := s.newConfigFromTemplate()
+	tags, err := s.nodeService.AgentTags(nodeID)
+	if err != nil {
+		return nil, err
+	}
+	xrayConfig, err := s.newConfigFromTemplate(ruleScope{agent: true, tags: tags})
 	if err != nil {
 		return nil, err
 	}
