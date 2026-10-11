@@ -153,7 +153,14 @@ it. To run a rule on some agent nodes only, give those nodes the same **Tags** (
 **Routing Rules** tab of the Xray settings. A rule with no node tags is for every core, the
 panel's own and every agent's. A rule with node tags is for the agent nodes that carry one of
 them, and not for the panel's own core. Tags are matched without regard to case, and a node
-gets the new config on the next push. Outbounds are still the same on every agent.
+gets the new config on the next push.
+
+Outbounds work the same way: the **Agent nodes** field of an outbound puts it on the agent
+nodes that carry one of the tags only. The first outbound a node has is its default, so a
+node-only outbound listed first becomes the default of the nodes that have it. A rule for
+every core cannot send to a node-only outbound, and the panel refuses to save one. If a rule
+for some nodes sends to an outbound that a node with that rule does not have, the node gets no
+new config and its status says which outbound is missing and which tags give it.
 
 ## Managed hosts
 

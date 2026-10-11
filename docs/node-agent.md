@@ -255,8 +255,19 @@ agent nodes that carry one of the tags and in no other, the panel's own core inc
 stripped from every rendered rule. A rule without `nodeTags`, or with an empty list, is for every
 core. The template is refused when a `nodeTags` is not a list of tags, a rule that holds one
 anyway is left out of every config, and the internal api rule is never left out. A save of a node
-replaces its tags like every other field, and no tags clears them. Outbounds are still the same on
-every agent: per-node outbounds are the next phase.
+replaces its tags like every other field, and no tags clears them.
+
+An outbound is picked the same way: a `nodeTags` list on an entry of the template's `outbounds` puts
+it in the config of the agent nodes that carry one of the tags and in no other, the panel's own core
+included, and the key is stripped. The first outbound a config has is its default, so a node-only
+outbound that comes first is the default of the nodes that have it. Xray takes a rule that names no
+outbound for a typo and sends its traffic out of the default one (`xray run -test` says
+`Configuration OK`), so the master checks what the tags would leave dangling. The template is
+refused when a rule for every core, an empty `nodeTags` included, sends to a node-only outbound,
+since the panel's own core would lack it. A rule for some nodes may send to one: an agent that has
+the rule but not the outbound gets no config, and the error says which outbound and which tags
+give it. A rule that names an outbound the template does not hold at all is left as it was, for
+templates in the field are full of them.
 
 ## Traffic accounting
 
@@ -368,8 +379,8 @@ says so; a tag or archive given explicitly is never swapped.
    `POST /v1/update`.
 9. **Management**. Done: the Nodes page shows an agent's log (`GET /v1/logs`) and restarts its
    core (`POST /v1/restart`).
-10. **Per-node routing**. Done for rules: `nodeTags` on a routing rule, tags on an agent node.
-    Outbounds per node follow.
+10. **Per-node routing**. Done: tags on an agent node, `nodeTags` on a routing rule and on an
+    outbound.
 11. Later, each on its own: outbound sidecars on the node (Tor, WARP, Psiphon) and
     AdGuard Home as the node's decoy, pull mode.
 
