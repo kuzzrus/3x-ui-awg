@@ -95,12 +95,10 @@ function hasXrayProblem(status?: string, xrayState?: string): boolean {
 }
 
 // Tooltip text + icon color for the status cell. A real probe error (lastError)
-// is a warning and takes precedence; otherwise an Xray-core problem shows purple.
+// is a warning and sets the color; the Xray-core problem, when there is one, is told as well.
 function statusIssue(record: Pick<NodeRecord, 'status' | 'xrayState' | 'xrayError' | 'lastError'>) {
-  const tip =
-    record.lastError ||
-    (hasXrayProblem(record.status, record.xrayState) ? record.xrayError : '') ||
-    '';
+  const xrayProblem = hasXrayProblem(record.status, record.xrayState) ? record.xrayError : '';
+  const tip = [record.lastError, xrayProblem].filter(Boolean).join(' — ');
   const iconColor =
     !record.lastError && hasXrayProblem(record.status, record.xrayState)
       ? XRAY_ERROR_COLOR
