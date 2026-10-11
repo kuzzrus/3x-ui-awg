@@ -56,6 +56,27 @@ describe('outbound tag pickers', () => {
     expect(result.current.data?.outbounds).toEqual(['direct', 'warp']);
   });
 
+  it('leaves out an outbound that only some agent nodes have, which the panel itself lacks', async () => {
+    const payload = {
+      xraySetting: {
+        outbounds: [
+          { tag: 'direct', protocol: 'freedom' },
+          { tag: 'eu-hop', protocol: 'freedom', nodeTags: ['eu'] },
+          { tag: 'any-hop', protocol: 'freedom', nodeTags: [] },
+        ],
+      },
+    };
+    vi.spyOn(HttpUtil, 'post').mockResolvedValue(new Msg(true, '', JSON.stringify(payload)));
+
+    const flat = renderHook(() => useOutboundTags(), { wrapper: wrapperFor() });
+    const grouped = renderHook(() => useOutboundTagGroups(), { wrapper: wrapperFor() });
+
+    await waitFor(() => expect(flat.result.current.data).toBeDefined());
+    await waitFor(() => expect(grouped.result.current.data).toBeDefined());
+    expect(flat.result.current.data).toEqual(['direct', 'any-hop']);
+    expect(grouped.result.current.data?.outbounds).toEqual(['direct', 'any-hop']);
+  });
+
   it('offers every tag when the caller does not exclude blocks', async () => {
     mockConfig();
 

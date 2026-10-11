@@ -4,6 +4,11 @@ import { keys } from '@/api/queryKeys';
 import { fetchXrayConfig } from '@/hooks/useXraySetting';
 import { isOutboundProtocol } from '@/schemas/primitives';
 
+// An outbound with nodeTags is only on some agent nodes, so the panel's own features cannot use it.
+function isNodeOnly(outbound: { nodeTags?: unknown } | null): boolean {
+  return Array.isArray(outbound?.nodeTags) && outbound.nodeTags.length > 0;
+}
+
 // Available outbound (and balancer-eligible) tags the user can route an mtproto
 // inbound's Telegram traffic to. Shares the cached xray config query so opening
 // the inbound form costs no extra request when the Xray page was already
@@ -17,9 +22,10 @@ export function useOutboundTags(opts?: { excludeBlackhole?: boolean }) {
     select: (data): string[] => {
       const tags = new Set<string>();
       for (const o of data?.xraySetting?.outbounds ?? []) {
-        const ob = o as { tag?: string; protocol?: string } | null;
+        const ob = o as { tag?: string; protocol?: string; nodeTags?: unknown } | null;
         if (!ob?.tag) continue;
         if (excludeBlackhole && isOutboundProtocol(ob, 'blackhole')) continue;
+        if (isNodeOnly(ob)) continue;
         tags.add(ob.tag);
       }
       for (const t of data?.subscriptionOutboundTags ?? []) {
@@ -55,9 +61,10 @@ export function useOutboundTagGroups(opts?: { excludeBlackhole?: boolean }) {
     select: (data): OutboundTagGroups => {
       const outbounds = new Set<string>();
       for (const o of data?.xraySetting?.outbounds ?? []) {
-        const ob = o as { tag?: string; protocol?: string } | null;
+        const ob = o as { tag?: string; protocol?: string; nodeTags?: unknown } | null;
         if (!ob?.tag) continue;
         if (excludeBlackhole && isOutboundProtocol(ob, 'blackhole')) continue;
+        if (isNodeOnly(ob)) continue;
         outbounds.add(ob.tag);
       }
       for (const t of data?.subscriptionOutboundTags ?? []) {
