@@ -24,6 +24,7 @@ type AgentNodeRequest struct {
 	AllowPrivateAddress bool     `json:"allowPrivateAddress" form:"allowPrivateAddress"`
 	OutboundTag         string   `json:"outboundTag" form:"outboundTag"`
 	Tags                []string `json:"tags" form:"tags"`
+	Sidecars            []string `json:"sidecars" form:"sidecars"`
 }
 
 // AgentPairing is an agent node with the bundle that pairs its agent to this master. The
@@ -68,6 +69,7 @@ func (s *NodeService) CreateAgent(req *AgentNodeRequest) (*AgentPairing, error) 
 		PinnedCertSha256:    pin,
 		OutboundTag:         req.OutboundTag,
 		Tags:                req.Tags,
+		Sidecars:            req.Sidecars,
 		ConfigDirty:         true,
 		ConfigDirtyAt:       now,
 	}

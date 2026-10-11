@@ -81,8 +81,47 @@ describe('AgentNodeFormModal', () => {
       port: 8443,
       allowPrivateAddress: false,
       tags: [],
+      sidecars: [],
     });
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  });
+
+  it('runs Tor on the agent when asked to, and stops it when unchecked', async () => {
+    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
+    const node: NodeRecord = {
+      id: 4,
+      name: 'edge-4',
+      kind: 'agent',
+      address: 'a.example.com',
+      port: 9443,
+      enable: true,
+    };
+    const { unmount } = renderWithProviders(
+      <AgentNodeFormModal open node={node} save={save} onOpenChange={() => {}} />,
+    );
+
+    const tor = screen.getByRole('checkbox', { name: /Tor, a SOCKS proxy on 127.0.0.1:19050/ });
+    expect((tor as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(tor);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0][0]).toMatchObject({ id: 4, sidecars: ['tor'] });
+    unmount();
+
+    renderWithProviders(
+      <AgentNodeFormModal
+        open
+        node={{ ...node, sidecars: ['tor'] }}
+        save={save}
+        onOpenChange={() => {}}
+      />,
+    );
+    const held = screen.getByRole('checkbox', { name: /Tor, a SOCKS proxy/ }) as HTMLInputElement;
+    expect(held.checked).toBe(true);
+    fireEvent.click(held);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    expect(save.mock.calls[1][0]).toMatchObject({ id: 4, sidecars: [] });
   });
 
   it('labels the agent with tags, suggesting the ones the nodes already carry', async () => {
@@ -258,6 +297,70 @@ describe('NodeList with an agent node', () => {
     expect(screen.getByText('eu')).toBeTruthy();
     expect(screen.getByText('exit')).toBeTruthy();
     expect(screen.queryByText('stale')).toBeNull();
+  });
+
+  it('shows how the helper programs of an agent stand, and nothing for a panel', () => {
+    const tor = (state?: string, message?: string): NodeRecord => ({
+      ...nodes[1],
+      sidecars: ['tor'],
+      sidecarStates: state ? [{ name: 'tor', state, message }] : [],
+    });
+    const chips = () => Array.from(document.querySelectorAll('.node-sidecars .ant-tag'));
+
+    renderList(noop, noop, noop, noop, { list: [{ ...nodes[0], sidecars: ['tor'] }, tor()] });
+    expect(chips().map((chip) => chip.textContent)).toEqual(['Tor: waiting']);
+    document.body.innerHTML = '';
+
+    renderList(noop, noop, noop, noop, { list: [tor('installing')] });
+    expect(chips().map((chip) => chip.textContent)).toEqual(['Tor: installing']);
+    document.body.innerHTML = '';
+
+    renderList(noop, noop, noop, noop, { list: [tor('running', 'Bootstrapped 100%')] });
+    expect(chips().map((chip) => chip.textContent)).toEqual(['Tor: running']);
+    expect(chips()[0].className).toContain('ant-tag-success');
+    document.body.innerHTML = '';
+
+    renderList(noop, noop, noop, noop, { list: [tor('failed', 'apt-get: no network')] });
+    expect(chips().map((chip) => chip.textContent)).toEqual(['Tor: failed']);
+    expect(chips()[0].className).toContain('ant-tag-error');
+  });
+
+  it('says what a helper program last said when pointed at', async () => {
+    renderList(noop, noop, noop, noop, {
+      list: [
+        {
+          ...nodes[1],
+          sidecars: ['tor'],
+          sidecarStates: [{ name: 'tor', state: 'failed', message: 'apt-get: no network' }],
+        },
+      ],
+    });
+
+    const chip = document.querySelector('.node-sidecars .ant-tag');
+    if (!chip) throw new Error('no chip');
+    fireEvent.mouseEnter(chip);
+    await waitFor(() => expect(document.body.textContent).toContain('apt-get: no network'));
+  });
+
+  it('lists the helper programs of an agent in its info on a phone', () => {
+    renderList(noop, noop, noop, noop, {
+      list: [
+        {
+          ...nodes[1],
+          sidecars: ['tor'],
+          sidecarStates: [
+            { name: 'tor', state: 'running', message: 'Bootstrapped 10% (conn_done): Connected' },
+          ],
+        },
+      ],
+      isMobile: true,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'More Information' }));
+
+    expect(document.querySelector('.card-stats')?.textContent).toContain(
+      'Helper programsTor: runningBootstrapped 10% (conn_done): Connected',
+    );
   });
 
   it('lists the tags of an agent in its info on a phone', () => {

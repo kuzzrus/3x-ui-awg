@@ -33,6 +33,7 @@ func run(root, outDir string) error {
 				"HistoryOfSeeders",
 				"Setting",
 				"Node",
+				"NodeSidecar",
 				"ClientReverse",
 				"Client",
 				"ClientRecord",

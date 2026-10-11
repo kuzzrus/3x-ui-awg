@@ -23,6 +23,12 @@ export const SCHEMAS: Record<string, unknown> = {
       "remark": {
         "type": "string"
       },
+      "sidecars": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
       "tags": {
         "items": {
           "type": "string"
@@ -37,6 +43,7 @@ export const SCHEMAS: Record<string, unknown> = {
       "outboundTag",
       "port",
       "remark",
+      "sidecars",
       "tags"
     ],
     "type": "object"
@@ -3433,6 +3440,20 @@ export const SCHEMAS: Record<string, unknown> = {
         "example": "https",
         "type": "string"
       },
+      "sidecarStates": {
+        "description": "SidecarStates is how each of the node's helper programs stood at the last heartbeat.",
+        "items": {
+          "$ref": "#/components/schemas/NodeSidecar"
+        },
+        "type": "array"
+      },
+      "sidecars": {
+        "description": "Sidecars are the helper programs, such as Tor, that an agent node runs beside its core.",
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
       "status": {
         "description": "Heartbeat-updated fields. UpdatedAt advances on every probe even when\nthe row is otherwise unchanged so the UI's \"last seen\" tooltip is\ntruthful without us having to read LastHeartbeat separately.\nonline|offline|unknown",
         "example": "online",
@@ -3512,6 +3533,8 @@ export const SCHEMAS: Record<string, unknown> = {
       "port",
       "remark",
       "scheme",
+      "sidecarStates",
+      "sidecars",
       "status",
       "tags",
       "tlsVerifyMode",
@@ -3585,6 +3608,12 @@ export const SCHEMAS: Record<string, unknown> = {
         ],
         "type": "string"
       },
+      "sidecars": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
       "tags": {
         "items": {
           "type": "string"
@@ -3615,8 +3644,32 @@ export const SCHEMAS: Record<string, unknown> = {
       "port",
       "remark",
       "scheme",
+      "sidecars",
       "tags",
       "tlsVerifyMode"
+    ],
+    "type": "object"
+  },
+  "NodeSidecar": {
+    "description": "NodeSidecar is how one helper program of an agent node stood when the agent last reported:\ninstalling, running or failed, and the last thing it said or why it failed.",
+    "properties": {
+      "message": {
+        "example": "Bootstrapped 100% (done): Done",
+        "type": "string"
+      },
+      "name": {
+        "example": "tor",
+        "type": "string"
+      },
+      "state": {
+        "example": "running",
+        "type": "string"
+      }
+    },
+    "required": [
+      "message",
+      "name",
+      "state"
     ],
     "type": "object"
   },
@@ -3766,6 +3819,22 @@ export const SCHEMAS: Record<string, unknown> = {
         "example": "https",
         "type": "string"
       },
+      "sidecarStates": {
+        "description": "SidecarStates is how each helper program of an agent node stood at the last heartbeat.",
+        "items": {
+          "$ref": "#/components/schemas/NodeSidecar"
+        },
+        "type": "array"
+      },
+      "sidecars": {
+        "example": [
+          "tor"
+        ],
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
       "status": {
         "example": "online",
         "type": "string"
@@ -3843,6 +3912,8 @@ export const SCHEMAS: Record<string, unknown> = {
       "port",
       "remark",
       "scheme",
+      "sidecarStates",
+      "sidecars",
       "status",
       "tags",
       "tlsVerifyMode",

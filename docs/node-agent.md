@@ -2,7 +2,7 @@
 
 Design for an optional third kind of node: a thin, DB-less agent that only runs
 Xray-core for a master panel. The agent, its installer and the master side with its UI
-exist (phases 1 to 10 of [Phasing](#phasing)); the later items are not built.
+exist (phases 1 to 11 of [Phasing](#phasing)); the later items are not built.
 
 ## Problem
 
@@ -31,7 +31,9 @@ Non-goals (for v1):
 - Adopting an already-installed x-ui as an agent. That stays the stock `remote.go`
   node, forever.
 - Sidecar protocols on the node (MTProto, AmneziaWG, TUIC, tproxy, NaiveProxy).
-  `nodeEligibleProtocols` already excludes them; agents run Xray-native inbounds only.
+  `nodeEligibleProtocols` already excludes them; agents run Xray-native inbounds only. The
+  helper programs that an outbound reaches on the node's loopback (Tor) are another matter:
+  see [Helper programs](#helper-programs).
 - Per-client IP limits on agent nodes.
 - Pull mode (agent dials the master). Addable later.
 
@@ -96,12 +98,13 @@ HTTP status codes (no `{success,msg,obj}` envelope).
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `PUT /v1/config`             | Body: the rendered Xray config, byte for byte; `restartOnUserRemoval` is a query flag. The revision is a hash of the flag and the body bytes, computed by each side over exactly what was sent, so no JSON re-encoding can make them disagree. Validates with the core's own test (`xray -test -c`), then applies (no-op, hot, or restart). Answers `{revision, applied: noop\|hot\|restart, xrayState}`; on a bad config answers 422 and keeps the last good one. |
 | `GET /v1/status`             | Agent version, hostname, GUID, config revision, Xray version/state/error, CPU, memory, uptime, interface throughput. This is the heartbeat.                                                                                                                                                                                                                                                                                                                        |
-| `GET /v1/stats`              | Cumulative counters since Xray started: per inbound tag and per user email (up/down), online emails, `xrayStartedAt` so the master detects resets exactly instead of guessing from a drop, and `configRevision`, the revision of the config the agent holds, which tells the master whether a push is due.                                                                                                                                                         |
+| `GET /v1/stats`              | Cumulative counters since Xray started: per inbound tag and per user email (up/down), online emails, `xrayStartedAt` so the master detects resets exactly instead of guessing from a drop, `configRevision`, the revision of the config the agent holds, which tells the master whether a push is due, and `sidecarsRevision`, the same for the helper programs.                                                                                                   |
 | `POST /v1/restart`           | Restart Xray with the last good config. Answers 409 before any config exists and 500 when the core does not come back; 422 only ever means a refused push.                                                                                                                                                                                                                                                                                                         |
 | `GET /v1/geo`                | The `*.dat` files in the agent's asset folder, with their sizes.                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `PUT /v1/geo?name=&sha256=`  | Stores one geo file. The body is the file, gzip-encoded when `Content-Encoding: gzip` says so. The agent hashes what it unpacked and refuses (400) a name that is no `*.dat` file name or a body that does not match `sha256`, refuses (413) more than 256 MiB, and swaps the file in by renaming, so the core never reads half of one. It does not restart the core.                                                                                              |
 | `POST /v1/update`            | Starts the self-update: downloads the installer from its fixed address, refuses (409) while a run is on or when the agent was not installed by it, and runs it as a transient systemd unit of its own, because the installer stops this very agent. `dev=true` moves to the rolling dev channel. Answers the run as `{runId, state: pending}`.                                                                                                                     |
 | `GET /v1/update`             | How the last run ended: `none`, `pending`, `success` or `failed`, with the installer's exit code. The unit writes it when the installer ends, so the new agent can answer it.                                                                                                                                                                                                                                                                                      |
+| `PUT /v1/sidecars`           | Body `{enabled: [...]}`: the helper programs the agent runs, which replaces the list it had (an empty one stops them all). Answers at once, before an install has run, with `{revision, enabled, states}`; 400 for a name it does not know. See [Helper programs](#helper-programs).                                                                                                                                                                               |
 | `GET /v1/logs?count=&level=` | The newest lines of the agent's own log, newest first, which holds what its core printed too. `count` is at most 1000 (100 by default), `level` is `debug`, `info`, `notice`, `warning` or `error` (`err` too, as the panel's own log dialog says it).                                                                                                                                                                                                             |
 
 Any other path, wrong method, or failed auth answers the same bare 404, so a response
@@ -109,8 +112,7 @@ never says which part of the request was wrong. It does not hide that an HTTPS s
 answers: that is the SNI gate's job. The master only sends valid requests, so for it a 404
 means a wrong secret and a handshake failure means a wrong bundle; the agent logs the
 precise reason locally, once a minute per reason so a scanner cannot flood the log. Later
-phases add endpoints (sidecars) under
-the same prefix.
+phases add endpoints under the same prefix.
 
 ### Config apply
 
@@ -130,6 +132,32 @@ On boot the agent opens its port, then loads the last good config and starts Xra
 waiting for the master, so a reboot with the master down does not take the node offline.
 The port opens first so a stored config that will not start cannot lock the master out; a
 push made meanwhile waits for the start attempt to end.
+
+### Helper programs
+
+An agent can run programs beside its core that an outbound of the config reaches on the
+loopback of the server. The node carries the list (`Node.Sidecars`, agents only, replaced by
+each save like the tags), and today the only entry is `tor`: a Tor client with its SOCKS port on
+`127.0.0.1:19050`, the one the panel runs for itself. The outbound that uses it is an ordinary
+`socks` outbound of the template, limited to the nodes that run Tor with `nodeTags`.
+
+The master compares the `sidecarsRevision` of `GET /v1/stats` with that of the list it wants on
+every tick and sends `PUT /v1/sidecars` when they differ, the revision of an empty list being
+empty, so an agent that predates the endpoint, which reports none, is left alone while the node
+asks for none, and is told it is too old (the 404 of an unknown path) when it asks for one. An
+agent that cannot take the list is left alone for five minutes, and one that failed is tried
+again after 15 seconds. The reason shows as the last error of the node.
+
+The agent keeps the list in `sidecars.json` of its state folder and brings the programs up
+from it when it starts, with the master out of reach. One loop looks at them every 10 seconds:
+it installs a program the server lacks (Tor through the package manager of the server, which
+can take minutes, so the request that sets the list does not wait for it), starts one that is
+not running, and stops one that left the list. A program that died or would not start is left
+alone for 30 seconds, and one that could not be installed for 5 minutes; taking it off the
+list and putting it back tries at once. Every program is stopped when the agent stops.
+`GET /v1/status` carries the state of each program, `pending`, `installing`, `running` or
+`failed`, with the last thing it said or why it failed, which for Tor tells how far it got in
+building a circuit. The Nodes page shows them beside the node's tags.
 
 ### Geo files
 
@@ -242,11 +270,11 @@ when it differs from what the agent holds:
 
 The master template (routing, outbounds, DNS, policy) is the same for every agent in
 v1, minus the local-only injections (sidecar bridges, panel egress, node egresses).
-Outbounds that point at a loopback sidecar port (Tor, WARP) resolve to the agent's own
-loopback once sidecars exist on the node, so the shared template keeps working; until
-then such a rule fails on an agent that lacks the sidecar; an amneziawg outbound of the
-template, whose master-side bridge points at a sidecar an agent does not have, becomes a
-blackhole with the same tag.
+An outbound that points at the loopback port of a helper program (Tor) works on an agent
+that runs the program, and fails its dial on one that does not, so such an outbound is
+limited to the nodes that run it with `nodeTags`. A WARP outbound is an Xray outbound and
+needs no helper program. An amneziawg outbound of the template, whose master-side bridge
+points at a sidecar an agent does not have, becomes a blackhole with the same tag.
 
 A routing rule can be picked per node. An agent node carries tags (`Node.Tags`: up to 16, each up
 to 32 characters, matched without regard to case; a node of the other kind carries none). A rule
@@ -394,8 +422,9 @@ says so; a tag or archive given explicitly is never swapped.
    core (`POST /v1/restart`).
 10. **Per-node routing**. Done: tags on an agent node, `nodeTags` on a routing rule and on an
     outbound.
-11. Later, each on its own: outbound sidecars on the node (Tor, WARP, Psiphon) and
-    AdGuard Home as the node's decoy, pull mode.
+11. **Helper programs**. Done: the Tor client of an agent node, set with `PUT /v1/sidecars`.
+12. Later, each on its own: Psiphon as a helper program, AdGuard Home as the node's decoy,
+    pull mode.
 
 ## Open questions
 

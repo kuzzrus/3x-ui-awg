@@ -188,6 +188,7 @@ export default function NodesPage() {
         allowPrivateAddress: values.allowPrivateAddress,
         outboundTag: values.outboundTag,
         tags: values.tags,
+        sidecars: values.sidecars,
       };
       if (agentFormNode?.id)
         return update(agentFormNode.id, { ...endpoint, enable: values.enable });

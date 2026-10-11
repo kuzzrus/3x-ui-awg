@@ -1309,6 +1309,20 @@
         "tagsHint": "Labels for this node. A routing rule with a node tag that this node carries is part of its config; a rule with no node tags is for every node. Tags are matched without regard to case.",
         "tagsPlaceholder": "Type a tag and press Enter",
         "tagsInvalid": "A node takes up to 16 tags of up to 32 characters each",
+        "sidecars": "Helper programs",
+        "sidecarsHint": "Programs the agent runs beside Xray. The agent installs one that the server lacks, which can take a few minutes. Send traffic through it with an outbound in the Xray template, limited to this node with its tag.",
+        "sidecarNames": {
+          "tor": "Tor"
+        },
+        "sidecarDescriptions": {
+          "tor": "Tor, a SOCKS proxy on 127.0.0.1:19050 of the server"
+        },
+        "sidecarStates": {
+          "pending": "waiting",
+          "installing": "installing",
+          "running": "running",
+          "failed": "failed"
+        },
         "logs": "Agent log",
         "restart": "Restart Xray",
         "restarted": "Xray restarted on {name}",

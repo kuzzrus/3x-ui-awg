@@ -5,7 +5,9 @@ package agentproto
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -21,6 +23,8 @@ const (
 	PathLogs = "/v1/logs"
 	// PathUpdate starts the agent's self-update (POST) and reports how the last one went (GET).
 	PathUpdate = "/v1/update"
+	// PathSidecars sets which helper programs the agent runs beside its core (PUT).
+	PathSidecars = "/v1/sidecars"
 
 	// QueryRestartOnUserRemoval is the PathConfig query flag (a bool) that makes
 	// the agent restart the core instead of dropping a removed client's credential.
@@ -44,6 +48,8 @@ const (
 	MaxGeoBytes = 256 << 20
 	// MaxLogLines caps what one PathLogs request returns.
 	MaxLogLines = 1000
+	// MaxSidecarsBytes caps a PathSidecars body, which is a short list of names.
+	MaxSidecarsBytes = 4 << 10
 
 	maxGeoNameLen = 100
 )
@@ -81,6 +87,9 @@ type Status struct {
 	UptimeSecs     uint64  `json:"uptimeSecs"`
 	NetUp          uint64  `json:"netUp"`
 	NetDown        uint64  `json:"netDown"`
+	// Sidecars is how each helper program the agent was told to run stands; an agent that has
+	// none to run, and one that predates them, report an empty list.
+	Sidecars []SidecarState `json:"sidecars"`
 }
 
 type Counter struct {
@@ -96,6 +105,83 @@ type Stats struct {
 	Inbounds       map[string]Counter `json:"inbounds"`
 	Users          map[string]Counter `json:"users"`
 	Online         []string           `json:"online"`
+	// SidecarsRevision is SidecarsRevision of the helper programs the agent was told to run, which
+	// tells the master whether it must send the list again. It is empty for none, as for an old agent.
+	SidecarsRevision string `json:"sidecarsRevision"`
+}
+
+// SidecarTor is the Tor client the agent runs on a loopback SOCKS port, for an outbound of the
+// config to send traffic through.
+const SidecarTor = "tor"
+
+// KnownSidecars are the helper programs an agent can run, in the order they are listed.
+var KnownSidecars = []string{SidecarTor}
+
+// How a helper program stands on the agent; pending is one that is listed and not looked at yet.
+const (
+	SidecarPending    = "pending"
+	SidecarInstalling = "installing"
+	SidecarRunning    = "running"
+	SidecarFailed     = "failed"
+)
+
+// SidecarsSpec is the body of PathSidecars: the helper programs the agent should run. The list
+// replaces the one before it, and an empty one stops them all.
+type SidecarsSpec struct {
+	Enabled []string `json:"enabled"`
+}
+
+// SidecarState is how one helper program stands. Message is the last thing it said or why it
+// failed, which for Tor tells how far it got in building a circuit.
+type SidecarState struct {
+	Name    string `json:"name"`
+	State   string `json:"state"`
+	Message string `json:"message,omitempty"`
+}
+
+// Sidecars is the answer of PathSidecars: the list as the agent keeps it, and how each stands.
+type Sidecars struct {
+	Revision string         `json:"revision"`
+	Enabled  []string       `json:"enabled"`
+	States   []SidecarState `json:"states"`
+}
+
+// UnknownSidecarError is a helper program that no agent of this version runs.
+type UnknownSidecarError struct{ Name string }
+
+func (e *UnknownSidecarError) Error() string { return fmt.Sprintf("unknown helper program %q", e.Name) }
+
+// NormalizeSidecars checks a list of helper programs against KnownSidecars and returns it without
+// repeats, in their listed order, the form both ends compare and store; none is nil.
+func NormalizeSidecars(names []string) ([]string, error) {
+	want := make(map[string]bool, len(names))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if !slices.Contains(KnownSidecars, name) {
+			return nil, &UnknownSidecarError{Name: name}
+		}
+		want[name] = true
+	}
+	var out []string
+	for _, name := range KnownSidecars {
+		if want[name] {
+			out = append(out, name)
+		}
+	}
+	return out, nil
+}
+
+// SidecarsRevision identifies a normalized list, and is empty for none, which is what an agent
+// that has never been given one reports.
+func SidecarsRevision(names []string) string {
+	if len(names) == 0 {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(strings.Join(names, ",")))
+	return hex.EncodeToString(sum[:])
 }
 
 // How a self-update run stands. None is what an agent that never ran one reports.

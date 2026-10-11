@@ -27,6 +27,7 @@ type NodeView struct {
 	InboundTags         []string `json:"inboundTags" example:"[\"in-443-tcp\"]"`
 	OutboundTag         string   `json:"outboundTag" example:"direct"`
 	Tags                []string `json:"tags" example:"[\"eu\"]"`
+	Sidecars            []string `json:"sidecars" example:"[\"tor\"]"`
 	Guid                string   `json:"guid" example:"node-guid"`
 	Status              string   `json:"status" example:"online"`
 	LastHeartbeat       int64    `json:"lastHeartbeat" example:"1700000000"`
@@ -53,6 +54,9 @@ type NodeView struct {
 	Transitive          bool     `json:"transitive,omitempty" example:"false"`
 	CreatedAt           int64    `json:"createdAt" example:"1700000000"`
 	UpdatedAt           int64    `json:"updatedAt" example:"1700003600"`
+
+	// SidecarStates is how each helper program of an agent node stood at the last heartbeat.
+	SidecarStates []model.NodeSidecar `json:"sidecarStates"`
 }
 
 func toNodeView(n *model.Node) *NodeView {
@@ -66,6 +70,14 @@ func toNodeView(n *model.Node) *NodeView {
 	tags := n.Tags
 	if tags == nil {
 		tags = []string{}
+	}
+	sidecars := n.Sidecars
+	if sidecars == nil {
+		sidecars = []string{}
+	}
+	sidecarStates := n.SidecarStates
+	if sidecarStates == nil {
+		sidecarStates = []model.NodeSidecar{}
 	}
 	return &NodeView{
 		Id:                  n.Id,
@@ -85,6 +97,8 @@ func toNodeView(n *model.Node) *NodeView {
 		InboundTags:         n.InboundTags,
 		OutboundTag:         n.OutboundTag,
 		Tags:                tags,
+		Sidecars:            sidecars,
+		SidecarStates:       sidecarStates,
 		Guid:                n.Guid,
 		Status:              n.Status,
 		LastHeartbeat:       n.LastHeartbeat,
@@ -143,6 +157,7 @@ type NodeMutationRequest struct {
 	InboundTags         []string `json:"inboundTags" form:"inboundTags"`
 	OutboundTag         string   `json:"outboundTag" form:"outboundTag"`
 	Tags                []string `json:"tags" form:"tags"`
+	Sidecars            []string `json:"sidecars" form:"sidecars"`
 }
 
 func (r *NodeMutationRequest) validateCredentials(create bool) error {
@@ -192,6 +207,7 @@ func (r *NodeMutationRequest) toNode() *model.Node {
 		InboundTags:         r.InboundTags,
 		OutboundTag:         r.OutboundTag,
 		Tags:                r.Tags,
+		Sidecars:            r.Sidecars,
 	}
 	if r.ApiToken != nil {
 		n.ApiToken = *r.ApiToken

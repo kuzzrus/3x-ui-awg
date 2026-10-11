@@ -53,9 +53,16 @@ func Run(ctx context.Context, opts Options) error {
 		}
 		core.Run(ctx)
 	}()
+	// The helper programs come up from the stored list on their own, with the master out of reach.
+	hosted := make(chan struct{})
+	go func() {
+		defer close(hosted)
+		server.RunSidecars(ctx)
+	}()
 	defer func() {
 		stop()
 		<-supervised
+		<-hosted
 	}()
 
 	logger.Info("agent: serving the master on", ln.Addr())

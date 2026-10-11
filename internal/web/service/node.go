@@ -51,6 +51,9 @@ type HeartbeatPatch struct {
 	// Xray core health on the node.
 	XrayState string
 	XrayError string
+	// SidecarStates is how an agent's helper programs stand, empty when it runs none. It is nil for a
+	// node that does not report them, whose stored states a heartbeat leaves alone.
+	SidecarStates []model.NodeSidecar
 }
 
 type NodeService struct{}
@@ -457,8 +460,13 @@ func (s *NodeService) Create(n *model.Node) error {
 			return err
 		}
 		n.Tags = tags
+		sidecars, err := normalizeNodeSidecars(n.Sidecars)
+		if err != nil {
+			return err
+		}
+		n.Sidecars = sidecars
 	} else {
-		n.Tags = nil
+		n.Tags, n.Sidecars = nil, nil
 	}
 	db := database.GetDB()
 	if !nodetoken.Enabled() {
@@ -532,6 +540,10 @@ func (s *NodeService) Update(id int, in *model.Node) error {
 	if err != nil {
 		return err
 	}
+	sidecarsJSON, err := sidecarsToStore(existing, in.Sidecars)
+	if err != nil {
+		return err
+	}
 	// Blank means keep the hidden stored token; non-blank values are encrypted.
 	apiToken := existing.ApiToken
 	if in.ApiToken != "" {
@@ -557,6 +569,7 @@ func (s *NodeService) Update(id int, in *model.Node) error {
 		"inbound_tags":          string(inboundTagsJSON),
 		"outbound_tag":          in.OutboundTag,
 		"tags":                  tagsJSON,
+		"sidecars":              sidecarsJSON,
 	}
 	if nodeSelectionGrew(existing, in) {
 		updates["inbounds_adopted_at"] = 0
@@ -602,6 +615,10 @@ func (s *NodeService) UpdateFromRequest(id int, req *NodeMutationRequest) error 
 	if err != nil {
 		return err
 	}
+	sidecarsJSON, err := sidecarsToStore(existing, in.Sidecars)
+	if err != nil {
+		return err
+	}
 	apiToken := existing.ApiToken
 	switch {
 	case req.ClearApiToken:
@@ -631,6 +648,7 @@ func (s *NodeService) UpdateFromRequest(id int, req *NodeMutationRequest) error 
 		"inbound_tags":          string(inboundTagsJSON),
 		"outbound_tag":          in.OutboundTag,
 		"tags":                  tagsJSON,
+		"sidecars":              sidecarsJSON,
 	}
 	if nodeSelectionGrew(existing, in) {
 		updates["inbounds_adopted_at"] = 0
@@ -1041,6 +1059,13 @@ func (s *NodeService) UpdateHeartbeat(id int, p HeartbeatPatch) error {
 	if p.Guid != "" {
 		updates["guid"] = p.Guid
 		s.warnOnDuplicateGuid(id, p.Guid)
+	}
+	if p.SidecarStates != nil {
+		states, err := json.Marshal(p.SidecarStates)
+		if err != nil {
+			return err
+		}
+		updates["sidecar_states"] = string(states)
 	}
 	if err := db.Model(model.Node{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 		return err

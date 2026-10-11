@@ -14,6 +14,7 @@ export interface AgentNodeRequest {
   outboundTag: string;
   port: number;
   remark: string;
+  sidecars: string[];
   tags: string[];
 }
 
@@ -795,6 +796,8 @@ export interface Node {
   port: number;
   remark: string;
   scheme: string;
+  sidecarStates: NodeSidecar[];
+  sidecars: string[];
   status: string;
   tags: string[];
   tlsVerifyMode: string;
@@ -822,8 +825,15 @@ export interface NodeMutationRequest {
   port: number;
   remark: string;
   scheme: string;
+  sidecars: string[];
   tags: string[];
   tlsVerifyMode: string;
+}
+
+export interface NodeSidecar {
+  message: string;
+  name: string;
+  state: string;
 }
 
 export interface NodeView {
@@ -861,6 +871,8 @@ export interface NodeView {
   port: number;
   remark: string;
   scheme: string;
+  sidecarStates: NodeSidecar[];
+  sidecars: string[];
   status: string;
   tags: string[];
   tlsVerifyMode: string;

@@ -7,6 +7,9 @@ export const EXAMPLES: Record<string, unknown> = {
     "outboundTag": "",
     "port": 1,
     "remark": "",
+    "sidecars": [
+      ""
+    ],
     "tags": [
       ""
     ]
@@ -879,6 +882,16 @@ export const EXAMPLES: Record<string, unknown> = {
     "port": 2053,
     "remark": "",
     "scheme": "https",
+    "sidecarStates": [
+      {
+        "message": "Bootstrapped 100% (done): Done",
+        "name": "tor",
+        "state": "running"
+      }
+    ],
+    "sidecars": [
+      ""
+    ],
     "status": "online",
     "tags": [
       ""
@@ -909,10 +922,18 @@ export const EXAMPLES: Record<string, unknown> = {
     "port": 1,
     "remark": "",
     "scheme": "http",
+    "sidecars": [
+      ""
+    ],
     "tags": [
       ""
     ],
     "tlsVerifyMode": "verify"
+  },
+  "NodeSidecar": {
+    "message": "Bootstrapped 100% (done): Done",
+    "name": "tor",
+    "state": "running"
   },
   "NodeView": {
     "activeCount": 20,
@@ -951,6 +972,16 @@ export const EXAMPLES: Record<string, unknown> = {
     "port": 2053,
     "remark": "Primary edge",
     "scheme": "https",
+    "sidecarStates": [
+      {
+        "message": "Bootstrapped 100% (done): Done",
+        "name": "tor",
+        "state": "running"
+      }
+    ],
+    "sidecars": [
+      "tor"
+    ],
     "status": "online",
     "tags": [
       "eu"

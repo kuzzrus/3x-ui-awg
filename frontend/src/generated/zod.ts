@@ -28,6 +28,7 @@ export const AgentNodeRequestSchema = z.object({
   outboundTag: z.string(),
   port: z.number().int().min(1).max(65535),
   remark: z.string(),
+  sidecars: z.array(z.string()),
   tags: z.array(z.string()),
 });
 export type AgentNodeRequest = z.infer<typeof AgentNodeRequestSchema>;
@@ -846,6 +847,8 @@ export const NodeSchema = z.object({
   port: z.number().int().min(1).max(65535),
   remark: z.string(),
   scheme: z.enum(['http', 'https']),
+  sidecarStates: z.array(z.lazy(() => NodeSidecarSchema)),
+  sidecars: z.array(z.string()),
   status: z.string(),
   tags: z.array(z.string()),
   tlsVerifyMode: z.enum(['verify', 'skip', 'pin', 'mtls']),
@@ -874,10 +877,18 @@ export const NodeMutationRequestSchema = z.object({
   port: z.number().int().min(1).max(65535),
   remark: z.string(),
   scheme: z.enum(['http', 'https']),
+  sidecars: z.array(z.string()),
   tags: z.array(z.string()),
   tlsVerifyMode: z.enum(['verify', 'skip', 'pin', 'mtls']),
 });
 export type NodeMutationRequest = z.infer<typeof NodeMutationRequestSchema>;
+
+export const NodeSidecarSchema = z.object({
+  message: z.string(),
+  name: z.string(),
+  state: z.string(),
+});
+export type NodeSidecar = z.infer<typeof NodeSidecarSchema>;
 
 export const NodeViewSchema = z.object({
   activeCount: z.number().int(),
@@ -914,6 +925,8 @@ export const NodeViewSchema = z.object({
   port: z.number().int(),
   remark: z.string(),
   scheme: z.string(),
+  sidecarStates: z.array(z.lazy(() => NodeSidecarSchema)),
+  sidecars: z.array(z.string()),
   status: z.string(),
   tags: z.array(z.string()),
   tlsVerifyMode: z.string(),

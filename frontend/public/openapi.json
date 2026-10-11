@@ -49,6 +49,12 @@
           "remark": {
             "type": "string"
           },
+          "sidecars": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "tags": {
             "items": {
               "type": "string"
@@ -63,6 +69,7 @@
           "outboundTag",
           "port",
           "remark",
+          "sidecars",
           "tags"
         ],
         "type": "object"
@@ -3459,6 +3466,20 @@
             "example": "https",
             "type": "string"
           },
+          "sidecarStates": {
+            "description": "SidecarStates is how each of the node's helper programs stood at the last heartbeat.",
+            "items": {
+              "$ref": "#/components/schemas/NodeSidecar"
+            },
+            "type": "array"
+          },
+          "sidecars": {
+            "description": "Sidecars are the helper programs, such as Tor, that an agent node runs beside its core.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "status": {
             "description": "Heartbeat-updated fields. UpdatedAt advances on every probe even when\nthe row is otherwise unchanged so the UI's \"last seen\" tooltip is\ntruthful without us having to read LastHeartbeat separately.\nonline|offline|unknown",
             "example": "online",
@@ -3538,6 +3559,8 @@
           "port",
           "remark",
           "scheme",
+          "sidecarStates",
+          "sidecars",
           "status",
           "tags",
           "tlsVerifyMode",
@@ -3611,6 +3634,12 @@
             ],
             "type": "string"
           },
+          "sidecars": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "tags": {
             "items": {
               "type": "string"
@@ -3641,8 +3670,32 @@
           "port",
           "remark",
           "scheme",
+          "sidecars",
           "tags",
           "tlsVerifyMode"
+        ],
+        "type": "object"
+      },
+      "NodeSidecar": {
+        "description": "NodeSidecar is how one helper program of an agent node stood when the agent last reported:\ninstalling, running or failed, and the last thing it said or why it failed.",
+        "properties": {
+          "message": {
+            "example": "Bootstrapped 100% (done): Done",
+            "type": "string"
+          },
+          "name": {
+            "example": "tor",
+            "type": "string"
+          },
+          "state": {
+            "example": "running",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "name",
+          "state"
         ],
         "type": "object"
       },
@@ -3792,6 +3845,22 @@
             "example": "https",
             "type": "string"
           },
+          "sidecarStates": {
+            "description": "SidecarStates is how each helper program of an agent node stood at the last heartbeat.",
+            "items": {
+              "$ref": "#/components/schemas/NodeSidecar"
+            },
+            "type": "array"
+          },
+          "sidecars": {
+            "example": [
+              "tor"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "status": {
             "example": "online",
             "type": "string"
@@ -3869,6 +3938,8 @@
           "port",
           "remark",
           "scheme",
+          "sidecarStates",
+          "sidecars",
           "status",
           "tags",
           "tlsVerifyMode",
@@ -11029,6 +11100,16 @@
                       "port": 2053,
                       "remark": "Primary edge",
                       "scheme": "https",
+                      "sidecarStates": [
+                        {
+                          "message": "Bootstrapped 100% (done): Done",
+                          "name": "tor",
+                          "state": "running"
+                        }
+                      ],
+                      "sidecars": [
+                        "tor"
+                      ],
                       "status": "online",
                       "tags": [
                         "eu"
@@ -11234,6 +11315,16 @@
                     "port": 2053,
                     "remark": "Primary edge",
                     "scheme": "https",
+                    "sidecarStates": [
+                      {
+                        "message": "Bootstrapped 100% (done): Done",
+                        "name": "tor",
+                        "state": "running"
+                      }
+                    ],
+                    "sidecars": [
+                      "tor"
+                    ],
                     "status": "online",
                     "tags": [
                       "eu"
@@ -11388,6 +11479,16 @@
                     "port": 2053,
                     "remark": "Primary edge",
                     "scheme": "https",
+                    "sidecarStates": [
+                      {
+                        "message": "Bootstrapped 100% (done): Done",
+                        "name": "tor",
+                        "state": "running"
+                      }
+                    ],
+                    "sidecars": [
+                      "tor"
+                    ],
                     "status": "online",
                     "tags": [
                       "eu"
@@ -11412,7 +11513,7 @@
         "tags": [
           "Nodes"
         ],
-        "summary": "Register a node that runs the thin x-ui-agent instead of a full panel. The agent is not installed yet, so the node is not probed. The panel mints the secret and the certificate of the agent and returns the pairing bundle once: it holds the private key, is never stored, and is what install-agent.sh asks for on the node. tags label the node: a routing rule whose nodeTags name one of them is part of the agent’s config.",
+        "summary": "Register a node that runs the thin x-ui-agent instead of a full panel. The agent is not installed yet, so the node is not probed. The panel mints the secret and the certificate of the agent and returns the pairing bundle once: it holds the private key, is never stored, and is what install-agent.sh asks for on the node. tags label the node: a routing rule whose nodeTags name one of them is part of the agent’s config. sidecars lists the helper programs the agent runs beside its core (only \"tor\" for now); the agent installs one that the server lacks.",
         "operationId": "post_panel_api_nodes_addAgent",
         "requestBody": {
           "required": true,
@@ -11430,6 +11531,9 @@
                 "outboundTag": "",
                 "tags": [
                   "eu"
+                ],
+                "sidecars": [
+                  "tor"
                 ]
               }
             }
@@ -11522,7 +11626,7 @@
         "tags": [
           "Nodes"
         ],
-        "summary": "Replace a node’s connection details. apiToken is write-only: omit it or send an empty string to keep the stored token; set clearApiToken=true to clear it. For an agent node, tags is the full list of its tags: omit it to clear them.",
+        "summary": "Replace a node’s connection details. apiToken is write-only: omit it or send an empty string to keep the stored token; set clearApiToken=true to clear it. For an agent node, tags and sidecars are the full lists: omit one to clear it.",
         "operationId": "post_panel_api_nodes_update_id",
         "parameters": [
           {
@@ -17235,6 +17339,16 @@
                   "port": 2053,
                   "remark": "Primary edge",
                   "scheme": "https",
+                  "sidecarStates": [
+                    {
+                      "message": "Bootstrapped 100% (done): Done",
+                      "name": "tor",
+                      "state": "running"
+                    }
+                  ],
+                  "sidecars": [
+                    "tor"
+                  ],
                   "status": "online",
                   "tags": [
                     "eu"

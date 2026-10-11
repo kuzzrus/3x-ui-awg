@@ -4,6 +4,9 @@ export const MAX_NODE_TAGS = 16;
 export const MAX_NODE_TAG_LENGTH = 32;
 const TAGS_INVALID = 'pages.nodes.agent.tagsInvalid';
 
+// The helper programs an agent can run beside its core, which the panel offers on the node's form.
+export const NODE_SIDECARS = ['tor'] as const;
+
 export const NodeRecordSchema = z
   .object({
     id: z.number(),
@@ -47,6 +50,11 @@ export const NodeRecordSchema = z
     outboundTag: z.string().optional(),
     // An agent node's tags, which pick the routing rules it runs.
     tags: z.array(z.string()).nullish(),
+    // The helper programs an agent node runs beside its core, and how each stood at the last heartbeat.
+    sidecars: z.array(z.string()).nullish(),
+    sidecarStates: z
+      .array(z.object({ name: z.string(), state: z.string(), message: z.string().optional() }))
+      .nullish(),
     // Multi-hop node tree (#4983): a node's stable GUID, its parent's GUID, and
     // whether it's a read-only transitive sub-node surfaced from a downstream node.
     guid: z.string().optional(),
@@ -119,6 +127,7 @@ export const AgentFormSchema = z.object({
   tags: z
     .array(z.string().trim().min(1, TAGS_INVALID).max(MAX_NODE_TAG_LENGTH, TAGS_INVALID))
     .max(MAX_NODE_TAGS, TAGS_INVALID),
+  sidecars: z.array(z.string()),
 });
 
 export const AgentPairingSchema = z

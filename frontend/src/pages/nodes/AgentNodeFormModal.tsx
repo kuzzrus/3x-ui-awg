@@ -1,11 +1,28 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Col, Form, Input, InputNumber, Modal, Row, Select, Switch, message } from 'antd';
+import {
+  Alert,
+  Checkbox,
+  Col,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Row,
+  Select,
+  Switch,
+  message,
+} from 'antd';
 import { FormProvider, useForm } from 'react-hook-form';
 
 import type { NodeRecord } from '@/api/queries/useNodesQuery';
 import type { Msg } from '@/utils';
-import { AgentFormSchema, MAX_NODE_TAGS, type AgentFormValues } from '@/schemas/node';
+import {
+  AgentFormSchema,
+  MAX_NODE_TAGS,
+  NODE_SIDECARS,
+  type AgentFormValues,
+} from '@/schemas/node';
 import { FormField, rhfZodValidate } from '@/components/form/rhf';
 import { useNodeTags } from '@/api/queries/useNodeTags';
 import { useNodeOutboundOptions } from './useNodeOutboundOptions';
@@ -31,6 +48,7 @@ function defaultValues(): AgentFormValues {
     allowPrivateAddress: false,
     outboundTag: '',
     tags: [],
+    sidecars: [],
   };
 }
 
@@ -48,6 +66,10 @@ export default function AgentNodeFormModal({
   const [submitting, setSubmitting] = useState(false);
   const outboundOptions = useNodeOutboundOptions();
   const tagOptions = useNodeTags().map((tag) => ({ label: tag, value: tag }));
+  const sidecarOptions = NODE_SIDECARS.map((name) => ({
+    label: t(`pages.nodes.agent.sidecarDescriptions.${name}`),
+    value: name,
+  }));
   const editing = node !== null;
 
   // Reset during render, not in an effect, so the first frame is already clean.
@@ -70,6 +92,7 @@ export default function AgentNodeFormModal({
             allowPrivateAddress: node.allowPrivateAddress ?? false,
             outboundTag: node.outboundTag ?? '',
             tags: node.tags ?? [],
+            sidecars: node.sidecars ?? [],
           }
         : base,
     );
@@ -198,6 +221,14 @@ export default function AgentNodeFormModal({
                 placeholder={t('pages.nodes.agent.tagsPlaceholder')}
                 options={tagOptions}
               />
+            </FormField>
+
+            <FormField
+              label={t('pages.nodes.agent.sidecars')}
+              name="sidecars"
+              tooltip={t('pages.nodes.agent.sidecarsHint')}
+            >
+              <Checkbox.Group options={sidecarOptions} />
             </FormField>
           </Form>
         </FormProvider>
