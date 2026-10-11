@@ -35,6 +35,7 @@ import NodeList from './NodeList';
 import NodeFormModal from './NodeFormModal';
 import AgentNodeFormModal from './AgentNodeFormModal';
 import AgentBundleModal, { type AgentPairingView } from './AgentBundleModal';
+import LogModal from '../index/LogModal';
 import type { AgentFormValues } from '@/schemas/node';
 import { setMessageInstance } from '@/utils/messageBus';
 import { HttpUtil } from '@/utils';
@@ -87,6 +88,7 @@ export default function NodesPage() {
     repairAgent,
     update,
     remove,
+    restartXray,
     setEnable,
     testConnection,
     fetchFingerprint,
@@ -110,6 +112,9 @@ export default function NodesPage() {
   const [agentFormOpen, setAgentFormOpen] = useState(false);
   const [agentFormNode, setAgentFormNode] = useState<NodeRecord | null>(null);
   const [pairing, setPairing] = useState<AgentPairingView | null>(null);
+  // The log stays chosen while the dialog fades out, so its title does not flip to the panel's.
+  const [logNode, setLogNode] = useState<NodeRecord | null>(null);
+  const [logOpen, setLogOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [mtlsOpen, setMtlsOpen] = useState(false);
   const [trustCa, setTrustCa] = useState('');
@@ -212,6 +217,42 @@ export default function NodesPage() {
       });
     },
     [modal, t, repairAgent],
+  );
+
+  const onLogs = useCallback((node: NodeRecord) => {
+    setLogNode(node);
+    setLogOpen(true);
+  }, []);
+
+  const logSource = useMemo(
+    () =>
+      logNode
+        ? {
+            path: `/panel/api/nodes/agentLogs/${logNode.id}`,
+            title: t('pages.nodes.agent.logsTitle', { name: logNode.name ?? '' }),
+            fileName: `${logNode.name || 'agent'}.log`,
+          }
+        : undefined,
+    [logNode, t],
+  );
+
+  const onRestartXray = useCallback(
+    (node: NodeRecord) => {
+      modal.confirm({
+        title: t('pages.nodes.agent.restartConfirmTitle', { name: node.name }),
+        content: t('pages.nodes.agent.restartConfirmContent'),
+        okText: t('pages.nodes.agent.restart'),
+        okType: 'danger',
+        cancelText: t('cancel'),
+        onOk: async () => {
+          const msg = await restartXray(node.id);
+          if (msg?.success) {
+            messageApi.success(t('pages.nodes.agent.restarted', { name: node.name }));
+          }
+        },
+      });
+    },
+    [modal, t, restartXray, messageApi],
   );
 
   const onSave = useCallback(
@@ -417,6 +458,8 @@ export default function NodesPage() {
                       onMtls={() => setMtlsOpen(true)}
                       onEdit={onEdit}
                       onRepair={onRepair}
+                      onLogs={onLogs}
+                      onRestartXray={onRestartXray}
                       onDelete={onDelete}
                       onProbe={onProbe}
                       onToggleEnable={onToggleEnable}
@@ -449,6 +492,8 @@ export default function NodesPage() {
         />
 
         <AgentBundleModal pairing={pairing} onClose={() => setPairing(null)} />
+
+        <LogModal open={logOpen} onClose={() => setLogOpen(false)} source={logSource} />
 
         <Modal
           open={mtlsOpen}

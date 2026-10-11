@@ -195,8 +195,9 @@ describe('NodeList with an agent node', () => {
   function renderList(
     onRepair = noop,
     onUpdateNode = noop,
-    list: NodeRecord[] = nodes,
-    isMobile = false,
+    onLogs = noop,
+    onRestartXray = noop,
+    { list = nodes, isMobile = false }: { list?: NodeRecord[]; isMobile?: boolean } = {},
   ) {
     renderWithProviders(
       <NodeList
@@ -210,6 +211,8 @@ describe('NodeList with an agent node', () => {
         onMtls={noop}
         onEdit={noop}
         onRepair={onRepair}
+        onLogs={onLogs}
+        onRestartXray={onRestartXray}
         onDelete={noop}
         onProbe={noop}
         onToggleEnable={noop}
@@ -245,10 +248,12 @@ describe('NodeList with an agent node', () => {
   });
 
   it('shows the tags of an agent under its name, and none for a panel', () => {
-    renderList(noop, noop, [
-      { ...nodes[0], tags: ['stale'] },
-      { ...nodes[1], tags: ['eu', 'exit'] },
-    ]);
+    renderList(noop, noop, noop, noop, {
+      list: [
+        { ...nodes[0], tags: ['stale'] },
+        { ...nodes[1], tags: ['eu', 'exit'] },
+      ],
+    });
 
     expect(screen.getByText('eu')).toBeTruthy();
     expect(screen.getByText('exit')).toBeTruthy();
@@ -256,11 +261,27 @@ describe('NodeList with an agent node', () => {
   });
 
   it('lists the tags of an agent in its info on a phone', () => {
-    renderList(noop, noop, [{ ...nodes[1], tags: ['eu', 'exit'] }], true);
+    renderList(noop, noop, noop, noop, {
+      list: [{ ...nodes[1], tags: ['eu', 'exit'] }],
+      isMobile: true,
+    });
 
     fireEvent.click(screen.getByRole('button', { name: 'More Information' }));
 
     expect(document.querySelector('.card-stats')?.textContent).toContain('Tagseu, exit');
+  });
+
+  it('offers an agent its log and a restart of Xray, and a panel node neither', () => {
+    const onLogs = vi.fn();
+    const onRestartXray = vi.fn();
+    renderList(noop, noop, onLogs, onRestartXray);
+
+    expect(screen.getAllByLabelText('Agent log')).toHaveLength(1);
+    expect(screen.getAllByLabelText('Restart Xray')).toHaveLength(1);
+    fireEvent.click(screen.getByLabelText('Agent log'));
+    expect(onLogs).toHaveBeenCalledWith(expect.objectContaining({ id: 2, kind: 'agent' }));
+    fireEvent.click(screen.getByLabelText('Restart Xray'));
+    expect(onRestartXray).toHaveBeenCalledWith(expect.objectContaining({ id: 2, kind: 'agent' }));
   });
 
   it('has a button to add an agent', () => {

@@ -13,10 +13,12 @@ import {
   ExclamationCircleOutlined,
   EyeInvisibleOutlined,
   EyeOutlined,
+  FileTextOutlined,
   InfoCircleOutlined,
   KeyOutlined,
   MoreOutlined,
   PlusOutlined,
+  ReloadOutlined,
   RightOutlined,
   SafetyCertificateOutlined,
   TeamOutlined,
@@ -41,6 +43,8 @@ interface NodeListProps {
   onMtls: () => void;
   onEdit: (node: NodeRecord) => void;
   onRepair: (node: NodeRecord) => void;
+  onLogs: (node: NodeRecord) => void;
+  onRestartXray: (node: NodeRecord) => void;
   onDelete: (node: NodeRecord) => void;
   onProbe: (node: NodeRecord) => void;
   onToggleEnable: (node: NodeRecord, next: boolean) => void;
@@ -184,6 +188,8 @@ export default function NodeList({
   onMtls,
   onEdit,
   onRepair,
+  onLogs,
+  onRestartXray,
   onDelete,
   onProbe,
   onToggleEnable,
@@ -302,16 +308,38 @@ export default function NodeList({
                 />
               </Tooltip>
               {record.kind === 'agent' && (
-                <Tooltip title={t('pages.nodes.agent.repair')}>
-                  <Button
-                    type="text"
-                    size="small"
-                    style={{ fontSize: 16 }}
-                    icon={<KeyOutlined />}
-                    aria-label={t('pages.nodes.agent.repair')}
-                    onClick={() => onRepair(record)}
-                  />
-                </Tooltip>
+                <>
+                  <Tooltip title={t('pages.nodes.agent.logs')}>
+                    <Button
+                      type="text"
+                      size="small"
+                      style={{ fontSize: 16 }}
+                      icon={<FileTextOutlined />}
+                      aria-label={t('pages.nodes.agent.logs')}
+                      onClick={() => onLogs(record)}
+                    />
+                  </Tooltip>
+                  <Tooltip title={t('pages.nodes.agent.restart')}>
+                    <Button
+                      type="text"
+                      size="small"
+                      style={{ fontSize: 16 }}
+                      icon={<ReloadOutlined />}
+                      aria-label={t('pages.nodes.agent.restart')}
+                      onClick={() => onRestartXray(record)}
+                    />
+                  </Tooltip>
+                  <Tooltip title={t('pages.nodes.agent.repair')}>
+                    <Button
+                      type="text"
+                      size="small"
+                      style={{ fontSize: 16 }}
+                      icon={<KeyOutlined />}
+                      aria-label={t('pages.nodes.agent.repair')}
+                      onClick={() => onRepair(record)}
+                    />
+                  </Tooltip>
+                </>
               )}
               <Tooltip title={t('delete')}>
                 <Button
@@ -565,6 +593,8 @@ export default function NodeList({
       onProbe,
       onEdit,
       onRepair,
+      onLogs,
+      onRestartXray,
       onDelete,
       onUpdateNode,
       nameByGuid,
@@ -737,6 +767,24 @@ export default function NodeList({
                               },
                               ...(record.kind === 'agent'
                                 ? [
+                                    {
+                                      key: 'logs',
+                                      label: (
+                                        <>
+                                          <FileTextOutlined /> {t('pages.nodes.agent.logs')}
+                                        </>
+                                      ),
+                                      onClick: () => onLogs(record),
+                                    },
+                                    {
+                                      key: 'restart',
+                                      label: (
+                                        <>
+                                          <ReloadOutlined /> {t('pages.nodes.agent.restart')}
+                                        </>
+                                      ),
+                                      onClick: () => onRestartXray(record),
+                                    },
                                     {
                                       key: 'repair',
                                       label: (

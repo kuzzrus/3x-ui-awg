@@ -1846,6 +1846,34 @@ export const sections: readonly Section[] = [
           '{\n  "success": true,\n  "obj": [\n    { "id": 1, "name": "de-1", "ok": true },\n    { "id": 2, "name": "fr-1", "ok": false, "error": "node is offline" }\n  ]\n}',
       },
       {
+        method: 'POST',
+        path: '/panel/api/nodes/agentLogs/:id/:count',
+        summary:
+          'Return the newest lines of an agent node\u2019s log, newest first, with what its core printed. Only an agent node has a log to read from here; an agent from before the endpoint is reported as too old.',
+        params: [
+          { name: 'id', in: 'path', type: 'number', desc: 'Agent node ID.' },
+          { name: 'count', in: 'path', type: 'number', desc: 'Number of lines, at most 1000.' },
+          {
+            name: 'level',
+            in: 'body (form)',
+            type: 'string',
+            desc: 'Least severe level to include: debug, info, notice, warning or err. Defaults to info.',
+            optional: true,
+          },
+        ],
+        body: 'level=info',
+        responseObjectSchema: { type: 'array', nullable: true, items: { type: 'string' } },
+        response:
+          '{\n  "success": true,\n  "obj": [\n    "2026/10/10 12:00:02 INFO - XRAY: Xray started",\n    "2026/10/10 12:00:01 INFO - agent: serving the master on [::]:8443"\n  ]\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/nodes/restartXray/:id',
+        summary:
+          'Restart the Xray core of a node. An agent restarts into the config it last ran and every connection through it drops for a moment; a node that is disabled is refused.',
+        params: [{ name: 'id', in: 'path', type: 'number', desc: 'Node ID.' }],
+      },
+      {
         method: 'GET',
         path: '/panel/api/nodes/history/:id/:metric/:bucket',
         summary:

@@ -26,11 +26,13 @@ import (
 )
 
 const (
-	agentStatusTimeout  = 10 * time.Second
-	agentStatsTimeout   = 10 * time.Second
-	agentPushTimeout    = 2 * time.Minute
-	agentRestartTimeout = time.Minute
+	agentStatusTimeout = 10 * time.Second
+	agentStatsTimeout  = 10 * time.Second
+	agentPushTimeout   = 2 * time.Minute
+	// A restart is asked for by a request that the panel cuts off after 30 s.
+	agentRestartTimeout = 25 * time.Second
 	agentGeoListTimeout = 10 * time.Second
+	agentLogsTimeout    = 10 * time.Second
 	// A geo file is tens of megabytes and the link to a node may be slow.
 	agentGeoSendTimeout = 15 * time.Minute
 	// The agent downloads the installer, in up to 10 s, before it answers that an update has started.
@@ -40,6 +42,8 @@ const (
 	// one; the stats hold a counter for every inbound and user.
 	maxAnswerBytes = 1 << 20
 	maxStatsBytes  = 4 << 20
+	// A thousand lines, a few of which may carry a core's whole complaint about a config.
+	maxLogsBytes = 8 << 20
 )
 
 // AgentError is an answer from the agent that is not a success. Status 422 is the agent
@@ -205,6 +209,16 @@ func (c *AgentClient) Update(ctx context.Context, dev bool) (*agentproto.UpdateS
 func (c *AgentClient) UpdateStatus(ctx context.Context) (*agentproto.UpdateStatus, error) {
 	var out agentproto.UpdateStatus
 	if err := c.do(ctx, http.MethodGet, agentproto.PathUpdate, nil, nil, agentStatusTimeout, maxAnswerBytes, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// Logs reads the newest lines of the agent's log, newest first, at the given level or more severe.
+func (c *AgentClient) Logs(ctx context.Context, count int, level string) (*agentproto.Logs, error) {
+	query := url.Values{agentproto.QueryLogCount: {strconv.Itoa(count)}, agentproto.QueryLogLevel: {level}}
+	var out agentproto.Logs
+	if err := c.do(ctx, http.MethodGet, agentproto.PathLogs, query, nil, agentLogsTimeout, maxLogsBytes, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

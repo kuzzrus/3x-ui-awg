@@ -75,6 +75,14 @@ export function useNodeMutations() {
     },
   });
 
+  const restartXrayMut = useMutation({
+    mutationFn: (id: number) =>
+      HttpUtil.post(`/panel/api/nodes/restartXray/${id}`, undefined, { silentSuccess: true }),
+    onSuccess: (msg) => {
+      if (msg?.success) invalidate();
+    },
+  });
+
   const removeMut = useMutation({
     mutationFn: (id: number) => HttpUtil.post(`/panel/api/nodes/del/${id}`),
     onSuccess: (msg) => {
@@ -120,6 +128,7 @@ export function useNodeMutations() {
     repairAgent: (id: number) => repairAgentMut.mutateAsync(id),
     update: (id: number, payload: Partial<NodeRecord>) => updateMut.mutateAsync({ id, payload }),
     remove: (id: number) => removeMut.mutateAsync(id),
+    restartXray: (id: number) => restartXrayMut.mutateAsync(id),
     setEnable: (id: number, enable: boolean) => setEnableMut.mutateAsync({ id, enable }),
     probe: (id: number) => probeMut.mutateAsync(id),
     updatePanels: (ids: number[], dev: boolean): Promise<Msg<NodeUpdateResult[]>> =>
