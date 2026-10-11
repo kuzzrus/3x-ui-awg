@@ -145,6 +145,16 @@ pairing bundle.
   every agent's core keeps them current on that schedule.
 </Callout>
 
+### Route per node
+
+The routing rules and outbounds of the master are one template, and every agent node runs
+it. To run a rule on some agent nodes only, give those nodes the same **Tags** (for example
+`ru`) in their settings, then pick the tag in the **Agent nodes** field of the rule on the
+**Routing Rules** tab of the Xray settings. A rule with no node tags is for every core, the
+panel's own and every agent's. A rule with node tags is for the agent nodes that carry one of
+them, and not for the panel's own core. Tags are matched without regard to case, and a node
+gets the new config on the next push. Outbounds are still the same on every agent.
+
 ## Managed hosts
 
 A **managed host** is an override endpoint attached to an inbound. At
