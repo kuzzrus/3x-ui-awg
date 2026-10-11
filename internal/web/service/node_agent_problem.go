@@ -5,22 +5,33 @@ import (
 	"sync"
 )
 
-// agentConfigProblems holds, per agent node, why its config could not be built on the last attempt.
-// The sync has only the log to tell, so the heartbeat shows it as the last error of the node.
+// agentConfigProblems holds, per agent node, what is wrong with its config as last built: why it could not be
+// built, or what had to be adjusted. The sync has only the log to tell, so the heartbeat shows it as the last error.
 var agentConfigProblems sync.Map // node id -> string
 
-// noteAgentConfigProblem records why the config of a node could not be built, and forgets it when err is nil.
-func noteAgentConfigProblem(nodeID int, err error) {
-	if err == nil {
+// setAgentConfigProblem records what is wrong with the config of a node, and forgets it when problem is empty.
+func setAgentConfigProblem(nodeID int, problem string) {
+	if problem == "" {
 		agentConfigProblems.Delete(nodeID)
 		return
 	}
-	agentConfigProblems.Store(nodeID, "cannot build the config of this node: "+strings.TrimSpace(err.Error()))
+	agentConfigProblems.Store(nodeID, problem)
 }
 
-// agentConfigProblem is why the last attempt to build the config of a node failed, or "".
+// agentConfigProblem is what is wrong with the config of a node as last built, or "".
 func agentConfigProblem(nodeID int) string {
 	problem, _ := agentConfigProblems.Load(nodeID)
 	text, _ := problem.(string)
 	return text
+}
+
+func unbuildableConfigProblem(err error) string {
+	return "cannot build the config of this node: " + strings.TrimSpace(err.Error())
+}
+
+func adjustedConfigProblem(notes []string) string {
+	if len(notes) == 0 {
+		return ""
+	}
+	return "the config of this node was adjusted: " + strings.Join(notes, "; ")
 }

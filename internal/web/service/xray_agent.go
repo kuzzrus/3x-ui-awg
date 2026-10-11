@@ -38,9 +38,7 @@ func (s *XrayService) GetAgentConfig(nodeID int) (*xray.Config, error) {
 		xrayConfig.InboundConfigs = append(xrayConfig.InboundConfigs, *inboundConfig)
 	}
 	mergeActiveSubscriptionOutbounds(xrayConfig)
-	if err := checkRulesReachTheirOutbounds(xrayConfig, left); err != nil {
-		return nil, err
-	}
+	setAgentConfigProblem(nodeID, adjustedConfigProblem(pointLeftOutAtABlackhole(xrayConfig, left)))
 	return xrayConfig, nil
 }
 

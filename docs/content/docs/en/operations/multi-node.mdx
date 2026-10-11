@@ -159,8 +159,9 @@ Outbounds work the same way: the **Agent nodes** field of an outbound puts it on
 nodes that carry one of the tags only. The first outbound a node has is its default, so a
 node-only outbound listed first becomes the default of the nodes that have it. A rule for
 every core cannot send to a node-only outbound, and the panel refuses to save one. If a rule
-for some nodes sends to an outbound that a node with that rule does not have, the node gets no
-new config and its status says which outbound is missing and which tags give it.
+for some nodes sends to an outbound that a node with that rule does not have, the node still
+gets its config, with the traffic of that rule blocked, and its status says which outbound is
+missing and which tags give it.
 
 ## Managed hosts
 

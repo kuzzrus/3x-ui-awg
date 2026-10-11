@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -60,32 +61,140 @@ func scopeOutbounds(outbounds json_util.RawMessage, scope configScope) (json_uti
 	return out, dropped
 }
 
-// checkRulesReachTheirOutbounds refuses a config in which a rule sends to an outbound that scopeOutbounds
-// dropped. Xray takes such a rule for a typo and sends its traffic out of the default outbound.
-func checkRulesReachTheirOutbounds(cfg *xray.Config, left map[string][]string) error {
+// missingOutboundTag is the blackhole that takes the traffic of a rule whose outbound the config lacks.
+const missingOutboundTag = "x-ui-missing-outbound"
+
+// onlyNodesTagged says who has an outbound that a config is missing.
+func onlyNodesTagged(tags []string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	sorted := slices.Clone(tags)
+	slices.SortFunc(sorted, func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) })
+	return " (only the agent nodes tagged " + strings.Join(sorted, ", ") + " have it)"
+}
+
+func outboundTagSet(outbounds json_util.RawMessage) map[string]bool {
+	var list []struct {
+		Tag string `json:"tag"`
+	}
+	set := map[string]bool{}
+	if len(outbounds) == 0 || json.Unmarshal(outbounds, &list) != nil {
+		return set
+	}
+	for _, outbound := range list {
+		set[outbound.Tag] = true
+	}
+	return set
+}
+
+// selectorEmptied reports whether a balancer selects outbounds that are gone and none that are left.
+func selectorEmptied(selector any, have map[string]bool, gone map[string][]string) bool {
+	entries, _ := selector.([]any)
+	matches := func(tag string) bool {
+		for _, entry := range entries {
+			if prefix, ok := entry.(string); ok && strings.HasPrefix(tag, prefix) {
+				return true
+			}
+		}
+		return false
+	}
+	for tag := range have {
+		if matches(tag) {
+			return false
+		}
+	}
+	for tag := range gone {
+		if matches(tag) {
+			return true
+		}
+	}
+	return false
+}
+
+// pointLeftOutAtABlackhole repairs what scopeOutbounds left dangling and lists what it changed: a rule whose
+// outbound or balancer is gone sends to a blackhole, and a fallback that is gone is dropped.
+func pointLeftOutAtABlackhole(cfg *xray.Config, left map[string][]string) []string {
 	if len(left) == 0 || len(cfg.RouterConfig) == 0 {
 		return nil
 	}
-	var routing struct {
-		Rules []struct {
-			OutboundTag string `json:"outboundTag"`
-		} `json:"rules"`
+	have := outboundTagSet(cfg.OutboundConfigs)
+	gone := map[string][]string{}
+	for tag, tags := range left {
+		if !have[tag] {
+			gone[tag] = tags
+		}
 	}
-	if json.Unmarshal(cfg.RouterConfig, &routing) != nil {
+	var routing map[string]any
+	if len(gone) == 0 || json.Unmarshal(cfg.RouterConfig, &routing) != nil {
 		return nil
 	}
-	for _, rule := range routing.Rules {
-		tags, gone := left[rule.OutboundTag]
-		if !gone || outboundTagExists(cfg.OutboundConfigs, rule.OutboundTag) {
+
+	var notes []string
+	emptied := map[string]bool{}
+	balancers, _ := routing["balancers"].([]any)
+	for _, raw := range balancers {
+		balancer, ok := raw.(map[string]any)
+		if !ok {
 			continue
 		}
-		if len(tags) == 0 {
-			return common.NewErrorf("a routing rule sends to outbound %q, which no node has", rule.OutboundTag)
+		tag, _ := balancer["tag"].(string)
+		if fallback, _ := balancer["fallbackTag"].(string); fallback != "" {
+			if tags, isGone := gone[fallback]; isGone {
+				delete(balancer, "fallbackTag")
+				notes = append(notes, fmt.Sprintf("balancer %q falls back to outbound %q, which this config does not have%s: the fallback is dropped",
+					tag, fallback, onlyNodesTagged(tags)))
+			}
 		}
-		return common.NewErrorf("a routing rule sends to outbound %q, which this node does not have: only the agent nodes tagged %s do",
-			rule.OutboundTag, strings.Join(tags, ", "))
+		if selectorEmptied(balancer["selector"], have, gone) {
+			emptied[tag] = true
+		}
 	}
-	return nil
+
+	blocked := false
+	rules, _ := routing["rules"].([]any)
+	for _, raw := range rules {
+		rule, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if target, _ := rule["outboundTag"].(string); target != "" {
+			if tags, isGone := gone[target]; isGone {
+				rule["outboundTag"] = missingOutboundTag
+				blocked = true
+				notes = append(notes, fmt.Sprintf("a routing rule sends to outbound %q, which this config does not have%s: its traffic is blocked",
+					target, onlyNodesTagged(tags)))
+			}
+		}
+		if target, _ := rule["balancerTag"].(string); target != "" && emptied[target] {
+			delete(rule, "balancerTag")
+			rule["outboundTag"] = missingOutboundTag
+			blocked = true
+			notes = append(notes, fmt.Sprintf("a routing rule sends to balancer %q, whose outbounds this config does not have: its traffic is blocked", target))
+		}
+	}
+	if len(notes) == 0 {
+		return nil
+	}
+
+	rewritten, err := json.Marshal(routing)
+	if err != nil {
+		return nil
+	}
+	if blocked {
+		var list []json.RawMessage
+		if len(cfg.OutboundConfigs) > 0 && json.Unmarshal(cfg.OutboundConfigs, &list) != nil {
+			return nil
+		}
+		list = append(list, json.RawMessage(`{"protocol":"blackhole","tag":"`+missingOutboundTag+`"}`))
+		outbounds, err := json.Marshal(list)
+		if err != nil {
+			return nil
+		}
+		cfg.OutboundConfigs = outbounds
+	}
+	cfg.RouterConfig = rewritten
+	return notes
 }
 
 // checkOutboundNodeTags refuses an outbound whose nodeTags are not a list of tags.

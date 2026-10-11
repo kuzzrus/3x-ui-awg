@@ -413,7 +413,7 @@ func mergeActiveSubscriptionOutbounds(cfg *xray.Config) {
 
 // GetXrayConfig retrieves and builds the Xray configuration from settings and inbounds.
 func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
-	xrayConfig, _, err := s.newConfigFromTemplate(configScope{})
+	xrayConfig, left, err := s.newConfigFromTemplate(configScope{})
 	if err != nil {
 		return nil, err
 	}
@@ -450,6 +450,9 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 
 	// Merge subscription-derived outbounds (if any) into the final outbounds array.
 	mergeActiveSubscriptionOutbounds(xrayConfig)
+	for _, note := range pointLeftOutAtABlackhole(xrayConfig, left) {
+		logger.Warning("panel's own core:", note)
+	}
 
 	// Route opted-in local mtproto inbounds through the core's router. Each one
 	// gets a loopback SOCKS bridge — tagged with the inbound's own tag so it is

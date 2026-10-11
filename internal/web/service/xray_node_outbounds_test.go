@@ -106,7 +106,62 @@ func TestAgentConfigHasTheOutboundsItsNodesTagsPick(t *testing.T) {
 	}
 }
 
-func TestAgentConfigIsRefusedWhenARuleSendsToAnOutboundTheNodeLacks(t *testing.T) {
+// addTemplateBalancers appends balancers to the routing section of the stored template.
+func addTemplateBalancers(t *testing.T, balancers ...map[string]any) {
+	t.Helper()
+	settings := &SettingService{}
+	template, err := settings.GetXrayConfigTemplate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(template), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	routing, _ := parsed["routing"].(map[string]any)
+	if routing == nil {
+		routing = map[string]any{}
+	}
+	existing, _ := routing["balancers"].([]any)
+	for _, balancer := range balancers {
+		existing = append(existing, balancer)
+	}
+	routing["balancers"] = existing
+	parsed["routing"] = routing
+	raw, err := json.Marshal(parsed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := settings.saveSetting("xrayTemplateConfig", string(raw)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// ruleTargets is where each rule of a config sends, by the marker of the rules the test added.
+func ruleTargets(t *testing.T, cfg *xray.Config) map[string]string {
+	t.Helper()
+	rules, _ := renderedRules(t, cfg)
+	targets := map[string]string{}
+	for _, rule := range rules {
+		domains, _ := rule["domain"].([]any)
+		if len(domains) != 1 {
+			continue
+		}
+		marker, _ := domains[0].(string)
+		if !strings.HasPrefix(marker, "marker-") {
+			continue
+		}
+		if tag, _ := rule["outboundTag"].(string); tag != "" {
+			targets[strings.TrimPrefix(marker, "marker-")] = "outbound " + tag
+		}
+		if tag, _ := rule["balancerTag"].(string); tag != "" {
+			targets[strings.TrimPrefix(marker, "marker-")] = "balancer " + tag
+		}
+	}
+	return targets
+}
+
+func TestAgentConfigBlocksARuleToAnOutboundTheNodeLacks(t *testing.T) {
 	setupSettingTestDB(t)
 	addTemplateOutbounds(t, hop("us-hop", map[string]any{"nodeTags": []any{"us"}}))
 	addTemplateRules(t, markedRule("marker-us-only", map[string]any{
@@ -114,21 +169,114 @@ func TestAgentConfigIsRefusedWhenARuleSendsToAnOutboundTheNodeLacks(t *testing.T
 	}))
 	eu := seedTaggedAgent(t, "eu-1", "eu")
 	both := seedTaggedAgent(t, "both-1", "eu", "us")
+	t.Cleanup(func() { setAgentConfigProblem(eu, ""); setAgentConfigProblem(both, "") })
 
+	// A refusal would keep the node on its last config, and so keep serving the clients that were
+	// removed since: the node gets the whole config, with the traffic of the rule blocked.
 	svc := &XrayService{}
-	_, err := svc.GetAgentConfig(eu)
-	if err == nil || !strings.Contains(err.Error(), `"us-hop"`) || !strings.Contains(err.Error(), "us") {
-		t.Fatalf("GetAgentConfig(eu) = %v, want a refusal that names the outbound and the tag that gives it", err)
+	cfg, err := svc.GetAgentConfig(eu)
+	if err != nil {
+		t.Fatalf("GetAgentConfig(eu): %v", err)
 	}
-	cfg, err := svc.GetAgentConfig(both)
+	if got := ruleTargets(t, cfg)["us-only"]; got != "outbound "+missingOutboundTag {
+		t.Fatalf("the rule sends to %q, want the blackhole", got)
+	}
+	var blackholes int
+	for tag, ok := range outboundTagsOf(t, cfg) {
+		if ok && tag == missingOutboundTag {
+			blackholes++
+		}
+	}
+	if blackholes != 1 {
+		t.Fatalf("the config has %d outbounds tagged %s, want the blackhole the rule goes to", blackholes, missingOutboundTag)
+	}
+	problem := agentConfigProblem(eu)
+	if !strings.Contains(problem, `"us-hop"`) || !strings.Contains(problem, "tagged us") {
+		t.Fatalf("problem = %q, want it to say which outbound is missing and which tags give it", problem)
+	}
+
+	cfg, err = svc.GetAgentConfig(both)
 	if err != nil {
 		t.Fatalf("a node that has the rule and the outbound: %v", err)
 	}
-	if _, markers := renderedRules(t, cfg); len(markers) != 1 || markers[0] != "us-only" {
-		t.Fatalf("rules = %v, want the one that sends to us-hop", markers)
+	if got := ruleTargets(t, cfg)["us-only"]; got != "outbound us-hop" {
+		t.Fatalf("the rule of a node that has the outbound sends to %q, want us-hop", got)
+	}
+	if outboundTagsOf(t, cfg)[missingOutboundTag] || agentConfigProblem(both) != "" {
+		t.Fatal("a node that has everything its rules name got a blackhole or a problem")
 	}
 	if _, err := svc.GetXrayConfig(); err != nil {
 		t.Fatalf("the panel's own core has neither the rule nor the outbound: %v", err)
+	}
+}
+
+// A balancer left without outbounds sends its traffic out of the default one, so the rules that use it are
+// blocked, and a fallback to an outbound the node lacks is dropped like the panel's own cleanup does.
+func TestAgentConfigRepairsABalancerTheNodeLacksTheOutboundsOf(t *testing.T) {
+	setupSettingTestDB(t)
+	addTemplateOutbounds(t, hop("us-hop", map[string]any{"nodeTags": []any{"us"}}), hop("eu-hop", map[string]any{"nodeTags": []any{"eu"}}))
+	addTemplateBalancers(t,
+		map[string]any{"tag": "us-pool", "selector": []any{"us-"}, "fallbackTag": "us-hop"},
+		map[string]any{"tag": "eu-pool", "selector": []any{"eu-", "direct"}, "fallbackTag": "eu-hop"},
+	)
+	addTemplateRules(t,
+		map[string]any{"type": "field", "domain": []any{"marker-us-pool"}, "balancerTag": "us-pool"},
+		map[string]any{"type": "field", "domain": []any{"marker-eu-pool"}, "balancerTag": "eu-pool"},
+	)
+	eu := seedTaggedAgent(t, "eu-1", "eu")
+	us := seedTaggedAgent(t, "us-1", "us")
+	t.Cleanup(func() { setAgentConfigProblem(eu, ""); setAgentConfigProblem(us, "") })
+
+	balancerFallbacks := func(cfg *xray.Config) map[string]string {
+		var routing struct {
+			Balancers []struct {
+				Tag         string `json:"tag"`
+				FallbackTag string `json:"fallbackTag"`
+			} `json:"balancers"`
+		}
+		if err := json.Unmarshal(cfg.RouterConfig, &routing); err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]string{}
+		for _, b := range routing.Balancers {
+			out[b.Tag] = b.FallbackTag
+		}
+		return out
+	}
+
+	svc := &XrayService{}
+	cfg, err := svc.GetAgentConfig(eu)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targets := ruleTargets(t, cfg)
+	if targets["us-pool"] != "outbound "+missingOutboundTag {
+		t.Fatalf("the rule of the emptied balancer sends to %q, want the blackhole", targets["us-pool"])
+	}
+	if targets["eu-pool"] != "balancer eu-pool" {
+		t.Fatalf("the rule of a balancer that still has outbounds sends to %q, want it left alone", targets["eu-pool"])
+	}
+	fallbacks := balancerFallbacks(cfg)
+	if fallbacks["us-pool"] != "" || fallbacks["eu-pool"] != "eu-hop" {
+		t.Fatalf("fallbacks = %v, want the one that is gone dropped and the one the node has kept", fallbacks)
+	}
+	if problem := agentConfigProblem(eu); !strings.Contains(problem, "us-pool") || !strings.Contains(problem, "falls back") {
+		t.Fatalf("problem = %q, want the balancer and the fallback named", problem)
+	}
+
+	cfg, err = svc.GetAgentConfig(us)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := balancerFallbacks(cfg)["us-pool"]; got != "us-hop" {
+		t.Fatalf("a node that has us-hop lost its fallback: %q", got)
+	}
+	master, err := svc.GetXrayConfig()
+	if err != nil {
+		t.Fatalf("the panel's own core has no node-only outbound at all: %v", err)
+	}
+	if got := balancerFallbacks(master); got["us-pool"] != "" || got["eu-pool"] != "" {
+		t.Fatalf("the panel's own core kept fallbacks %v to outbounds it does not have, and would not start", got)
 	}
 }
 

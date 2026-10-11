@@ -260,14 +260,19 @@ replaces its tags like every other field, and no tags clears them.
 An outbound is picked the same way: a `nodeTags` list on an entry of the template's `outbounds` puts
 it in the config of the agent nodes that carry one of the tags and in no other, the panel's own core
 included, and the key is stripped. The first outbound a config has is its default, so a node-only
-outbound that comes first is the default of the nodes that have it. Xray takes a rule that names no
-outbound for a typo and sends its traffic out of the default one (`xray run -test` says
-`Configuration OK`), so the master checks what the tags would leave dangling. The template is
-refused when a rule for every core, an empty `nodeTags` included, sends to a node-only outbound,
-since the panel's own core would lack it. A rule for some nodes may send to one: an agent that has
-the rule but not the outbound gets no config, and the error says which outbound and which tags
-give it. A rule that names an outbound the template does not hold at all is left as it was, for
-templates in the field are full of them.
+outbound that comes first is the default of the nodes that have it.
+
+What the tags leave dangling is repaired and never refused: an agent is kept in step by the config it
+is sent, and a client is removed by being left out of it, so a config that is not rendered keeps
+serving what was revoked. Xray 26.9.9 loads a rule that names no outbound and drops its traffic, and
+a balancer left without outbounds sends its traffic out of the default outbound. So, in a config that
+lacks an outbound the tags took away, the rules that send to it, or to a balancer it emptied, send to
+a blackhole tagged `x-ui-missing-outbound`, which does not depend on the version of the core, a
+fallback to it is dropped like the panel's own cleanup does when it deletes an outbound, and the last
+error of the node says what was changed. The panel's own core is repaired the same way and logs it. The template is refused when a rule for every core, an
+empty `nodeTags` included, sends to a node-only outbound, since the panel's own core would lack it. A
+rule that names an outbound the template does not hold at all is left as it was, for templates in
+the field are full of them.
 
 ## Traffic accounting
 

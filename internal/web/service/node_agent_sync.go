@@ -91,8 +91,8 @@ func (s *AgentSyncService) sync(ctx context.Context, rt *runtime.AgentRuntime, n
 		return err
 	}
 	body, err := s.xrayService.RenderAgentConfig(n.Id)
-	noteAgentConfigProblem(n.Id, err)
 	if err != nil {
+		setAgentConfigProblem(n.Id, unbuildableConfigProblem(err))
 		return fmt.Errorf("render the config: %w", err)
 	}
 	restartOnUserRemoval, err := s.settingService.GetRestartXrayOnClientDisable()

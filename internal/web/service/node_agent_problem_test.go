@@ -17,26 +17,25 @@ func setNodeTags(t *testing.T, nodeID int, tags string) {
 	}
 }
 
-func TestAgentSyncKeepsTheReasonItCannotBuildAConfigUntilItCan(t *testing.T) {
+func TestAgentSyncPushesTheAdjustedConfigAndKeepsWhatItAdjusted(t *testing.T) {
 	f := newSyncAgentFixture(t)
 	addTemplateOutbounds(t, hop("us-hop", map[string]any{"nodeTags": []any{"us"}}))
 	addTemplateRules(t, markedRule("marker-us-only", map[string]any{
 		"nodeTags": []any{"eu"}, "outboundTag": "us-hop",
 	}))
 	setNodeTags(t, f.nodeID, `["eu"]`)
-	t.Cleanup(func() { noteAgentConfigProblem(f.nodeID, nil) })
+	t.Cleanup(func() { setAgentConfigProblem(f.nodeID, "") })
 	f.markDirty()
 
 	svc := &AgentSyncService{}
-	err := f.sync(svc, nil)
-	if err == nil || !strings.Contains(err.Error(), `"us-hop"`) {
-		t.Fatalf("Sync = %v, want a refusal that names the outbound the node lacks", err)
+	if err := f.sync(svc, nil); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if pushed := f.pushed(); len(pushed) != 1 || !strings.Contains(string(pushed[0].body), missingOutboundTag) {
+		t.Fatalf("pushes = %d, want the whole config, with the traffic of the rule blocked, so that nothing else waits for the tags", len(pushed))
 	}
 	if problem := agentConfigProblem(f.nodeID); !strings.Contains(problem, `"us-hop"`) {
 		t.Fatalf("problem = %q, want the reason kept for the heartbeat to show", problem)
-	}
-	if pushed := f.pushed(); len(pushed) != 0 {
-		t.Fatalf("%d pushes went out for a config that could not be built", len(pushed))
 	}
 
 	setNodeTags(t, f.nodeID, `["eu","us"]`)
@@ -45,17 +44,38 @@ func TestAgentSyncKeepsTheReasonItCannotBuildAConfigUntilItCan(t *testing.T) {
 		t.Fatalf("Sync once the node has the tag: %v", err)
 	}
 	if problem := agentConfigProblem(f.nodeID); problem != "" {
-		t.Fatalf("problem = %q after the config was built, want it forgotten", problem)
+		t.Fatalf("problem = %q after the node got the tag, want it forgotten", problem)
 	}
-	if pushed := f.pushed(); len(pushed) != 1 {
-		t.Fatalf("%d pushes, want the one config the node can have", len(pushed))
+	if pushed := f.pushed(); len(pushed) != 2 || strings.Contains(string(pushed[1].body), missingOutboundTag) {
+		t.Fatalf("pushes = %d, want a second config that sends the rule to us-hop", len(pushed))
+	}
+}
+
+func TestAgentSyncKeepsTheReasonItCannotBuildAConfig(t *testing.T) {
+	f := newSyncAgentFixture(t)
+	t.Cleanup(func() { setAgentConfigProblem(f.nodeID, "") })
+	if err := (&SettingService{}).saveSetting("xrayTemplateConfig", "{not json"); err != nil {
+		t.Fatal(err)
+	}
+	f.markDirty()
+
+	svc := &AgentSyncService{}
+	err := f.sync(svc, nil)
+	if err == nil {
+		t.Fatal("Sync built a config out of a template that is no JSON")
+	}
+	if problem := agentConfigProblem(f.nodeID); !strings.HasPrefix(problem, "cannot build the config of this node:") {
+		t.Fatalf("problem = %q, want the reason the config cannot be built", problem)
+	}
+	if pushed := f.pushed(); len(pushed) != 0 {
+		t.Fatalf("%d pushes went out for a config that could not be built", len(pushed))
 	}
 }
 
 func TestProbeAgentShowsWhyItsConfigCannotBeBuilt(t *testing.T) {
 	node, _ := startIdleAgent(t)
-	noteAgentConfigProblem(node.Id, errors.New(`a routing rule sends to outbound "us-hop"`))
-	t.Cleanup(func() { noteAgentConfigProblem(node.Id, nil) })
+	setAgentConfigProblem(node.Id, unbuildableConfigProblem(errors.New(`a routing rule sends to outbound "us-hop"`)))
+	t.Cleanup(func() { setAgentConfigProblem(node.Id, "") })
 
 	patch, err := (&NodeService{}).Probe(context.Background(), node)
 	if err != nil {
@@ -65,7 +85,7 @@ func TestProbeAgentShowsWhyItsConfigCannotBeBuilt(t *testing.T) {
 		t.Fatalf("LastError = %q, want the reason the config cannot be built", patch.LastError)
 	}
 
-	noteAgentConfigProblem(node.Id, nil)
+	setAgentConfigProblem(node.Id, "")
 	patch, err = (&NodeService{}).Probe(context.Background(), node)
 	if err != nil || patch.LastError != "" {
 		t.Fatalf("Probe after the problem is gone = %q, %v, want no error", patch.LastError, err)
