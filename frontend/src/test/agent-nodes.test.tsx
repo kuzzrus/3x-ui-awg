@@ -248,6 +248,51 @@ describe('AgentNodeFormModal', () => {
     expect(save.mock.calls[0][0]).toMatchObject({ id: 4, decoyMode: '' });
   });
 
+  // The port is only wanted with a decoy, so a box cleared on the way to taking the decoy off must not stop the save.
+  it('takes a decoy off even when the port box was cleared first', async () => {
+    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
+    const node: NodeRecord = {
+      id: 4,
+      name: 'edge-4',
+      kind: 'agent',
+      address: 'a.example.com',
+      port: 9443,
+      enable: true,
+      decoy: {
+        mode: 'proxy',
+        proxyUrl: 'https://site.example',
+        domain: 'decoy.example.com',
+        port: 7500,
+      },
+    };
+    renderWithProviders(
+      <AgentNodeFormModal open node={node} save={save} onOpenChange={() => {}} />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Port on 127.0.0.1'), { target: { value: '' } });
+    chooseSelectOption(screen.getByLabelText('Decoy site').id, 'None');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0][0]).toMatchObject({ id: 4, decoyMode: '', decoyPort: 7443 });
+  });
+
+  it('serves a decoy on the usual port when the port box is cleared', async () => {
+    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
+    renderWithProviders(
+      <AgentNodeFormModal open node={null} save={save} onOpenChange={() => {}} />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'edge-1' } });
+    fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'node.example.com' } });
+    chooseSelectOption(screen.getByLabelText('Decoy site').id, 'A page built into the panel');
+    fireEvent.change(screen.getByLabelText('Domain'), { target: { value: 'decoy.example.com' } });
+    fireEvent.change(screen.getByLabelText('Port on 127.0.0.1'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0][0]).toMatchObject({ decoyMode: 'template', decoyPort: 7443 });
+  });
+
   it('labels the agent with tags, suggesting the ones the nodes already carry', async () => {
     vi.spyOn(HttpUtil, 'get').mockImplementation(async (url: string) =>
       url === '/panel/api/nodes/list'

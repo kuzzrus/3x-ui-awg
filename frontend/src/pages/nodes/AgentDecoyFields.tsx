@@ -46,7 +46,11 @@ export default function AgentDecoyFields() {
         </FormField>
       )}
       {mode === 'proxy' && (
-        <FormField label={t('pages.nodes.agent.decoyProxyUrl')} name="decoyProxyUrl">
+        <FormField
+          label={t('pages.nodes.agent.decoyProxyUrl')}
+          name="decoyProxyUrl"
+          tooltip={t('pages.nodes.agent.decoyProxyUrlHint')}
+        >
           <Input placeholder="https://example.com" />
         </FormField>
       )}

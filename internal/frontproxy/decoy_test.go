@@ -156,11 +156,33 @@ func TestProxyDecoyForwardsToUpstream(t *testing.T) {
 	}
 }
 
+// The probes an agent's decoy answers come from anywhere, so a site it proxies must not be reached at an address
+// of the node's own network, whether the address was written out or is what a name resolves to.
+func TestProxyDecoyThatIsPublicOnlyDoesNotDialPrivateAddresses(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("upstream page"))
+	}))
+	defer upstream.Close()
+	byName := strings.Replace(upstream.URL, "127.0.0.1", "localhost", 1)
+
+	for name, target := range map[string]string{"an address": upstream.URL, "a name for it": byName} {
+		rec := serveDecoy(t, DecoyConfig{Mode: DecoyProxy, ProxyURL: target, PublicOnly: true}, "/")
+		if rec.Code != http.StatusBadGateway || strings.Contains(rec.Body.String(), "upstream page") {
+			t.Errorf("%s: answered %d %q, want the private site to be left alone", name, rec.Code, rec.Body.String())
+		}
+	}
+	// What a panel proxies for its own decoy is its admin's own choice and keeps working.
+	rec := serveDecoy(t, DecoyConfig{Mode: DecoyProxy, ProxyURL: byName}, "/")
+	if !strings.Contains(rec.Body.String(), "upstream page") {
+		t.Errorf("a decoy that is not public-only answered %q, want the site", rec.Body.String())
+	}
+}
+
 // A malformed or non-HTTP proxy URL must degrade to a template rather than
 // leaving the reverse proxy serving nothing.
 func TestProxyDecoyRejectsBadURLs(t *testing.T) {
 	for _, raw := range []string{"", "://nope", "ftp://example.com", "file:///etc/passwd", "https://"} {
-		if _, err := newProxyDecoy(raw); err == nil {
+		if _, err := newProxyDecoy(raw, false); err == nil {
 			t.Errorf("newProxyDecoy(%q) succeeded, want rejection", raw)
 		}
 		rec := serveDecoy(t, DecoyConfig{Mode: DecoyProxy, ProxyURL: raw}, "/")

@@ -5,11 +5,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 	"regexp"
 	"slices"
 	"strings"
 	"unicode"
+
+	"github.com/mhsanaei/3x-ui/v3/internal/util/netsafe"
 )
 
 // What an agent serves to whoever probes the port the REALITY fallback points at: nothing, one of the pages
@@ -94,6 +97,9 @@ func decoyError(format string, args ...any) error {
 // DecoyRules is what a decoy may be made of that only the side with the pages built in knows.
 type DecoyRules struct {
 	Templates []string
+	// PrivateProxy lets a proxied site be on a private address, which only a test of the proxy wants: whoever
+	// probes the node can reach whatever the decoy does.
+	PrivateProxy bool
 }
 
 var domainPattern = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$`)
@@ -115,7 +121,7 @@ func NormalizeDecoy(spec DecoySpec, rules DecoyRules) (DecoySpec, error) {
 		}
 	case DecoyProxy:
 		out.ProxyURL = strings.TrimSpace(spec.ProxyURL)
-		if err := checkProxyURL(out.ProxyURL); err != nil {
+		if err := checkProxyURL(out.ProxyURL, rules.PrivateProxy); err != nil {
 			return DecoySpec{}, err
 		}
 	default:
@@ -156,7 +162,9 @@ func NormalizeDecoy(spec DecoySpec, rules DecoyRules) (DecoySpec, error) {
 	return out, nil
 }
 
-func checkProxyURL(raw string) error {
+// checkProxyURL refuses what the panel refuses of its own decoy: a site that is not on a public address, since
+// the probes that the decoy answers come from anywhere and would reach the node's own network through it.
+func checkProxyURL(raw string, private bool) error {
 	target, err := url.Parse(raw)
 	switch {
 	case raw == "" || len(raw) > maxDecoyField:
@@ -165,8 +173,21 @@ func checkProxyURL(raw string) error {
 		return decoyError("the decoy site must be an http or https address, not %q", raw)
 	case target.User != nil:
 		return decoyError("the address of the decoy site must not carry a password")
+	case !private && privateHost(target.Hostname()):
+		return decoyError("the decoy site must be on a public address, and %q is not", target.Hostname())
 	}
 	return nil
+}
+
+// privateHost is a name that can only mean this machine, or an address literal on a private, loopback or
+// link-local network. A name that resolves to one is the dialler's to refuse, where it is looked up.
+func privateHost(host string) bool {
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && netsafe.IsBlockedIP(ip)
 }
 
 func checkEmail(email string) error {

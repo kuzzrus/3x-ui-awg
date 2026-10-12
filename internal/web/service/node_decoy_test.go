@@ -49,6 +49,8 @@ func TestAgentNodeDecoyIsSavedNormalizedAndReplaced(t *testing.T) {
 		"a page the panel does not have": {DecoyMode: "template", DecoyTemplate: "no-such-page", DecoyDomain: "node.example"},
 		"no domain":                      {DecoyMode: "template"},
 		"a mode nobody serves":           {DecoyMode: "upload", DecoyDomain: "node.example"},
+		"a site on a private network":    {DecoyMode: "proxy", DecoyProxyURL: "http://10.0.0.5/", DecoyDomain: "node.example"},
+		"the loopback of the node":       {DecoyMode: "proxy", DecoyProxyURL: "http://127.0.0.1:2053", DecoyDomain: "node.example"},
 	} {
 		if _, err := save(form); err == nil {
 			t.Errorf("%s: the save was taken", name)

@@ -204,6 +204,9 @@ the node, or port 80 is shut, the chip beside the node says **certificate failed
 probe that asks for another name than the domain gets no certificate at all. Each page looks a little
 different on each node, so two nodes do not serve the same bytes.
 
+A reverse proxy needs a site on a public address. Anyone who probes the node can send the decoy anywhere, so a site
+on a private network, or on the node's own loopback, is refused, and so is a name that resolves to one.
+
 <Callout type="info">
   The decoy of a node is its own. It has nothing to do with the reverse proxy of the panel, which serves
   the panel itself, and both can run at once on different hosts.

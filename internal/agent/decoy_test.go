@@ -153,6 +153,9 @@ func TestDecoyHostTakesFilesOnTheNodeAndAProxy(t *testing.T) {
 	if opts.Decoy.Mode != frontproxy.DecoyProxy || opts.Decoy.ProxyURL != "https://site.example/" || opts.Port != 7500 {
 		t.Fatalf("options = %+v, want the proxy decoy on the port asked for", opts)
 	}
+	if !opts.Decoy.PublicOnly {
+		t.Fatal("the listener of an agent may dial a private address for whoever probes the node")
+	}
 	if opts.TLS.Mode != frontproxy.CertManual || opts.TLS.CertFile != "/etc/ssl/n.pem" || opts.TLS.KeyFile != "/etc/ssl/n.key" {
 		t.Fatalf("TLS options = %+v, want the files of the node", opts.TLS)
 	}
@@ -362,5 +365,24 @@ func TestDecoyHostFollowsTheMasterAndStopsWhenTheContextEnds(t *testing.T) {
 	}
 	if f.runner.IsRunning() {
 		t.Fatal("the decoy was left served when the agent stopped")
+	}
+}
+
+// The listener answers anyone who probes the node, so a site that is not on a public address is not one it may proxy.
+func TestDecoyHostRefusesAProxyToAPrivateAddress(t *testing.T) {
+	f := newDecoyFixture(t)
+	kept := f.set(page("parked")).Revision
+	for _, site := range []string{
+		"http://127.0.0.1:2053", "http://localhost/", "http://10.0.0.5/", "http://192.168.1.1/",
+		"http://169.254.169.254/latest/meta-data/", "http://[::1]/", "http://[fd00::1]/",
+	} {
+		_, err := f.host.Set(agentproto.DecoySpec{Mode: agentproto.DecoyProxy, ProxyURL: site, Domain: "node.example"})
+		var refused *agentproto.DecoyError
+		if !errors.As(err, &refused) || !strings.Contains(err.Error(), "public address") {
+			t.Errorf("a proxy to %s: %v, want a refusal that says the site is not on a public address", site, err)
+		}
+	}
+	if got := f.host.View().Revision; got != kept {
+		t.Fatalf("revision = %q after the refusals, want %q from before", got, kept)
 	}
 }

@@ -1324,6 +1324,7 @@
         },
         "decoyTemplate": "Page",
         "decoyProxyUrl": "Address of the site",
+        "decoyProxyUrlHint": "The site to proxy, on a public address. A site on a private network or on the loopback of the node is refused, since anyone who probes the node could reach it through the decoy.",
         "decoyDomain": "Domain",
         "decoyDomainHint": "The name the certificate is for. It must point at this node, and a probe that asks for another name is turned away.",
         "decoyCert": "Certificate",

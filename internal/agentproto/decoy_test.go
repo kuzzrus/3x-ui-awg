@@ -89,6 +89,32 @@ func TestNormalizeDecoyRefusesWhatTheAgentCannotServe(t *testing.T) {
 	}
 }
 
+// Whoever probes the node reaches the site it proxies, so that site is on a public address, as the panel's own decoy
+// proxy has to be. A name that resolves to a private one is left to the dialler of the agent, which looks it up.
+func TestNormalizeDecoyRefusesAProxyToAPrivateHost(t *testing.T) {
+	for _, site := range []string{
+		"http://127.0.0.1:2053", "http://127.1.2.3/", "http://localhost/", "http://LOCALHOST./", "https://panel.localhost/",
+		"http://10.0.0.5/", "http://172.16.0.1/", "http://192.168.1.1:8080/", "http://169.254.169.254/latest/meta-data/",
+		"http://100.64.0.1/", "http://0.0.0.0/", "http://[::1]/", "http://[::ffff:127.0.0.1]/", "http://[fd00::1]/", "http://[fe80::1]/",
+	} {
+		spec := DecoySpec{Mode: DecoyProxy, Domain: "a.example", ProxyURL: site}
+		if got, err := NormalizeDecoy(spec, testRules); err == nil || !strings.Contains(err.Error(), "public address") {
+			t.Errorf("a proxy to %s was taken: %+v, %v", site, got, err)
+		}
+		private := testRules
+		private.PrivateProxy = true
+		if _, err := NormalizeDecoy(spec, private); err != nil {
+			t.Errorf("a proxy to %s was refused although private sites were allowed: %v", site, err)
+		}
+	}
+	for _, site := range []string{"https://site.example/", "http://8.8.8.8/", "https://[2606:4700:4700::1111]/"} {
+		spec := DecoySpec{Mode: DecoyProxy, Domain: "a.example", ProxyURL: site}
+		if _, err := NormalizeDecoy(spec, testRules); err != nil {
+			t.Errorf("a proxy to %s was refused: %v", site, err)
+		}
+	}
+}
+
 func TestDecoyRevision(t *testing.T) {
 	if got := DecoyRevision(DecoySpec{}); got != "" {
 		t.Fatalf("no decoy has revision %q, want none, which is what an agent that predates it reports", got)

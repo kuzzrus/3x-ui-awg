@@ -165,11 +165,18 @@ export const AgentFormSchema = z
     decoyEmail: z.string().trim(),
     decoyCertFile: z.string().trim(),
     decoyKeyFile: z.string().trim(),
-    decoyPort: z.number().int().min(1024, DECOY_INCOMPLETE).max(65535, DECOY_INCOMPLETE),
+    // A cleared box means the default, and the port is only checked when there is a decoy to serve it.
+    decoyPort: z
+      .number()
+      .nullable()
+      .transform((port) => port ?? DEFAULT_DECOY_PORT),
   })
   .superRefine((val, ctx) => {
     if (val.decoyMode === '') return;
     const missing =
+      !Number.isInteger(val.decoyPort) ||
+      val.decoyPort < 1024 ||
+      val.decoyPort > 65535 ||
       !val.decoyDomain ||
       (val.decoyMode === 'proxy' && !val.decoyProxyUrl) ||
       (val.decoyCert === 'manual' && (!val.decoyCertFile || !val.decoyKeyFile));

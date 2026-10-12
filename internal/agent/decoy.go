@@ -54,6 +54,8 @@ type decoyHost struct {
 	storage string // where the certificates are kept
 	now     func() time.Time
 	wake    chan struct{}
+	// privateProxy lets the proxied site be on a private address, which only a test with a site of its own on the loopback wants.
+	privateProxy bool
 
 	mu      sync.Mutex
 	spec    agentproto.DecoySpec  // what is wanted
@@ -79,7 +81,9 @@ func decoyRules() agentproto.DecoyRules {
 // Set makes spec the decoy and answers at once with how it stands, which the loop then brings about.
 // A decoy that is already the stored one changes nothing.
 func (h *decoyHost) Set(spec agentproto.DecoySpec) (agentproto.Decoy, error) {
-	spec, err := agentproto.NormalizeDecoy(spec, decoyRules())
+	rules := decoyRules()
+	rules.PrivateProxy = h.privateProxy
+	spec, err := agentproto.NormalizeDecoy(spec, rules)
 	if err != nil {
 		return agentproto.Decoy{}, err
 	}
@@ -230,7 +234,9 @@ func (h *decoyHost) optionsOf(spec agentproto.DecoySpec) frontproxy.Options {
 		Listen:    decoyListen,
 		Port:      spec.Port,
 		DecoyOnly: true,
-		Decoy:     frontproxy.DecoyConfig{Mode: mode, Template: spec.Template, ProxyURL: spec.ProxyURL, Seed: h.seed},
+		Decoy: frontproxy.DecoyConfig{
+			Mode: mode, Template: spec.Template, ProxyURL: spec.ProxyURL, PublicOnly: !h.privateProxy, Seed: h.seed,
+		},
 		TLS: frontproxy.TLSSettings{
 			Mode: cert, Domain: spec.Domain, Email: spec.Email,
 			CertFile: spec.CertFile, KeyFile: spec.KeyFile, StorageDir: h.storage,

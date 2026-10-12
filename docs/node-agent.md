@@ -178,7 +178,11 @@ domain and a certificate: ACME over HTTP-01 on port 80 (`auto`, kept in the stat
 reason of the CA for a name that does not point at the node), or files that are on the node already
 (`manual`). It answers a ClientHello that names another domain with a failed handshake. The fallback
 target of a REALITY inbound of the node is set by hand to `127.0.0.1` and the port, as on the panel.
-The look of a page is made from the GUID of the agent, so no two nodes serve the same bytes.
+The look of a page is made from the GUID of the agent, so no two nodes serve the same bytes. A site to proxy must be
+on a public address: anyone who probes the node can send the decoy anywhere, so an address on a private network, the
+loopback or a link-local one is refused when the node is saved and again by the agent, which also refuses to dial one
+that a name resolves to. A page that mocks a login does not count the failed logins of a visitor that comes from the
+loopback, which behind a fallback is every one of them, so a scanner cannot lock the others out.
 
 The master sends the decoy as it does the helper programs: when `decoyRevision` of `GET /v1/stats` is not
 the one of the decoy it wants (empty for none, so an agent from before the endpoint is left alone while its

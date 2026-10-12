@@ -126,7 +126,8 @@ func TestDecoyHostServesTheChosenPageOverTLSAndOnlyForItsName(t *testing.T) {
 		t.Fatalf("GET / after the change = %q, %v; want the other page", body, err)
 	}
 
-	// A proxy answers with what the site behind it says.
+	// A proxy answers with what the site behind it says, which a test keeps on the loopback.
+	host.privateProxy = true
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("the site behind")) }))
 	t.Cleanup(upstream.Close)
 	spec.Mode, spec.Template, spec.ProxyURL = agentproto.DecoyProxy, "", upstream.URL

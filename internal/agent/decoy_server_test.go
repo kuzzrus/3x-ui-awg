@@ -60,6 +60,7 @@ func TestServerRefusesWhatIsNotAServableDecoy(t *testing.T) {
 		"a page it does not have": `{"mode":"template","template":"no-such-page","domain":"node.example"}`,
 		"no domain":               `{"mode":"template"}`,
 		"a mode it does not know": `{"mode":"upload","domain":"node.example"}`,
+		"a site on the loopback":  `{"mode":"proxy","proxyUrl":"http://127.0.0.1:2053","domain":"node.example"}`,
 		"not json":                `parked`,
 		"a wrong type":            `{"mode":7}`,
 	} {
