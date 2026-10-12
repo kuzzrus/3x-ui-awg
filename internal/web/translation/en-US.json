@@ -1315,6 +1315,40 @@
           "tor": "Tor",
           "psiphon": "Psiphon"
         },
+        "decoy": "Decoy site",
+        "decoyHint": "What anyone who probes the node is shown instead of an error. Point the fallback target of a REALITY inbound of this node at the port below, on 127.0.0.1, and a probe without the key is handed this site.",
+        "decoyModes": {
+          "none": "None",
+          "template": "A page built into the panel",
+          "proxy": "A reverse proxy to a site"
+        },
+        "decoyTemplate": "Page",
+        "decoyProxyUrl": "Address of the site",
+        "decoyProxyUrlHint": "The site to proxy, on a public address. A site on a private network or on the loopback of the node is refused, since anyone who probes the node could reach it through the decoy.",
+        "decoyDomain": "Domain",
+        "decoyDomainHint": "The name the certificate is for. It must point at this node, and a probe that asks for another name is turned away.",
+        "decoyCert": "Certificate",
+        "decoyCerts": {
+          "auto": "Automatic (Let's Encrypt, needs port 80)",
+          "manual": "Files on the node"
+        },
+        "decoyEmail": "Email for the certificate",
+        "decoyCertFile": "Certificate file",
+        "decoyKeyFile": "Key file",
+        "decoyPort": "Port on 127.0.0.1",
+        "decoyPortHint": "The port the decoy listens on, on the node only: set the fallback target of the REALITY inbound to 127.0.0.1 and this port.",
+        "decoyIncomplete": "A decoy needs a domain, the address of the site for a proxy, and both files for a certificate on the node, and a port from 1024",
+        "decoyChip": "Decoy",
+        "decoyStates": {
+          "waiting": "waiting",
+          "starting": "starting",
+          "running": "running",
+          "failed": "failed",
+          "certObtaining": "getting a certificate",
+          "certFailed": "certificate failed"
+        },
+        "decoyCertUntil": "The certificate is good until {date}",
+        "decoyTarget": "Fallback target: {target} for {domain}",
         "sidecarDescriptions": {
           "tor": "Tor, a SOCKS proxy on 127.0.0.1:19050 of the server",
           "psiphon": "Psiphon, a SOCKS proxy on 127.0.0.1:19060 of the server (x86-64 servers only)"

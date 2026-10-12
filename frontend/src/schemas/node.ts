@@ -3,6 +3,10 @@ import { z } from 'zod';
 export const MAX_NODE_TAGS = 16;
 export const MAX_NODE_TAG_LENGTH = 32;
 const TAGS_INVALID = 'pages.nodes.agent.tagsInvalid';
+const DECOY_INCOMPLETE = 'pages.nodes.agent.decoyIncomplete';
+
+// The loopback port an agent's decoy listens on when none is chosen, which the REALITY fallback of the node points at.
+export const DEFAULT_DECOY_PORT = 7443;
 
 // The helper programs an agent can run beside its core, which the panel offers on the node's form.
 export const NODE_SIDECARS = ['tor', 'psiphon'] as const;
@@ -54,6 +58,30 @@ export const NodeRecordSchema = z
     sidecars: z.array(z.string()).nullish(),
     sidecarStates: z
       .array(z.object({ name: z.string(), state: z.string(), message: z.string().optional() }))
+      .nullish(),
+    // The decoy site an agent node serves (no mode is none), and how it stood at the last heartbeat.
+    decoy: z
+      .object({
+        mode: z.string(),
+        template: z.string(),
+        proxyUrl: z.string(),
+        domain: z.string(),
+        cert: z.string(),
+        email: z.string(),
+        certFile: z.string(),
+        keyFile: z.string(),
+        port: z.number(),
+      })
+      .partial()
+      .nullish(),
+    decoyState: z
+      .object({
+        state: z.string(),
+        cert: z.string(),
+        certNotAfter: z.number(),
+        message: z.string(),
+      })
+      .partial()
       .nullish(),
     // Multi-hop node tree (#4983): a node's stable GUID, its parent's GUID, and
     // whether it's a read-only transitive sub-node surfaced from a downstream node.
@@ -115,20 +143,45 @@ export const NodeFormSchema = z
 
 // An agent node is added by where it will be reachable: its secret and certificate are minted by
 // the panel and come back once, in the pairing bundle.
-export const AgentFormSchema = z.object({
-  id: z.number().optional(),
-  name: z.string().trim().min(1, 'pages.nodes.toasts.fillRequired'),
-  remark: z.string().optional(),
-  address: z.string().trim().min(1, 'pages.nodes.toasts.fillRequired'),
-  port: z.number().int().min(1).max(65535),
-  enable: z.boolean(),
-  allowPrivateAddress: z.boolean(),
-  outboundTag: z.string().optional(),
-  tags: z
-    .array(z.string().trim().min(1, TAGS_INVALID).max(MAX_NODE_TAG_LENGTH, TAGS_INVALID))
-    .max(MAX_NODE_TAGS, TAGS_INVALID),
-  sidecars: z.array(z.string()),
-});
+export const AgentFormSchema = z
+  .object({
+    id: z.number().optional(),
+    name: z.string().trim().min(1, 'pages.nodes.toasts.fillRequired'),
+    remark: z.string().optional(),
+    address: z.string().trim().min(1, 'pages.nodes.toasts.fillRequired'),
+    port: z.number().int().min(1).max(65535),
+    enable: z.boolean(),
+    allowPrivateAddress: z.boolean(),
+    outboundTag: z.string().optional(),
+    tags: z
+      .array(z.string().trim().min(1, TAGS_INVALID).max(MAX_NODE_TAG_LENGTH, TAGS_INVALID))
+      .max(MAX_NODE_TAGS, TAGS_INVALID),
+    sidecars: z.array(z.string()),
+    decoyMode: z.enum(['', 'template', 'proxy']),
+    decoyTemplate: z.string(),
+    decoyProxyUrl: z.string().trim(),
+    decoyDomain: z.string().trim(),
+    decoyCert: z.enum(['auto', 'manual']),
+    decoyEmail: z.string().trim(),
+    decoyCertFile: z.string().trim(),
+    decoyKeyFile: z.string().trim(),
+    // A cleared box means the default, and the port is only checked when there is a decoy to serve it.
+    decoyPort: z
+      .number()
+      .nullable()
+      .transform((port) => port ?? DEFAULT_DECOY_PORT),
+  })
+  .superRefine((val, ctx) => {
+    if (val.decoyMode === '') return;
+    const missing =
+      !Number.isInteger(val.decoyPort) ||
+      val.decoyPort < 1024 ||
+      val.decoyPort > 65535 ||
+      !val.decoyDomain ||
+      (val.decoyMode === 'proxy' && !val.decoyProxyUrl) ||
+      (val.decoyCert === 'manual' && (!val.decoyCertFile || !val.decoyKeyFile));
+    if (missing) ctx.addIssue({ code: 'custom', path: ['decoyMode'], message: DECOY_INCOMPLETE });
+  });
 
 export const AgentPairingSchema = z
   .object({

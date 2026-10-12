@@ -38,6 +38,7 @@ type syncAgentFixture struct {
 	geo      *syncGeoAgent
 	update   *syncUpdateAgent
 	sidecars *syncSidecarsAgent
+	decoy    *syncDecoyAgent
 }
 
 func newSyncAgentFixture(t *testing.T) *syncAgentFixture {
@@ -95,7 +96,7 @@ func (f *syncAgentFixture) serve(w http.ResponseWriter, r *http.Request) {
 		f.restarts++
 		_, _ = w.Write([]byte(`{"revision":"x","applied":"restart","xrayState":"running"}`))
 	default:
-		if !f.serveGeo(w, r) && !f.serveUpdate(w, r) && !f.serveSidecars(w, r) {
+		if !f.serveGeo(w, r) && !f.serveUpdate(w, r) && !f.serveSidecars(w, r) && !f.serveDecoy(w, r) {
 			http.NotFound(w, r)
 		}
 	}

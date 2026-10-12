@@ -116,11 +116,13 @@ func TestWireFieldNames(t *testing.T) {
 				XrayVersion: "26.1.1", XrayState: XrayStateError, XrayError: "e",
 				CpuPct: 1.5, MemPct: 2.5, UptimeSecs: 3, NetUp: 4, NetDown: 5,
 				Sidecars: []SidecarState{{Name: SidecarTor, State: SidecarRunning, Message: "Bootstrapped 100%"}},
+				Decoy:    DecoyState{State: DecoyStateRunning, Cert: DecoyCertObtained, CertNotAfter: 9},
 			},
 			`{"agentVersion":"v1","hostname":"h","guid":"g","configRevision":"r",` +
 				`"xrayVersion":"26.1.1","xrayState":"error","xrayError":"e",` +
 				`"cpuPct":1.5,"memPct":2.5,"uptimeSecs":3,"netUp":4,"netDown":5,` +
-				`"sidecars":[{"name":"tor","state":"running","message":"Bootstrapped 100%"}]}`,
+				`"sidecars":[{"name":"tor","state":"running","message":"Bootstrapped 100%"}],` +
+				`"decoy":{"state":"running","cert":"obtained","certNotAfter":9}}`,
 		},
 		{
 			"stats",
@@ -131,11 +133,22 @@ func TestWireFieldNames(t *testing.T) {
 				Users:            map[string]Counter{"a@x": {Up: 3, Down: 4}},
 				Online:           []string{"a@x"},
 				SidecarsRevision: "s",
+				DecoyRevision:    "d",
 			},
 			`{"configRevision":"r","xrayStartedAt":7,"inbounds":{"in-1":{"up":1,"down":2}},` +
-				`"users":{"a@x":{"up":3,"down":4}},"online":["a@x"],"sidecarsRevision":"s"}`,
+				`"users":{"a@x":{"up":3,"down":4}},"online":["a@x"],"sidecarsRevision":"s","decoyRevision":"d"}`,
 		},
 		{"sidecars spec", SidecarsSpec{Enabled: []string{SidecarTor}}, `{"enabled":["tor"]}`},
+		{
+			"decoy",
+			Decoy{
+				Revision: "r",
+				Spec:     DecoySpec{Mode: DecoyTemplate, Template: "parked", Domain: "a.example", Cert: DecoyCertAuto, Port: 7443},
+				State:    DecoyState{State: DecoyStateFailed, Message: "port in use"},
+			},
+			`{"revision":"r","spec":{"mode":"template","template":"parked","domain":"a.example","cert":"auto","port":7443},` +
+				`"state":{"state":"failed","message":"port in use"}}`,
+		},
 		{
 			"sidecars",
 			Sidecars{Revision: "r", Enabled: []string{SidecarTor}, States: []SidecarState{{Name: SidecarTor, State: SidecarInstalling}}},

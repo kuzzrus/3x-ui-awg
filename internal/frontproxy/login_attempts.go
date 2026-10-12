@@ -24,12 +24,15 @@ func newLoginAttempts() *loginAttempts {
 	return &loginAttempts{state: make(map[string]*loginAttemptState), now: time.Now}
 }
 
-// clientKey is the request's direct TCP peer address, not X-Forwarded-For or similar: this listener faces the internet directly.
-// Trusting a client-supplied header here would let an attacker evade their own lockout just by changing it.
+// clientKey is the direct TCP peer, never a header that a client could change. A loopback peer has no key: the REALITY
+// fallback relays every visitor from there, so it is all of them at once, and one scanner would lock out the rest.
 func clientKey(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		host = r.RemoteAddr
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return ""
 	}
 	return host
 }
@@ -37,6 +40,9 @@ func clientKey(r *http.Request) string {
 // check reports whether key is currently locked out, without counting a new
 // attempt. An expired lockout is cleared so a fresh sequence can start.
 func (a *loginAttempts) check(key string) (locked bool, until time.Time) {
+	if key == "" {
+		return false, time.Time{}
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	s := a.state[key]
@@ -54,6 +60,9 @@ func (a *loginAttempts) check(key string) (locked bool, until time.Time) {
 // fail records one failed attempt for key, locking it out for banDuration once threshold consecutive failures accumulate.
 // An already-expired lockout is cleared first, so this attempt starts a fresh count rather than immediately re-locking.
 func (a *loginAttempts) fail(key string, threshold int, banDuration time.Duration) (locked bool, until time.Time) {
+	if key == "" {
+		return false, time.Time{}
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	now := a.now()

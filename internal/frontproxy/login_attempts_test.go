@@ -97,3 +97,28 @@ func TestClientKeyFallsBackToRawOnUnparseableAddr(t *testing.T) {
 		t.Fatalf("clientKey = %q, want the raw value unchanged", got)
 	}
 }
+
+// Behind the REALITY fallback every visitor reaches the listener from the loopback, so that peer is all of them at
+// once: it has no key, and a scanner that fails five logins must not lock out the next visitor.
+func TestAPeerOnTheLoopbackIsNeverLockedOut(t *testing.T) {
+	for _, remote := range []string{"127.0.0.1:54321", "[::1]:54321", "127.4.5.6:1"} {
+		if key := clientKey(&http.Request{RemoteAddr: remote}); key != "" {
+			t.Errorf("clientKey(%s) = %q, want none", remote, key)
+		}
+	}
+	a := newLoginAttempts()
+	for range 20 {
+		if locked, _ := a.fail("", 5, time.Hour); locked {
+			t.Fatal("failures of a peer with no key locked it out")
+		}
+	}
+	if locked, _ := a.check(""); locked {
+		t.Fatal("a peer with no key is locked out")
+	}
+	buckets := newUKBuckets()
+	for range 3 * int(ukBucketCapacity) {
+		if !buckets.take("") {
+			t.Fatal("a peer with no key was rate limited")
+		}
+	}
+}

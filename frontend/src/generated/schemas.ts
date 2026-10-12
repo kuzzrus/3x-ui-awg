@@ -9,6 +9,39 @@ export const SCHEMAS: Record<string, unknown> = {
       "allowPrivateAddress": {
         "type": "boolean"
       },
+      "decoyCert": {
+        "example": "auto",
+        "type": "string"
+      },
+      "decoyCertFile": {
+        "type": "string"
+      },
+      "decoyDomain": {
+        "example": "node.example.com",
+        "type": "string"
+      },
+      "decoyEmail": {
+        "example": "admin@example.com",
+        "type": "string"
+      },
+      "decoyKeyFile": {
+        "type": "string"
+      },
+      "decoyMode": {
+        "example": "template",
+        "type": "string"
+      },
+      "decoyPort": {
+        "example": 7443,
+        "type": "integer"
+      },
+      "decoyProxyUrl": {
+        "type": "string"
+      },
+      "decoyTemplate": {
+        "example": "maintenance",
+        "type": "string"
+      },
       "name": {
         "type": "string"
       },
@@ -39,6 +72,15 @@ export const SCHEMAS: Record<string, unknown> = {
     "required": [
       "address",
       "allowPrivateAddress",
+      "decoyCert",
+      "decoyCertFile",
+      "decoyDomain",
+      "decoyEmail",
+      "decoyKeyFile",
+      "decoyMode",
+      "decoyPort",
+      "decoyProxyUrl",
+      "decoyTemplate",
       "name",
       "outboundTag",
       "port",
@@ -3329,6 +3371,17 @@ export const SCHEMAS: Record<string, unknown> = {
         "format": "int64",
         "type": "integer"
       },
+      "decoy": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/NodeDecoy"
+          }
+        ],
+        "description": "Decoy is the site an agent node serves to whoever probes it, which the REALITY fallback of its core can point at."
+      },
+      "decoyState": {
+        "$ref": "#/components/schemas/NodeDecoyState"
+      },
       "depletedCount": {
         "example": 1,
         "type": "integer"
@@ -3441,7 +3494,7 @@ export const SCHEMAS: Record<string, unknown> = {
         "type": "string"
       },
       "sidecarStates": {
-        "description": "SidecarStates is how each of the node's helper programs stood at the last heartbeat.",
+        "description": "SidecarStates is how each of the node's helper programs stood at the last heartbeat, and DecoyState the decoy.",
         "items": {
           "$ref": "#/components/schemas/NodeSidecar"
         },
@@ -3510,6 +3563,8 @@ export const SCHEMAS: Record<string, unknown> = {
       "configDirtyAt",
       "cpuPct",
       "createdAt",
+      "decoy",
+      "decoyState",
       "depletedCount",
       "disabledCount",
       "enable",
@@ -3546,6 +3601,134 @@ export const SCHEMAS: Record<string, unknown> = {
     ],
     "type": "object"
   },
+  "NodeDecoy": {
+    "description": "NodeDecoy is the decoy site of an agent node; an empty Mode is none. Cert is \"auto\" (ACME on port 80)\nor \"manual\" (files on the node), and Port is the loopback port the REALITY fallback of the node points at.",
+    "properties": {
+      "cert": {
+        "example": "auto",
+        "type": "string"
+      },
+      "certFile": {
+        "type": "string"
+      },
+      "domain": {
+        "example": "node.example.com",
+        "type": "string"
+      },
+      "email": {
+        "example": "admin@example.com",
+        "type": "string"
+      },
+      "keyFile": {
+        "type": "string"
+      },
+      "mode": {
+        "example": "template",
+        "type": "string"
+      },
+      "port": {
+        "example": 7443,
+        "type": "integer"
+      },
+      "proxyUrl": {
+        "type": "string"
+      },
+      "template": {
+        "example": "maintenance",
+        "type": "string"
+      }
+    },
+    "required": [
+      "cert",
+      "certFile",
+      "domain",
+      "email",
+      "keyFile",
+      "mode",
+      "port",
+      "proxyUrl",
+      "template"
+    ],
+    "type": "object"
+  },
+  "NodeDecoyForm": {
+    "description": "NodeDecoyForm is the decoy of an agent node as a request carries it, one flat field each, since the\npages post forms. No mode is no decoy.",
+    "properties": {
+      "decoyCert": {
+        "example": "auto",
+        "type": "string"
+      },
+      "decoyCertFile": {
+        "type": "string"
+      },
+      "decoyDomain": {
+        "example": "node.example.com",
+        "type": "string"
+      },
+      "decoyEmail": {
+        "example": "admin@example.com",
+        "type": "string"
+      },
+      "decoyKeyFile": {
+        "type": "string"
+      },
+      "decoyMode": {
+        "example": "template",
+        "type": "string"
+      },
+      "decoyPort": {
+        "example": 7443,
+        "type": "integer"
+      },
+      "decoyProxyUrl": {
+        "type": "string"
+      },
+      "decoyTemplate": {
+        "example": "maintenance",
+        "type": "string"
+      }
+    },
+    "required": [
+      "decoyCert",
+      "decoyCertFile",
+      "decoyDomain",
+      "decoyEmail",
+      "decoyKeyFile",
+      "decoyMode",
+      "decoyPort",
+      "decoyProxyUrl",
+      "decoyTemplate"
+    ],
+    "type": "object"
+  },
+  "NodeDecoyState": {
+    "description": "NodeDecoyState is how the decoy of an agent node stood when the agent last reported: off, starting,\nrunning or failed, and where its certificate stood.",
+    "properties": {
+      "cert": {
+        "example": "obtained",
+        "type": "string"
+      },
+      "certNotAfter": {
+        "example": 1800000000,
+        "format": "int64",
+        "type": "integer"
+      },
+      "message": {
+        "type": "string"
+      },
+      "state": {
+        "example": "running",
+        "type": "string"
+      }
+    },
+    "required": [
+      "cert",
+      "certNotAfter",
+      "message",
+      "state"
+    ],
+    "type": "object"
+  },
   "NodeMutationRequest": {
     "description": "NodeMutationRequest is the node write/probe contract. ApiToken is accepted\nonly as input. On update, nil means keep the stored token; replacement and\nclearing are explicit and mutually exclusive.",
     "properties": {
@@ -3564,6 +3747,39 @@ export const SCHEMAS: Record<string, unknown> = {
       },
       "clearApiToken": {
         "type": "boolean"
+      },
+      "decoyCert": {
+        "example": "auto",
+        "type": "string"
+      },
+      "decoyCertFile": {
+        "type": "string"
+      },
+      "decoyDomain": {
+        "example": "node.example.com",
+        "type": "string"
+      },
+      "decoyEmail": {
+        "example": "admin@example.com",
+        "type": "string"
+      },
+      "decoyKeyFile": {
+        "type": "string"
+      },
+      "decoyMode": {
+        "example": "template",
+        "type": "string"
+      },
+      "decoyPort": {
+        "example": 7443,
+        "type": "integer"
+      },
+      "decoyProxyUrl": {
+        "type": "string"
+      },
+      "decoyTemplate": {
+        "example": "maintenance",
+        "type": "string"
       },
       "enable": {
         "type": "boolean"
@@ -3634,6 +3850,15 @@ export const SCHEMAS: Record<string, unknown> = {
       "address",
       "allowPrivateAddress",
       "basePath",
+      "decoyCert",
+      "decoyCertFile",
+      "decoyDomain",
+      "decoyEmail",
+      "decoyKeyFile",
+      "decoyMode",
+      "decoyPort",
+      "decoyProxyUrl",
+      "decoyTemplate",
       "enable",
       "id",
       "inboundSyncMode",
@@ -3713,6 +3938,12 @@ export const SCHEMAS: Record<string, unknown> = {
         "example": 1700000000,
         "format": "int64",
         "type": "integer"
+      },
+      "decoy": {
+        "$ref": "#/components/schemas/NodeDecoy"
+      },
+      "decoyState": {
+        "$ref": "#/components/schemas/NodeDecoyState"
       },
       "depletedCount": {
         "example": 1,
@@ -3820,7 +4051,7 @@ export const SCHEMAS: Record<string, unknown> = {
         "type": "string"
       },
       "sidecarStates": {
-        "description": "SidecarStates is how each helper program of an agent node stood at the last heartbeat.",
+        "description": "SidecarStates is how each helper program of an agent node stood at the last heartbeat, and\nDecoyState the decoy.",
         "items": {
           "$ref": "#/components/schemas/NodeSidecar"
         },
@@ -3888,6 +4119,8 @@ export const SCHEMAS: Record<string, unknown> = {
       "configDirtyAt",
       "cpuPct",
       "createdAt",
+      "decoy",
+      "decoyState",
       "depletedCount",
       "disabledCount",
       "enable",

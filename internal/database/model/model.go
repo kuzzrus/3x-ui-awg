@@ -824,6 +824,9 @@ type Node struct {
 	// Sidecars are the helper programs, such as Tor, that an agent node runs beside its core.
 	Sidecars []string `json:"sidecars" form:"sidecars" gorm:"serializer:json;column:sidecars"`
 
+	// Decoy is the site an agent node serves to whoever probes it, which the REALITY fallback of its core can point at.
+	Decoy NodeDecoy `json:"decoy" gorm:"serializer:json;column:decoy"`
+
 	// Guid is the remote panel's stable self-identifier (its panelGuid),
 	// learned from each heartbeat. It is the globally stable node identity used
 	// to attribute online clients/inbounds to the physical node across a chain
@@ -852,8 +855,9 @@ type Node struct {
 	XrayState string `json:"xrayState" gorm:"column:xray_state"`
 	XrayError string `json:"xrayError" gorm:"column:xray_error"`
 
-	// SidecarStates is how each of the node's helper programs stood at the last heartbeat.
-	SidecarStates []NodeSidecar `json:"sidecarStates" gorm:"serializer:json;column:sidecar_states"`
+	// SidecarStates is how each of the node's helper programs stood at the last heartbeat, and DecoyState the decoy.
+	SidecarStates []NodeSidecar  `json:"sidecarStates" gorm:"serializer:json;column:sidecar_states"`
+	DecoyState    NodeDecoyState `json:"decoyState" gorm:"serializer:json;column:decoy_state"`
 
 	ConfigDirty   bool  `json:"configDirty" gorm:"default:false"`
 	ConfigDirtyAt int64 `json:"configDirtyAt"`
@@ -890,6 +894,29 @@ type NodeSidecar struct {
 	Name    string `json:"name" example:"tor"`
 	State   string `json:"state" example:"running"`
 	Message string `json:"message" example:"Bootstrapped 100% (done): Done"`
+}
+
+// NodeDecoy is the decoy site of an agent node; an empty Mode is none. Cert is "auto" (ACME on port 80)
+// or "manual" (files on the node), and Port is the loopback port the REALITY fallback of the node points at.
+type NodeDecoy struct {
+	Mode     string `json:"mode" example:"template"`
+	Template string `json:"template" example:"maintenance"`
+	ProxyURL string `json:"proxyUrl" example:""`
+	Domain   string `json:"domain" example:"node.example.com"`
+	Cert     string `json:"cert" example:"auto"`
+	Email    string `json:"email" example:"admin@example.com"`
+	CertFile string `json:"certFile" example:""`
+	KeyFile  string `json:"keyFile" example:""`
+	Port     int    `json:"port" example:"7443"`
+}
+
+// NodeDecoyState is how the decoy of an agent node stood when the agent last reported: off, starting,
+// running or failed, and where its certificate stood.
+type NodeDecoyState struct {
+	State        string `json:"state" example:"running"`
+	Cert         string `json:"cert" example:"obtained"`
+	CertNotAfter int64  `json:"certNotAfter" example:"1800000000"`
+	Message      string `json:"message" example:""`
 }
 
 // NodeSummary is the read-only identity of a node as published one hop up: the

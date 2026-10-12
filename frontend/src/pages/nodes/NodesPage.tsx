@@ -189,6 +189,15 @@ export default function NodesPage() {
         outboundTag: values.outboundTag,
         tags: values.tags,
         sidecars: values.sidecars,
+        decoyMode: values.decoyMode,
+        decoyTemplate: values.decoyTemplate,
+        decoyProxyUrl: values.decoyProxyUrl,
+        decoyDomain: values.decoyDomain,
+        decoyCert: values.decoyCert,
+        decoyEmail: values.decoyEmail,
+        decoyCertFile: values.decoyCertFile,
+        decoyKeyFile: values.decoyKeyFile,
+        decoyPort: values.decoyPort,
       };
       if (agentFormNode?.id)
         return update(agentFormNode.id, { ...endpoint, enable: values.enable });

@@ -53,11 +53,11 @@ func Run(ctx context.Context, opts Options) error {
 		}
 		core.Run(ctx)
 	}()
-	// The helper programs come up from the stored list on their own, with the master out of reach.
+	// The helper programs and the decoy come up from what is stored, with the master out of reach.
 	hosted := make(chan struct{})
 	go func() {
 		defer close(hosted)
-		server.RunSidecars(ctx)
+		server.RunHosts(ctx)
 	}()
 	defer func() {
 		stop()

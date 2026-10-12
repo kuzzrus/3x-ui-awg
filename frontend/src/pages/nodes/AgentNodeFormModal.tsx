@@ -19,6 +19,7 @@ import type { NodeRecord } from '@/api/queries/useNodesQuery';
 import type { Msg } from '@/utils';
 import {
   AgentFormSchema,
+  DEFAULT_DECOY_PORT,
   MAX_NODE_TAGS,
   NODE_SIDECARS,
   type AgentFormValues,
@@ -26,6 +27,7 @@ import {
 import { FormField, rhfZodValidate } from '@/components/form/rhf';
 import { useNodeTags } from '@/api/queries/useNodeTags';
 import { useNodeOutboundOptions } from './useNodeOutboundOptions';
+import AgentDecoyFields from './AgentDecoyFields';
 
 // 8443 is what the installer's docs use; any free TCP port works.
 const DEFAULT_AGENT_PORT = 8443;
@@ -49,6 +51,32 @@ function defaultValues(): AgentFormValues {
     outboundTag: '',
     tags: [],
     sidecars: [],
+    decoyMode: '',
+    decoyTemplate: 'maintenance',
+    decoyProxyUrl: '',
+    decoyDomain: '',
+    decoyCert: 'auto',
+    decoyEmail: '',
+    decoyCertFile: '',
+    decoyKeyFile: '',
+    decoyPort: DEFAULT_DECOY_PORT,
+  };
+}
+
+// The decoy of a node as the form edits it: what the node holds, over the defaults of a new one.
+function decoyValues(node: NodeRecord, base: AgentFormValues): Partial<AgentFormValues> {
+  const decoy = node.decoy;
+  if (!decoy?.mode) return {};
+  return {
+    decoyMode: decoy.mode === 'proxy' ? 'proxy' : 'template',
+    decoyTemplate: decoy.template || base.decoyTemplate,
+    decoyProxyUrl: decoy.proxyUrl ?? '',
+    decoyDomain: decoy.domain ?? '',
+    decoyCert: decoy.cert === 'manual' ? 'manual' : 'auto',
+    decoyEmail: decoy.email ?? '',
+    decoyCertFile: decoy.certFile ?? '',
+    decoyKeyFile: decoy.keyFile ?? '',
+    decoyPort: decoy.port || base.decoyPort,
   };
 }
 
@@ -93,6 +121,7 @@ export default function AgentNodeFormModal({
             outboundTag: node.outboundTag ?? '',
             tags: node.tags ?? [],
             sidecars: node.sidecars ?? [],
+            ...decoyValues(node, base),
           }
         : base,
     );
@@ -230,6 +259,8 @@ export default function AgentNodeFormModal({
             >
               <Checkbox.Group options={sidecarOptions} />
             </FormField>
+
+            <AgentDecoyFields />
           </Form>
         </FormProvider>
       </Modal>

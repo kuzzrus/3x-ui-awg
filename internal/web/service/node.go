@@ -52,8 +52,9 @@ type HeartbeatPatch struct {
 	XrayState string
 	XrayError string
 	// SidecarStates is how an agent's helper programs stand, empty when it runs none. It is nil for a
-	// node that does not report them, whose stored states a heartbeat leaves alone.
+	// node that does not report them, whose stored states a heartbeat leaves alone, as it does the decoy's.
 	SidecarStates []model.NodeSidecar
+	DecoyState    *model.NodeDecoyState
 }
 
 type NodeService struct{}
@@ -465,8 +466,11 @@ func (s *NodeService) Create(n *model.Node) error {
 			return err
 		}
 		n.Sidecars = sidecars
+		if n.Decoy, err = normalizeNodeDecoy(n.Decoy); err != nil {
+			return err
+		}
 	} else {
-		n.Tags, n.Sidecars = nil, nil
+		n.Tags, n.Sidecars, n.Decoy = nil, nil, model.NodeDecoy{}
 	}
 	db := database.GetDB()
 	if !nodetoken.Enabled() {
@@ -544,6 +548,10 @@ func (s *NodeService) Update(id int, in *model.Node) error {
 	if err != nil {
 		return err
 	}
+	decoyJSON, err := decoyToStore(existing, in.Decoy)
+	if err != nil {
+		return err
+	}
 	// Blank means keep the hidden stored token; non-blank values are encrypted.
 	apiToken := existing.ApiToken
 	if in.ApiToken != "" {
@@ -570,6 +578,7 @@ func (s *NodeService) Update(id int, in *model.Node) error {
 		"outbound_tag":          in.OutboundTag,
 		"tags":                  tagsJSON,
 		"sidecars":              sidecarsJSON,
+		"decoy":                 decoyJSON,
 	}
 	if nodeSelectionGrew(existing, in) {
 		updates["inbounds_adopted_at"] = 0
@@ -619,6 +628,10 @@ func (s *NodeService) UpdateFromRequest(id int, req *NodeMutationRequest) error 
 	if err != nil {
 		return err
 	}
+	decoyJSON, err := decoyToStore(existing, in.Decoy)
+	if err != nil {
+		return err
+	}
 	apiToken := existing.ApiToken
 	switch {
 	case req.ClearApiToken:
@@ -649,6 +662,7 @@ func (s *NodeService) UpdateFromRequest(id int, req *NodeMutationRequest) error 
 		"outbound_tag":          in.OutboundTag,
 		"tags":                  tagsJSON,
 		"sidecars":              sidecarsJSON,
+		"decoy":                 decoyJSON,
 	}
 	if nodeSelectionGrew(existing, in) {
 		updates["inbounds_adopted_at"] = 0
@@ -1066,6 +1080,13 @@ func (s *NodeService) UpdateHeartbeat(id int, p HeartbeatPatch) error {
 			return err
 		}
 		updates["sidecar_states"] = string(states)
+	}
+	if p.DecoyState != nil {
+		state, err := json.Marshal(p.DecoyState)
+		if err != nil {
+			return err
+		}
+		updates["decoy_state"] = string(state)
 	}
 	if err := db.Model(model.Node{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 		return err

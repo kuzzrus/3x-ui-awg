@@ -129,6 +129,9 @@ func newUKBuckets() *ukBuckets {
 // proceed. false means the bucket ran dry: rate-limited, matching
 // KumaRateLimiter.pass's "remainingRequests < 0" check.
 func (b *ukBuckets) take(key string) bool {
+	if key == "" {
+		return true
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	now := b.now()

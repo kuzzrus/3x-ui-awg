@@ -55,8 +55,11 @@ type NodeView struct {
 	CreatedAt           int64    `json:"createdAt" example:"1700000000"`
 	UpdatedAt           int64    `json:"updatedAt" example:"1700003600"`
 
-	// SidecarStates is how each helper program of an agent node stood at the last heartbeat.
-	SidecarStates []model.NodeSidecar `json:"sidecarStates"`
+	// SidecarStates is how each helper program of an agent node stood at the last heartbeat, and
+	// DecoyState the decoy.
+	SidecarStates []model.NodeSidecar  `json:"sidecarStates"`
+	Decoy         model.NodeDecoy      `json:"decoy"`
+	DecoyState    model.NodeDecoyState `json:"decoyState"`
 }
 
 func toNodeView(n *model.Node) *NodeView {
@@ -99,6 +102,8 @@ func toNodeView(n *model.Node) *NodeView {
 		Tags:                tags,
 		Sidecars:            sidecars,
 		SidecarStates:       sidecarStates,
+		Decoy:               n.Decoy,
+		DecoyState:          n.DecoyState,
 		Guid:                n.Guid,
 		Status:              n.Status,
 		LastHeartbeat:       n.LastHeartbeat,
@@ -158,6 +163,7 @@ type NodeMutationRequest struct {
 	OutboundTag         string   `json:"outboundTag" form:"outboundTag"`
 	Tags                []string `json:"tags" form:"tags"`
 	Sidecars            []string `json:"sidecars" form:"sidecars"`
+	NodeDecoyForm
 }
 
 func (r *NodeMutationRequest) validateCredentials(create bool) error {
@@ -208,6 +214,7 @@ func (r *NodeMutationRequest) toNode() *model.Node {
 		OutboundTag:         r.OutboundTag,
 		Tags:                r.Tags,
 		Sidecars:            r.Sidecars,
+		Decoy:               r.decoy(),
 	}
 	if r.ApiToken != nil {
 		n.ApiToken = *r.ApiToken

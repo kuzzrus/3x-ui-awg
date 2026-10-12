@@ -24,6 +24,15 @@ export type transportBits = z.infer<typeof transportBitsSchema>;
 export const AgentNodeRequestSchema = z.object({
   address: z.string(),
   allowPrivateAddress: z.boolean(),
+  decoyCert: z.string(),
+  decoyCertFile: z.string(),
+  decoyDomain: z.string(),
+  decoyEmail: z.string(),
+  decoyKeyFile: z.string(),
+  decoyMode: z.string(),
+  decoyPort: z.number().int(),
+  decoyProxyUrl: z.string(),
+  decoyTemplate: z.string(),
   name: z.string(),
   outboundTag: z.string(),
   port: z.number().int().min(1).max(65535),
@@ -823,6 +832,8 @@ export const NodeSchema = z.object({
   configDirtyAt: z.number().int(),
   cpuPct: z.number(),
   createdAt: z.number().int(),
+  decoy: z.lazy(() => NodeDecoySchema),
+  decoyState: z.lazy(() => NodeDecoyStateSchema),
   depletedCount: z.number().int(),
   disabledCount: z.number().int(),
   enable: z.boolean(),
@@ -861,12 +872,55 @@ export const NodeSchema = z.object({
 });
 export type Node = z.infer<typeof NodeSchema>;
 
+export const NodeDecoySchema = z.object({
+  cert: z.string(),
+  certFile: z.string(),
+  domain: z.string(),
+  email: z.string(),
+  keyFile: z.string(),
+  mode: z.string(),
+  port: z.number().int(),
+  proxyUrl: z.string(),
+  template: z.string(),
+});
+export type NodeDecoy = z.infer<typeof NodeDecoySchema>;
+
+export const NodeDecoyFormSchema = z.object({
+  decoyCert: z.string(),
+  decoyCertFile: z.string(),
+  decoyDomain: z.string(),
+  decoyEmail: z.string(),
+  decoyKeyFile: z.string(),
+  decoyMode: z.string(),
+  decoyPort: z.number().int(),
+  decoyProxyUrl: z.string(),
+  decoyTemplate: z.string(),
+});
+export type NodeDecoyForm = z.infer<typeof NodeDecoyFormSchema>;
+
+export const NodeDecoyStateSchema = z.object({
+  cert: z.string(),
+  certNotAfter: z.number().int(),
+  message: z.string(),
+  state: z.string(),
+});
+export type NodeDecoyState = z.infer<typeof NodeDecoyStateSchema>;
+
 export const NodeMutationRequestSchema = z.object({
   address: z.string(),
   allowPrivateAddress: z.boolean(),
   apiToken: z.string().nullable().optional(),
   basePath: z.string(),
   clearApiToken: z.boolean().optional(),
+  decoyCert: z.string(),
+  decoyCertFile: z.string(),
+  decoyDomain: z.string(),
+  decoyEmail: z.string(),
+  decoyKeyFile: z.string(),
+  decoyMode: z.string(),
+  decoyPort: z.number().int(),
+  decoyProxyUrl: z.string(),
+  decoyTemplate: z.string(),
   enable: z.boolean(),
   id: z.number().int(),
   inboundSyncMode: z.enum(['all', 'selected']),
@@ -900,6 +954,8 @@ export const NodeViewSchema = z.object({
   configDirtyAt: z.number().int(),
   cpuPct: z.number(),
   createdAt: z.number().int(),
+  decoy: z.lazy(() => NodeDecoySchema),
+  decoyState: z.lazy(() => NodeDecoyStateSchema),
   depletedCount: z.number().int(),
   disabledCount: z.number().int(),
   enable: z.boolean(),

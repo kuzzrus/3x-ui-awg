@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
+	"github.com/mhsanaei/3x-ui/v3/internal/util/netsafe"
 )
 
 // logDecoyFallback records why a configured decoy could not be used. The
@@ -56,6 +57,9 @@ type DecoyConfig struct {
 	Template string
 	Dir      string
 	ProxyURL string
+	// PublicOnly dials a proxied site only at a public address, whatever its name resolves to. The listener of an
+	// agent answers whoever probes the node, and would otherwise reach the node's own network for them.
+	PublicOnly bool
 	// AdGuardPort is the loopback port AdGuard Home serves its UI on, resolved
 	// by the caller so this package stays unaware of that sidecar.
 	AdGuardPort int
@@ -75,7 +79,7 @@ func newDecoyHandler(cfg DecoyConfig) http.Handler {
 			logDecoyFallback("upload", err)
 		}
 	case DecoyProxy:
-		if h, err := newProxyDecoy(cfg.ProxyURL); err == nil {
+		if h, err := newProxyDecoy(cfg.ProxyURL, cfg.PublicOnly); err == nil {
 			return h
 		} else {
 			logDecoyFallback("proxy", err)
@@ -257,7 +261,7 @@ func newAdGuardDecoy(port int) (http.Handler, error) {
 }
 
 // newProxyDecoy reverse-proxies to a site the admin already hosts elsewhere.
-func newProxyDecoy(raw string) (http.Handler, error) {
+func newProxyDecoy(raw string, publicOnly bool) (http.Handler, error) {
 	if raw == "" {
 		return nil, fmt.Errorf("no decoy proxy URL configured")
 	}
@@ -271,7 +275,15 @@ func newProxyDecoy(raw string) (http.Handler, error) {
 	if target.Host == "" {
 		return nil, fmt.Errorf("decoy proxy URL has no host")
 	}
+	var transport http.RoundTripper
+	if publicOnly {
+		guarded := http.DefaultTransport.(*http.Transport).Clone()
+		// A proxy from the environment would be dialled in place of the site, which the guard never sees.
+		guarded.Proxy, guarded.DialContext = nil, netsafe.SSRFGuardedDialContext
+		transport = guarded
+	}
 	return &httputil.ReverseProxy{
+		Transport: transport,
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			// SetURL leaves Host derived from the target, which is exactly
 			// what name-based virtual hosting on the far side needs.

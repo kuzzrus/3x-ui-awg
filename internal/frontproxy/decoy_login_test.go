@@ -139,3 +139,28 @@ func TestLoginMockLeavesOtherPathsAndUnmockedTemplatesAlone(t *testing.T) {
 		t.Fatalf("POST to an unmocked template = %d, want 404 (unaffected static behaviour)", w2.Code)
 	}
 }
+
+// What a scanner does to the login of a page must not show on the next visitor, who is the same peer to the listener
+// when it sits behind a fallback: the page keeps answering the way it does to a first attempt.
+func TestLoginMockBehindAFallbackKeepsRejectingAndNeverLocksOut(t *testing.T) {
+	for name, mock := range loginMocks {
+		if mock.Path == "" {
+			continue
+		}
+		t.Run(name, func(t *testing.T) {
+			h := newDecoyHandler(DecoyConfig{Mode: DecoyTemplate, Template: name, Seed: "test"})
+			body := `{"name":"admin","password":"x","username":"admin"}`
+			first := httptest.NewRecorder()
+			h.ServeHTTP(first, reqFrom(http.MethodPost, mock.Path, "127.0.0.1", body))
+			for range mock.Threshold + 3 {
+				h.ServeHTTP(httptest.NewRecorder(), reqFrom(http.MethodPost, mock.Path, "127.0.0.1", body))
+			}
+			again := httptest.NewRecorder()
+			h.ServeHTTP(again, reqFrom(http.MethodPost, mock.Path, "127.0.0.1", body))
+			if again.Code != first.Code || again.Body.String() != first.Body.String() {
+				t.Fatalf("after %d failures: %d %q, the first attempt got %d %q",
+					mock.Threshold+3, again.Code, again.Body.String(), first.Code, first.Body.String())
+			}
+		})
+	}
+}

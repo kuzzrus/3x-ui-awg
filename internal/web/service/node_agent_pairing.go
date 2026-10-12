@@ -25,6 +25,7 @@ type AgentNodeRequest struct {
 	OutboundTag         string   `json:"outboundTag" form:"outboundTag"`
 	Tags                []string `json:"tags" form:"tags"`
 	Sidecars            []string `json:"sidecars" form:"sidecars"`
+	NodeDecoyForm
 }
 
 // AgentPairing is an agent node with the bundle that pairs its agent to this master. The
@@ -70,6 +71,7 @@ func (s *NodeService) CreateAgent(req *AgentNodeRequest) (*AgentPairing, error) 
 		OutboundTag:         req.OutboundTag,
 		Tags:                req.Tags,
 		Sidecars:            req.Sidecars,
+		Decoy:               req.decoy(),
 		ConfigDirty:         true,
 		ConfigDirtyAt:       now,
 	}

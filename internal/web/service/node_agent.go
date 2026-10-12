@@ -40,6 +40,8 @@ func (s *NodeService) probeAgent(ctx context.Context, n *model.Node, proxyURL st
 	patch.XrayState = status.XrayState
 	patch.XrayError = status.XrayError
 	patch.SidecarStates = sidecarStatesFrom(status.Sidecars)
+	decoy := decoyStateFrom(status.Decoy)
+	patch.DecoyState = &decoy
 	patch.LastError = agentProblems(n.Id)
 	return patch, nil
 }
