@@ -2,7 +2,7 @@
 
 Design for an optional third kind of node: a thin, DB-less agent that only runs
 Xray-core for a master panel. The agent, its installer and the master side with its UI
-exist (phases 1 to 12 of [Phasing](#phasing)); the later items are not built.
+exist (phases 1 to 13 of [Phasing](#phasing)); the later items are not built.
 
 ## Problem
 
@@ -98,13 +98,14 @@ HTTP status codes (no `{success,msg,obj}` envelope).
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `PUT /v1/config`             | Body: the rendered Xray config, byte for byte; `restartOnUserRemoval` is a query flag. The revision is a hash of the flag and the body bytes, computed by each side over exactly what was sent, so no JSON re-encoding can make them disagree. Validates with the core's own test (`xray -test -c`), then applies (no-op, hot, or restart). Answers `{revision, applied: noop\|hot\|restart, xrayState}`; on a bad config answers 422 and keeps the last good one. |
 | `GET /v1/status`             | Agent version, hostname, GUID, config revision, Xray version/state/error, CPU, memory, uptime, interface throughput. This is the heartbeat.                                                                                                                                                                                                                                                                                                                        |
-| `GET /v1/stats`              | Cumulative counters since Xray started: per inbound tag and per user email (up/down), online emails, `xrayStartedAt` so the master detects resets exactly instead of guessing from a drop, `configRevision`, the revision of the config the agent holds, which tells the master whether a push is due, and `sidecarsRevision`, the same for the helper programs.                                                                                                   |
+| `GET /v1/stats`              | Cumulative counters since Xray started: per inbound tag and per user email (up/down), online emails, `xrayStartedAt` so the master detects resets exactly instead of guessing from a drop, `configRevision`, the revision of the config the agent holds, which tells the master whether a push is due, and `sidecarsRevision` and `decoyRevision`, the same for the helper programs and the decoy.                                                                 |
 | `POST /v1/restart`           | Restart Xray with the last good config. Answers 409 before any config exists and 500 when the core does not come back; 422 only ever means a refused push.                                                                                                                                                                                                                                                                                                         |
 | `GET /v1/geo`                | The `*.dat` files in the agent's asset folder, with their sizes.                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `PUT /v1/geo?name=&sha256=`  | Stores one geo file. The body is the file, gzip-encoded when `Content-Encoding: gzip` says so. The agent hashes what it unpacked and refuses (400) a name that is no `*.dat` file name or a body that does not match `sha256`, refuses (413) more than 256 MiB, and swaps the file in by renaming, so the core never reads half of one. It does not restart the core.                                                                                              |
 | `POST /v1/update`            | Starts the self-update: downloads the installer from its fixed address, refuses (409) while a run is on or when the agent was not installed by it, and runs it as a transient systemd unit of its own, because the installer stops this very agent. `dev=true` moves to the rolling dev channel. Answers the run as `{runId, state: pending}`.                                                                                                                     |
 | `GET /v1/update`             | How the last run ended: `none`, `pending`, `success` or `failed`, with the installer's exit code. The unit writes it when the installer ends, so the new agent can answer it.                                                                                                                                                                                                                                                                                      |
 | `PUT /v1/sidecars`           | Body `{enabled: [...]}`: the helper programs the agent runs, which replaces the list it had (an empty one stops them all). Answers at once, before an install has run, with `{revision, enabled, states}`; 400 for a name it does not know. See [Helper programs](#helper-programs).                                                                                                                                                                               |
+| `PUT /v1/decoy`              | Body `{mode, template, proxyUrl, domain, cert, email, certFile, keyFile, port}`: the decoy the agent serves, which replaces the one it had (no mode stops it). Answers at once, before the listener is up, with `{revision, spec, state}`; 400 for a decoy it cannot serve. See [Decoy site](#decoy-site).                                                                                                                                                         |
 | `GET /v1/logs?count=&level=` | The newest lines of the agent's own log, newest first, which holds what its core printed too. `count` is at most 1000 (100 by default), `level` is `debug`, `info`, `notice`, `warning` or `error` (`err` too, as the panel's own log dialog says it).                                                                                                                                                                                                             |
 
 Any other path, wrong method, or failed auth answers the same bare 404, so a response
@@ -162,6 +163,31 @@ list and putting it back tries at once. Every program is stopped when the agent 
 building a circuit and for Psiphon whether its tunnel is up. Psiphon runs with the config this
 build bundles, the same one the panel seeds for itself. The Nodes page shows the programs beside
 the node's tags.
+
+### Decoy site
+
+An agent can serve a decoy: what anyone who probes the port that the REALITY fallback of its core
+points at is shown, in place of an error. It is the decoy half of the panel's own reverse proxy
+(`internal/frontproxy`), run without a panel behind it, as a TLS listener on `127.0.0.1` (port 7443 unless
+the node says another) that answers every path with a page built into the agent or with a reverse
+proxy to a site the node names. The node carries it as `Node.Decoy` (agents only, replaced by each save,
+so a form that names no mode takes it off), and the master checks it on save the way the agent does.
+
+The listener must terminate real TLS, as the fallback hands over bytes still encrypted, so the decoy has a
+domain and a certificate: ACME over HTTP-01 on port 80 (`auto`, kept in the state folder, and it fails with the
+reason of the CA for a name that does not point at the node), or files that are on the node already
+(`manual`). It answers a ClientHello that names another domain with a failed handshake. The fallback
+target of a REALITY inbound of the node is set by hand to `127.0.0.1` and the port, as on the panel.
+The look of a page is made from the GUID of the agent, so no two nodes serve the same bytes.
+
+The master sends the decoy as it does the helper programs: when `decoyRevision` of `GET /v1/stats` is not
+the one of the decoy it wants (empty for none, so an agent from before the endpoint is left alone while its
+node asks for none, and is told it is too old once it asks for one). The agent keeps it in `decoy.json` of its
+state folder and serves it from boot. A loop looks at it every 10 seconds: a page or a proxy address that
+changed is swapped into the running listener, a new port, domain or certificate restarts it, and one that
+would not start is left alone for 30 seconds. `GET /v1/status` carries how it stands (`off`, `starting`,
+`running` or `failed`) and where the certificate stands (`obtaining`, `obtained` with its expiry, or
+`failed` with why).
 
 ### Geo files
 
@@ -428,7 +454,8 @@ says so; a tag or archive given explicitly is never swapped.
     outbound.
 11. **Helper programs**. Done: the Tor client of an agent node, set with `PUT /v1/sidecars`.
 12. **Psiphon**. Done: the second helper program, beside Tor.
-13. Later, each on its own: AdGuard Home as the node's decoy, pull mode.
+13. **Decoy site**. Done: a decoy page or proxy on an agent node, set with `PUT /v1/decoy`.
+14. Later, each on its own: AdGuard Home as a decoy, pull mode.
 
 ## Open questions
 

@@ -6,6 +6,7 @@ export const keys = {
   nodes: {
     root: () => ['nodes'] as const,
     list: () => ['nodes', 'list'] as const,
+    decoyTemplates: () => ['nodes', 'decoyTemplates'] as const,
   },
   hosts: {
     root: () => ['hosts'] as const,

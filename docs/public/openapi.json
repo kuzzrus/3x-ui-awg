@@ -35,6 +35,39 @@
           "allowPrivateAddress": {
             "type": "boolean"
           },
+          "decoyCert": {
+            "example": "auto",
+            "type": "string"
+          },
+          "decoyCertFile": {
+            "type": "string"
+          },
+          "decoyDomain": {
+            "example": "node.example.com",
+            "type": "string"
+          },
+          "decoyEmail": {
+            "example": "admin@example.com",
+            "type": "string"
+          },
+          "decoyKeyFile": {
+            "type": "string"
+          },
+          "decoyMode": {
+            "example": "template",
+            "type": "string"
+          },
+          "decoyPort": {
+            "example": 7443,
+            "type": "integer"
+          },
+          "decoyProxyUrl": {
+            "type": "string"
+          },
+          "decoyTemplate": {
+            "example": "maintenance",
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -65,6 +98,15 @@
         "required": [
           "address",
           "allowPrivateAddress",
+          "decoyCert",
+          "decoyCertFile",
+          "decoyDomain",
+          "decoyEmail",
+          "decoyKeyFile",
+          "decoyMode",
+          "decoyPort",
+          "decoyProxyUrl",
+          "decoyTemplate",
           "name",
           "outboundTag",
           "port",
@@ -3355,6 +3397,17 @@
             "format": "int64",
             "type": "integer"
           },
+          "decoy": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NodeDecoy"
+              }
+            ],
+            "description": "Decoy is the site an agent node serves to whoever probes it, which the REALITY fallback of its core can point at."
+          },
+          "decoyState": {
+            "$ref": "#/components/schemas/NodeDecoyState"
+          },
           "depletedCount": {
             "example": 1,
             "type": "integer"
@@ -3467,7 +3520,7 @@
             "type": "string"
           },
           "sidecarStates": {
-            "description": "SidecarStates is how each of the node's helper programs stood at the last heartbeat.",
+            "description": "SidecarStates is how each of the node's helper programs stood at the last heartbeat, and DecoyState the decoy.",
             "items": {
               "$ref": "#/components/schemas/NodeSidecar"
             },
@@ -3536,6 +3589,8 @@
           "configDirtyAt",
           "cpuPct",
           "createdAt",
+          "decoy",
+          "decoyState",
           "depletedCount",
           "disabledCount",
           "enable",
@@ -3572,6 +3627,134 @@
         ],
         "type": "object"
       },
+      "NodeDecoy": {
+        "description": "NodeDecoy is the decoy site of an agent node; an empty Mode is none. Cert is \"auto\" (ACME on port 80)\nor \"manual\" (files on the node), and Port is the loopback port the REALITY fallback of the node points at.",
+        "properties": {
+          "cert": {
+            "example": "auto",
+            "type": "string"
+          },
+          "certFile": {
+            "type": "string"
+          },
+          "domain": {
+            "example": "node.example.com",
+            "type": "string"
+          },
+          "email": {
+            "example": "admin@example.com",
+            "type": "string"
+          },
+          "keyFile": {
+            "type": "string"
+          },
+          "mode": {
+            "example": "template",
+            "type": "string"
+          },
+          "port": {
+            "example": 7443,
+            "type": "integer"
+          },
+          "proxyUrl": {
+            "type": "string"
+          },
+          "template": {
+            "example": "maintenance",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cert",
+          "certFile",
+          "domain",
+          "email",
+          "keyFile",
+          "mode",
+          "port",
+          "proxyUrl",
+          "template"
+        ],
+        "type": "object"
+      },
+      "NodeDecoyForm": {
+        "description": "NodeDecoyForm is the decoy of an agent node as a request carries it, one flat field each, since the\npages post forms. No mode is no decoy.",
+        "properties": {
+          "decoyCert": {
+            "example": "auto",
+            "type": "string"
+          },
+          "decoyCertFile": {
+            "type": "string"
+          },
+          "decoyDomain": {
+            "example": "node.example.com",
+            "type": "string"
+          },
+          "decoyEmail": {
+            "example": "admin@example.com",
+            "type": "string"
+          },
+          "decoyKeyFile": {
+            "type": "string"
+          },
+          "decoyMode": {
+            "example": "template",
+            "type": "string"
+          },
+          "decoyPort": {
+            "example": 7443,
+            "type": "integer"
+          },
+          "decoyProxyUrl": {
+            "type": "string"
+          },
+          "decoyTemplate": {
+            "example": "maintenance",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decoyCert",
+          "decoyCertFile",
+          "decoyDomain",
+          "decoyEmail",
+          "decoyKeyFile",
+          "decoyMode",
+          "decoyPort",
+          "decoyProxyUrl",
+          "decoyTemplate"
+        ],
+        "type": "object"
+      },
+      "NodeDecoyState": {
+        "description": "NodeDecoyState is how the decoy of an agent node stood when the agent last reported: off, starting,\nrunning or failed, and where its certificate stood.",
+        "properties": {
+          "cert": {
+            "example": "obtained",
+            "type": "string"
+          },
+          "certNotAfter": {
+            "example": 1800000000,
+            "format": "int64",
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "state": {
+            "example": "running",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cert",
+          "certNotAfter",
+          "message",
+          "state"
+        ],
+        "type": "object"
+      },
       "NodeMutationRequest": {
         "description": "NodeMutationRequest is the node write/probe contract. ApiToken is accepted\nonly as input. On update, nil means keep the stored token; replacement and\nclearing are explicit and mutually exclusive.",
         "properties": {
@@ -3590,6 +3773,39 @@
           },
           "clearApiToken": {
             "type": "boolean"
+          },
+          "decoyCert": {
+            "example": "auto",
+            "type": "string"
+          },
+          "decoyCertFile": {
+            "type": "string"
+          },
+          "decoyDomain": {
+            "example": "node.example.com",
+            "type": "string"
+          },
+          "decoyEmail": {
+            "example": "admin@example.com",
+            "type": "string"
+          },
+          "decoyKeyFile": {
+            "type": "string"
+          },
+          "decoyMode": {
+            "example": "template",
+            "type": "string"
+          },
+          "decoyPort": {
+            "example": 7443,
+            "type": "integer"
+          },
+          "decoyProxyUrl": {
+            "type": "string"
+          },
+          "decoyTemplate": {
+            "example": "maintenance",
+            "type": "string"
           },
           "enable": {
             "type": "boolean"
@@ -3660,6 +3876,15 @@
           "address",
           "allowPrivateAddress",
           "basePath",
+          "decoyCert",
+          "decoyCertFile",
+          "decoyDomain",
+          "decoyEmail",
+          "decoyKeyFile",
+          "decoyMode",
+          "decoyPort",
+          "decoyProxyUrl",
+          "decoyTemplate",
           "enable",
           "id",
           "inboundSyncMode",
@@ -3739,6 +3964,12 @@
             "example": 1700000000,
             "format": "int64",
             "type": "integer"
+          },
+          "decoy": {
+            "$ref": "#/components/schemas/NodeDecoy"
+          },
+          "decoyState": {
+            "$ref": "#/components/schemas/NodeDecoyState"
           },
           "depletedCount": {
             "example": 1,
@@ -3846,7 +4077,7 @@
             "type": "string"
           },
           "sidecarStates": {
-            "description": "SidecarStates is how each helper program of an agent node stood at the last heartbeat.",
+            "description": "SidecarStates is how each helper program of an agent node stood at the last heartbeat, and\nDecoyState the decoy.",
             "items": {
               "$ref": "#/components/schemas/NodeSidecar"
             },
@@ -3914,6 +4145,8 @@
           "configDirtyAt",
           "cpuPct",
           "createdAt",
+          "decoy",
+          "decoyState",
           "depletedCount",
           "disabledCount",
           "enable",
@@ -11073,6 +11306,23 @@
                       "configDirtyAt": 0,
                       "cpuPct": 12.5,
                       "createdAt": 1700000000,
+                      "decoy": {
+                        "cert": "auto",
+                        "certFile": "",
+                        "domain": "node.example.com",
+                        "email": "admin@example.com",
+                        "keyFile": "",
+                        "mode": "template",
+                        "port": 7443,
+                        "proxyUrl": "",
+                        "template": "maintenance"
+                      },
+                      "decoyState": {
+                        "cert": "obtained",
+                        "certNotAfter": 1800000000,
+                        "message": "",
+                        "state": "running"
+                      },
                       "depletedCount": 1,
                       "disabledCount": 2,
                       "enable": true,
@@ -11288,6 +11538,23 @@
                     "configDirtyAt": 0,
                     "cpuPct": 12.5,
                     "createdAt": 1700000000,
+                    "decoy": {
+                      "cert": "auto",
+                      "certFile": "",
+                      "domain": "node.example.com",
+                      "email": "admin@example.com",
+                      "keyFile": "",
+                      "mode": "template",
+                      "port": 7443,
+                      "proxyUrl": "",
+                      "template": "maintenance"
+                    },
+                    "decoyState": {
+                      "cert": "obtained",
+                      "certNotAfter": 1800000000,
+                      "message": "",
+                      "state": "running"
+                    },
                     "depletedCount": 1,
                     "disabledCount": 2,
                     "enable": true,
@@ -11452,6 +11719,23 @@
                     "configDirtyAt": 0,
                     "cpuPct": 12.5,
                     "createdAt": 1700000000,
+                    "decoy": {
+                      "cert": "auto",
+                      "certFile": "",
+                      "domain": "node.example.com",
+                      "email": "admin@example.com",
+                      "keyFile": "",
+                      "mode": "template",
+                      "port": 7443,
+                      "proxyUrl": "",
+                      "template": "maintenance"
+                    },
+                    "decoyState": {
+                      "cert": "obtained",
+                      "certNotAfter": 1800000000,
+                      "message": "",
+                      "state": "running"
+                    },
                     "depletedCount": 1,
                     "disabledCount": 2,
                     "enable": true,
@@ -11513,7 +11797,7 @@
         "tags": [
           "Nodes"
         ],
-        "summary": "Register a node that runs the thin x-ui-agent instead of a full panel. The agent is not installed yet, so the node is not probed. The panel mints the secret and the certificate of the agent and returns the pairing bundle once: it holds the private key, is never stored, and is what install-agent.sh asks for on the node. tags label the node: a routing rule whose nodeTags name one of them is part of the agent’s config. sidecars lists the helper programs the agent runs beside its core (\"tor\", \"psiphon\"); the agent installs one that the server lacks.",
+        "summary": "Register a node that runs the thin x-ui-agent instead of a full panel. The agent is not installed yet, so the node is not probed. The panel mints the secret and the certificate of the agent and returns the pairing bundle once: it holds the private key, is never stored, and is what install-agent.sh asks for on the node. tags label the node: a routing rule whose nodeTags name one of them is part of the agent’s config. sidecars lists the helper programs the agent runs beside its core (\"tor\", \"psiphon\"); the agent installs one that the server lacks. decoyMode (template or proxy; empty is none), decoyTemplate, decoyProxyUrl, decoyDomain, decoyCert (auto or manual), decoyEmail, decoyCertFile, decoyKeyFile and decoyPort set the decoy site the agent serves to whoever probes it.",
         "operationId": "post_panel_api_nodes_addAgent",
         "requestBody": {
           "required": true,
@@ -11626,7 +11910,7 @@
         "tags": [
           "Nodes"
         ],
-        "summary": "Replace a node’s connection details. apiToken is write-only: omit it or send an empty string to keep the stored token; set clearApiToken=true to clear it. For an agent node, tags and sidecars are the full lists: omit one to clear it.",
+        "summary": "Replace a node’s connection details. apiToken is write-only: omit it or send an empty string to keep the stored token; set clearApiToken=true to clear it. For an agent node, tags and sidecars are the full lists, and the decoy fields are the whole decoy: omit one to clear it.",
         "operationId": "post_panel_api_nodes_update_id",
         "parameters": [
           {
@@ -17312,6 +17596,23 @@
                   "configDirtyAt": 0,
                   "cpuPct": 12.5,
                   "createdAt": 1700000000,
+                  "decoy": {
+                    "cert": "auto",
+                    "certFile": "",
+                    "domain": "node.example.com",
+                    "email": "admin@example.com",
+                    "keyFile": "",
+                    "mode": "template",
+                    "port": 7443,
+                    "proxyUrl": "",
+                    "template": "maintenance"
+                  },
+                  "decoyState": {
+                    "cert": "obtained",
+                    "certNotAfter": 1800000000,
+                    "message": "",
+                    "state": "running"
+                  },
                   "depletedCount": 1,
                   "disabledCount": 2,
                   "enable": true,

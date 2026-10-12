@@ -25,6 +25,8 @@ const (
 	PathUpdate = "/v1/update"
 	// PathSidecars sets which helper programs the agent runs beside its core (PUT).
 	PathSidecars = "/v1/sidecars"
+	// PathDecoy sets the decoy site the agent serves to whoever probes it (PUT).
+	PathDecoy = "/v1/decoy"
 
 	// QueryRestartOnUserRemoval is the PathConfig query flag (a bool) that makes
 	// the agent restart the core instead of dropping a removed client's credential.
@@ -50,6 +52,8 @@ const (
 	MaxLogLines = 1000
 	// MaxSidecarsBytes caps a PathSidecars body, which is a short list of names.
 	MaxSidecarsBytes = 4 << 10
+	// MaxDecoyBytes caps a PathDecoy body, which is a handful of short fields.
+	MaxDecoyBytes = 16 << 10
 
 	maxGeoNameLen = 100
 )
@@ -90,6 +94,8 @@ type Status struct {
 	// Sidecars is how each helper program the agent was told to run stands; an agent that has
 	// none to run, and one that predates them, report an empty list.
 	Sidecars []SidecarState `json:"sidecars"`
+	// Decoy is how the decoy stands; an agent that predates it reports no state at all.
+	Decoy DecoyState `json:"decoy"`
 }
 
 type Counter struct {
@@ -108,6 +114,8 @@ type Stats struct {
 	// SidecarsRevision is SidecarsRevision of the helper programs the agent was told to run, which
 	// tells the master whether it must send the list again. It is empty for none, as for an old agent.
 	SidecarsRevision string `json:"sidecarsRevision"`
+	// DecoyRevision is DecoyRevision of the decoy the agent was told to serve, empty for none and for an old agent.
+	DecoyRevision string `json:"decoyRevision"`
 }
 
 // The helper programs an agent runs, each a client on a loopback SOCKS port for an outbound of the

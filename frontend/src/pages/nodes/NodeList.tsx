@@ -27,6 +27,7 @@ import {
 
 import NodeHistoryPanel from './NodeHistoryPanel';
 import SidecarChips from './SidecarChips';
+import DecoyChip from './DecoyChip';
 import type { NodeRecord } from '@/api/queries/useNodesQuery';
 import { isPanelUpdateAvailable } from '@/lib/panel-version';
 import { activateOnKey } from '@/utils/a11y';
@@ -399,6 +400,7 @@ export default function NodeList({
               </span>
             )}
             <SidecarChips node={record} />
+            <DecoyChip node={record} />
           </div>
         ),
       },
@@ -857,6 +859,12 @@ export default function NodeList({
                   <div className="stat-row">
                     <span className="stat-label">{t('pages.nodes.agent.sidecars')}</span>
                     <SidecarChips node={statsNode} detailed />
+                  </div>
+                )}
+                {statsNode.kind === 'agent' && !!statsNode.decoy?.mode && (
+                  <div className="stat-row">
+                    <span className="stat-label">{t('pages.nodes.agent.decoy')}</span>
+                    <DecoyChip node={statsNode} detailed />
                   </div>
                 )}
                 <div className="stat-row">

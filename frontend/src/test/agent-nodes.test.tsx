@@ -144,6 +144,110 @@ describe('AgentNodeFormModal', () => {
     expect(save.mock.calls[0][0].sidecars).toEqual(['tor', 'psiphon']);
   });
 
+  it('serves a decoy page when asked to, with the defaults of a decoy', async () => {
+    vi.spyOn(HttpUtil, 'post').mockResolvedValue(
+      new Msg(true, '', { templates: ['maintenance', 'parked'] }),
+    );
+    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
+    renderWithProviders(
+      <AgentNodeFormModal open node={null} save={save} onOpenChange={() => {}} />,
+    );
+
+    expect(screen.queryByLabelText('Domain')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'edge-1' } });
+    fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'node.example.com' } });
+    chooseSelectOption(screen.getByLabelText('Decoy site').id, 'A page built into the panel');
+    fireEvent.change(screen.getByLabelText('Domain'), { target: { value: ' decoy.example.com ' } });
+    await waitFor(() => expect(screen.getByLabelText('Page')).toBeTruthy());
+    // The pages come from the panel, a moment after the field is there.
+    await waitFor(() => chooseSelectOption(screen.getByLabelText('Page').id, 'Parked domain'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0][0]).toMatchObject({
+      decoyMode: 'template',
+      decoyTemplate: 'parked',
+      decoyDomain: 'decoy.example.com',
+      decoyCert: 'auto',
+      decoyPort: 7443,
+    });
+  });
+
+  it('asks for the files of a certificate on the node, and for the address of a proxy', async () => {
+    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
+    renderWithProviders(
+      <AgentNodeFormModal open node={null} save={save} onOpenChange={() => {}} />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'edge-1' } });
+    fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'node.example.com' } });
+    chooseSelectOption(screen.getByLabelText('Decoy site').id, 'A reverse proxy to a site');
+    expect(screen.getByLabelText('Address of the site')).toBeTruthy();
+    expect(screen.queryByLabelText('Page')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Domain'), { target: { value: 'decoy.example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(document.body.textContent).toContain('A decoy needs a domain'));
+    expect(save).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Address of the site'), {
+      target: { value: 'https://site.example' },
+    });
+    fireEvent.click(screen.getByRole('radio', { name: 'Files on the node' }));
+    expect(screen.queryByLabelText('Email for the certificate')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(save).not.toHaveBeenCalled());
+
+    fireEvent.change(screen.getByLabelText('Certificate file'), {
+      target: { value: '/etc/ssl/n.pem' },
+    });
+    fireEvent.change(screen.getByLabelText('Key file'), { target: { value: '/etc/ssl/n.key' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0][0]).toMatchObject({
+      decoyMode: 'proxy',
+      decoyProxyUrl: 'https://site.example',
+      decoyCert: 'manual',
+      decoyCertFile: '/etc/ssl/n.pem',
+      decoyKeyFile: '/etc/ssl/n.key',
+    });
+  });
+
+  it('shows the decoy an agent holds, and takes it off when asked to', async () => {
+    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
+    const node: NodeRecord = {
+      id: 4,
+      name: 'edge-4',
+      kind: 'agent',
+      address: 'a.example.com',
+      port: 9443,
+      enable: true,
+      decoy: {
+        mode: 'proxy',
+        proxyUrl: 'https://site.example',
+        domain: 'decoy.example.com',
+        cert: 'auto',
+        email: 'ops@example.com',
+        port: 7500,
+      },
+    };
+    renderWithProviders(
+      <AgentNodeFormModal open node={node} save={save} onOpenChange={() => {}} />,
+    );
+
+    expect(screen.getByLabelText('Domain')).toHaveProperty('value', 'decoy.example.com');
+    expect(screen.getByLabelText('Address of the site')).toHaveProperty(
+      'value',
+      'https://site.example',
+    );
+    expect(screen.getByLabelText('Port on 127.0.0.1')).toHaveProperty('value', '7500');
+    chooseSelectOption(screen.getByLabelText('Decoy site').id, 'None');
+    expect(screen.queryByLabelText('Domain')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0][0]).toMatchObject({ id: 4, decoyMode: '' });
+  });
+
   it('labels the agent with tags, suggesting the ones the nodes already carry', async () => {
     vi.spyOn(HttpUtil, 'get').mockImplementation(async (url: string) =>
       url === '/panel/api/nodes/list'
@@ -362,6 +466,80 @@ describe('NodeList with an agent node', () => {
 
     const chips = Array.from(document.querySelectorAll('.node-sidecars .ant-tag'));
     expect(chips.map((chip) => chip.textContent)).toEqual(['Tor: failed', 'Psiphon: running']);
+  });
+
+  it('shows how the decoy of an agent stands, and nothing for a panel or a node with none', () => {
+    const decoy = { mode: 'template', template: 'parked', domain: 'decoy.example.com', port: 7500 };
+    const chips = () => Array.from(document.querySelectorAll('.node-decoy .ant-tag'));
+    const cases: Array<[Partial<NodeRecord>, string, string | undefined]> = [
+      [{ decoyState: { state: 'off' } }, 'Decoy: waiting', undefined],
+      [{ decoyState: { state: 'starting' } }, 'Decoy: starting', 'ant-tag-processing'],
+      [{ decoyState: { state: 'running', cert: 'obtained' } }, 'Decoy: running', 'ant-tag-success'],
+      [
+        { decoyState: { state: 'running', cert: 'obtaining' } },
+        'Decoy: getting a certificate',
+        'ant-tag-processing',
+      ],
+      [
+        { decoyState: { state: 'running', cert: 'failed', message: 'no valid A records' } },
+        'Decoy: certificate failed',
+        'ant-tag-error',
+      ],
+      [
+        { decoyState: { state: 'failed', message: 'port in use' } },
+        'Decoy: failed',
+        'ant-tag-error',
+      ],
+    ];
+    for (const [state, text, color] of cases) {
+      renderList(noop, noop, noop, noop, { list: [{ ...nodes[1], decoy, ...state }] });
+      expect(chips().map((chip) => chip.textContent)).toEqual([text]);
+      if (color) expect(chips()[0].className).toContain(color);
+      document.body.innerHTML = '';
+    }
+
+    renderList(noop, noop, noop, noop, {
+      list: [
+        { ...nodes[0], decoy },
+        { ...nodes[1], decoy: { mode: '' } },
+      ],
+    });
+    expect(chips()).toHaveLength(0);
+  });
+
+  it('says why a decoy failed when pointed at, and until when its certificate is good', async () => {
+    renderList(noop, noop, noop, noop, {
+      list: [
+        {
+          ...nodes[1],
+          decoy: { mode: 'template', domain: 'decoy.example.com' },
+          decoyState: { state: 'running', cert: 'failed', message: 'no valid A records' },
+        },
+      ],
+    });
+    const chip = document.querySelector('.node-decoy .ant-tag');
+    if (!chip) throw new Error('no chip');
+    fireEvent.mouseEnter(chip);
+    await waitFor(() => expect(document.body.textContent).toContain('no valid A records'));
+  });
+
+  it('tells in the info of an agent where the fallback of its REALITY inbound must point', () => {
+    renderList(noop, noop, noop, noop, {
+      list: [
+        {
+          ...nodes[1],
+          decoy: { mode: 'template', domain: 'decoy.example.com', port: 7500 },
+          decoyState: { state: 'running', cert: 'obtained' },
+        },
+      ],
+      isMobile: true,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'More Information' }));
+
+    expect(document.querySelector('.card-stats')?.textContent).toContain(
+      'Decoy siteDecoy: runningFallback target: 127.0.0.1:7500 for decoy.example.com',
+    );
   });
 
   it('says what a helper program last said when pointed at', async () => {

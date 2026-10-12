@@ -21,6 +21,7 @@ const (
 	guidFile     = "guid"
 	lastGoodFile = "last-good.json"
 	sidecarsFile = "sidecars.json"
+	decoyFile    = "decoy.json"
 	stateDirMode = 0o700
 	stateMode    = 0o600
 )
@@ -118,6 +119,36 @@ func (s *State) SaveSidecars(names []string) error {
 		return err
 	}
 	return xray.WriteFileAtomic(filepath.Join(s.dir, sidecarsFile), raw, stateMode)
+}
+
+// Decoy is the decoy the master last told the agent to serve, so a reboot with the master unreachable
+// still serves it; none before the first one. One this build cannot serve, as after a downgrade, is none.
+func (s *State) Decoy() (agentproto.DecoySpec, error) {
+	raw, err := os.ReadFile(filepath.Join(s.dir, decoyFile))
+	if errors.Is(err, fs.ErrNotExist) {
+		return agentproto.DecoySpec{}, nil
+	}
+	if err != nil {
+		return agentproto.DecoySpec{}, err
+	}
+	var spec agentproto.DecoySpec
+	if err := json.Unmarshal(raw, &spec); err != nil {
+		return agentproto.DecoySpec{}, fmt.Errorf("the decoy in %s is unreadable", s.dir)
+	}
+	spec, err = agentproto.NormalizeDecoy(spec, decoyRules())
+	if err != nil {
+		return agentproto.DecoySpec{}, fmt.Errorf("the decoy in %s cannot be served: %w", s.dir, err)
+	}
+	return spec, nil
+}
+
+// SaveDecoy replaces the stored decoy in one atomic step, like the config.
+func (s *State) SaveDecoy(spec agentproto.DecoySpec) error {
+	raw, err := json.Marshal(spec)
+	if err != nil {
+		return err
+	}
+	return xray.WriteFileAtomic(filepath.Join(s.dir, decoyFile), raw, stateMode)
 }
 
 // Dir is the folder the state lives in, which the agent's other private files share.

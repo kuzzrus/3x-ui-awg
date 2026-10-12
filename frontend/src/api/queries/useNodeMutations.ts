@@ -24,6 +24,15 @@ export type AgentNodePayload = Pick<
   | 'outboundTag'
   | 'tags'
   | 'sidecars'
+  | 'decoyMode'
+  | 'decoyTemplate'
+  | 'decoyProxyUrl'
+  | 'decoyDomain'
+  | 'decoyCert'
+  | 'decoyEmail'
+  | 'decoyCertFile'
+  | 'decoyKeyFile'
+  | 'decoyPort'
 >;
 
 export interface NodeUpdateResult {

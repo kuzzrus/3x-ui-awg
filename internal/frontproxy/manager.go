@@ -28,6 +28,8 @@ type Options struct {
 	// SNITargets maps a ClientHello SNI to a loopback "host:port" its raw
 	// bytes get spliced to instead of TLS termination here; see sni_relay.go.
 	SNITargets map[string]string
+	// DecoyOnly serves the decoy for every path, for a host with no panel to route to.
+	DecoyOnly bool
 }
 
 // Manager owns the single reverse-proxy listener for the whole install.
@@ -71,7 +73,7 @@ func (m *Manager) Start(opts Options) error {
 		setCertStatus(CertStatus{State: CertStateFailed, Error: err.Error()})
 		return err
 	}
-	if opts.Routing.PanelBasePath == "" || matchesPrefix("/", opts.Routing.PanelBasePath) {
+	if !opts.DecoyOnly && (opts.Routing.PanelBasePath == "" || matchesPrefix("/", opts.Routing.PanelBasePath)) {
 		err := fmt.Errorf("the panel needs a non-root base path before the reverse proxy can tell it apart from the decoy")
 		setCertStatus(CertStatus{State: CertStateFailed, Error: err.Error()})
 		return err
@@ -101,7 +103,7 @@ func (m *Manager) Start(opts Options) error {
 	sniRelay := newSNIRelayListener(ln, opts.SNITargets)
 	ln = tls.NewListener(sniRelay, tlsCfg)
 
-	m.store(newHandler(opts.Routing, opts.Decoy))
+	m.store(handlerFor(opts))
 	srv := &http.Server{
 		Handler:           http.HandlerFunc(m.dispatch),
 		ReadHeaderTimeout: 5 * time.Second,
@@ -137,7 +139,7 @@ func (m *Manager) Reload(opts Options) {
 	if !running {
 		return
 	}
-	m.store(newHandler(opts.Routing, opts.Decoy))
+	m.store(handlerFor(opts))
 	if sniRelay != nil {
 		sniRelay.SetTargets(opts.SNITargets)
 	}
@@ -179,6 +181,14 @@ func (m *Manager) IsRunning() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.server != nil
+}
+
+// handlerFor is what a listener with these options serves: the routed panel, or only the decoy.
+func handlerFor(opts Options) http.Handler {
+	if opts.DecoyOnly {
+		return newDecoyHandler(opts.Decoy)
+	}
+	return newHandler(opts.Routing, opts.Decoy)
 }
 
 // newHandler dispatches each request to the panel, the subscription server,

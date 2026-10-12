@@ -10,6 +10,15 @@ export type transportBits = number;
 export interface AgentNodeRequest {
   address: string;
   allowPrivateAddress: boolean;
+  decoyCert: string;
+  decoyCertFile: string;
+  decoyDomain: string;
+  decoyEmail: string;
+  decoyKeyFile: string;
+  decoyMode: string;
+  decoyPort: number;
+  decoyProxyUrl: string;
+  decoyTemplate: string;
   name: string;
   outboundTag: string;
   port: number;
@@ -772,6 +781,8 @@ export interface Node {
   configDirtyAt: number;
   cpuPct: number;
   createdAt: number;
+  decoy: NodeDecoy;
+  decoyState: NodeDecoyState;
   depletedCount: number;
   disabledCount: number;
   enable: boolean;
@@ -809,12 +820,52 @@ export interface Node {
   xrayVersion: string;
 }
 
+export interface NodeDecoy {
+  cert: string;
+  certFile: string;
+  domain: string;
+  email: string;
+  keyFile: string;
+  mode: string;
+  port: number;
+  proxyUrl: string;
+  template: string;
+}
+
+export interface NodeDecoyForm {
+  decoyCert: string;
+  decoyCertFile: string;
+  decoyDomain: string;
+  decoyEmail: string;
+  decoyKeyFile: string;
+  decoyMode: string;
+  decoyPort: number;
+  decoyProxyUrl: string;
+  decoyTemplate: string;
+}
+
+export interface NodeDecoyState {
+  cert: string;
+  certNotAfter: number;
+  message: string;
+  state: string;
+}
+
 export interface NodeMutationRequest {
   address: string;
   allowPrivateAddress: boolean;
   apiToken?: string | null;
   basePath: string;
   clearApiToken?: boolean;
+  decoyCert: string;
+  decoyCertFile: string;
+  decoyDomain: string;
+  decoyEmail: string;
+  decoyKeyFile: string;
+  decoyMode: string;
+  decoyPort: number;
+  decoyProxyUrl: string;
+  decoyTemplate: string;
   enable: boolean;
   id: number;
   inboundSyncMode: string;
@@ -846,6 +897,8 @@ export interface NodeView {
   configDirtyAt: number;
   cpuPct: number;
   createdAt: number;
+  decoy: NodeDecoy;
+  decoyState: NodeDecoyState;
   depletedCount: number;
   disabledCount: number;
   enable: boolean;

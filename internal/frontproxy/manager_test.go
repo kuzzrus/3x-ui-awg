@@ -1,6 +1,8 @@
 package frontproxy
 
 import (
+	"crypto/tls"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // upstreamOn starts a loopback server that echoes a marker, and returns its
@@ -231,6 +234,52 @@ func TestStartRejectsRootBasePath(t *testing.T) {
 	}
 	if m.IsRunning() {
 		t.Error("manager reports running after a refused Start")
+	}
+}
+
+// A host with no panel serves the decoy for every path, and needs no base path to tell the panel from it.
+func TestDecoyOnlyServesTheDecoyForEveryPath(t *testing.T) {
+	certFile, keyFile, _ := writeTestCert(t)
+	opts := Options{
+		Listen: "127.0.0.1",
+		Port:   freePort(t),
+		Decoy:  DecoyConfig{Mode: DecoyTemplate, Template: "parked"},
+		TLS:    TLSSettings{Mode: CertManual, CertFile: certFile, KeyFile: keyFile, Domain: "example.test"},
+	}
+	if err := (&Manager{}).Start(opts); err == nil {
+		t.Fatal("Start without a panel succeeded although the listener was not asked to serve only the decoy")
+	}
+
+	// A host with no panel has no routing config, but one that is there must not take a path away from the decoy.
+	panel := Config{PanelBasePath: "/p/", PanelPort: upstreamOn(t, "PANEL")}
+	for name, routing := range map[string]Config{"no routing": {}, "a panel to keep out": panel} {
+		t.Run(name, func(t *testing.T) {
+			opts := opts
+			opts.Port = freePort(t)
+			opts.DecoyOnly = true
+			opts.Routing = routing
+			m := &Manager{}
+			if err := m.Start(opts); err != nil {
+				t.Fatalf("Start: %v", err)
+			}
+			t.Cleanup(func() { _ = m.Stop() })
+			client := &http.Client{
+				Timeout:   5 * time.Second,
+				Transport: &http.Transport{TLSClientConfig: &tls.Config{ServerName: "example.test", InsecureSkipVerify: true}}, //nolint:gosec // a self-signed certificate of the test
+			}
+			t.Cleanup(client.CloseIdleConnections)
+			for _, path := range []string{"/", "/p/panel/inbounds", "/anything"} {
+				resp, err := client.Get("https://127.0.0.1:" + strconv.Itoa(opts.Port) + path)
+				if err != nil {
+					t.Fatalf("GET %s: %v", path, err)
+				}
+				body, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				if !strings.Contains(string(body), "Здесь") {
+					t.Errorf("GET %s answered %q, want the decoy page", path, body)
+				}
+			}
+		})
 	}
 }
 

@@ -33,8 +33,10 @@ const (
 	agentRestartTimeout = 25 * time.Second
 	agentGeoListTimeout = 10 * time.Second
 	agentLogsTimeout    = 10 * time.Second
-	// The agent answers at once, before an install that the list may start has run.
+	// The agent answers at once, before an install that the list may start has run, or the listener of
+	// a decoy is up.
 	agentSidecarsTimeout = 10 * time.Second
+	agentDecoyTimeout    = 10 * time.Second
 	// A geo file is tens of megabytes and the link to a node may be slow.
 	agentGeoSendTimeout = 15 * time.Minute
 	// The agent downloads the installer, in up to 10 s, before it answers that an update has started.
@@ -235,6 +237,20 @@ func (c *AgentClient) PutSidecars(ctx context.Context, names []string) (*agentpr
 	}
 	var out agentproto.Sidecars
 	if err := c.do(ctx, http.MethodPut, agentproto.PathSidecars, nil, body, agentSidecarsTimeout, maxAnswerBytes, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// PutDecoy tells the agent which decoy to serve, in place of the one it had, and none when spec is the zero
+// value. It answers before the listener is up, with how the decoy stands then.
+func (c *AgentClient) PutDecoy(ctx context.Context, spec agentproto.DecoySpec) (*agentproto.Decoy, error) {
+	body, err := json.Marshal(spec)
+	if err != nil {
+		return nil, err
+	}
+	var out agentproto.Decoy
+	if err := c.do(ctx, http.MethodPut, agentproto.PathDecoy, nil, body, agentDecoyTimeout, maxAnswerBytes, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

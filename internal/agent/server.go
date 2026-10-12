@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,6 +31,7 @@ type Server struct {
 	geoDir   string
 	updater  *updater
 	sidecars *sidecarHost
+	decoy    *decoyHost
 	httpLog  serverLog
 	sys      sysSampler
 	routes   map[string]http.HandlerFunc
@@ -50,6 +52,7 @@ func NewServer(core *Core, state *State, secret string) (*Server, error) {
 		geoDir:   config.GetBinFolderPath(),
 		updater:  &updater{stateDir: state.Dir()},
 		sidecars: newSidecarHost(state, defaultSidecars()),
+		decoy:    newDecoyHost(state, frontProxyRunner{}, guid, filepath.Join(state.Dir(), decoyCertsDir)),
 	}
 	s.routes = map[string]http.HandlerFunc{}
 	s.paths = map[string]bool{}
@@ -67,6 +70,7 @@ func NewServer(core *Core, state *State, secret string) (*Server, error) {
 		{http.MethodPost, agentproto.PathUpdate, s.postUpdate},
 		{http.MethodGet, agentproto.PathUpdate, s.getUpdate},
 		{http.MethodPut, agentproto.PathSidecars, s.putSidecars},
+		{http.MethodPut, agentproto.PathDecoy, s.putDecoy},
 	} {
 		s.routes[route.method+" "+route.path] = route.handler
 		s.paths[route.path] = true
@@ -98,8 +102,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	handler(w, r)
 }
 
-// RunSidecars keeps the helper programs the master asked for running until ctx ends.
-func (s *Server) RunSidecars(ctx context.Context) { s.sidecars.Run(ctx) }
+// RunHosts keeps the helper programs and the decoy the master asked for running until ctx ends.
+func (s *Server) RunHosts(ctx context.Context) {
+	var wg sync.WaitGroup
+	wg.Go(func() { s.sidecars.Run(ctx) })
+	wg.Go(func() { s.decoy.Run(ctx) })
+	wg.Wait()
+}
 
 // Serve answers on ln until ctx ends; tlsConfig carries the certificate and the SNI gate.
 func (s *Server) Serve(ctx context.Context, ln net.Listener, tlsConfig *tls.Config) error {
@@ -259,7 +268,26 @@ func (s *Server) getStatus(w http.ResponseWriter, _ *http.Request) {
 		NetUp:          sys.netUp,
 		NetDown:        sys.netDown,
 		Sidecars:       s.sidecars.States(),
+		Decoy:          s.decoy.State(),
 	})
+}
+
+func (s *Server) putDecoy(w http.ResponseWriter, r *http.Request) {
+	var spec agentproto.DecoySpec
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, agentproto.MaxDecoyBytes)).Decode(&spec); err != nil {
+		writeError(w, http.StatusBadRequest, "the decoy is not a JSON object: "+err.Error())
+		return
+	}
+	view, err := s.decoy.Set(spec)
+	var refused *agentproto.DecoyError
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusOK, view)
+	case errors.As(err, &refused):
+		writeError(w, http.StatusBadRequest, err.Error())
+	default:
+		writeError(w, http.StatusInternalServerError, "keep the decoy: "+err.Error())
+	}
 }
 
 func (s *Server) putSidecars(w http.ResponseWriter, r *http.Request) {
@@ -285,6 +313,7 @@ func (s *Server) getStats(w http.ResponseWriter, _ *http.Request) {
 	switch {
 	case err == nil:
 		stats.SidecarsRevision = s.sidecars.Revision()
+		stats.DecoyRevision = s.decoy.Revision()
 		writeJSON(w, http.StatusOK, stats)
 	case errors.Is(err, ErrCoreRestarted):
 		writeError(w, http.StatusServiceUnavailable, err.Error())

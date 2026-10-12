@@ -43,6 +43,7 @@ type agentSyncState struct {
 	geoFailures    int  // uploads that failed in a row
 	geoRetryAt     time.Time
 	sidecarsRetry  time.Time // the helper programs are not sent again before then
+	decoyRetry     time.Time // nor the decoy
 	warned         map[string]time.Time
 }
 
@@ -58,10 +59,11 @@ func (s *AgentSyncService) stateFor(nodeID int) *agentSyncState {
 	return st
 }
 
-// Sync keeps an agent on the helper programs and the config its node asks for; stats is the agent's
-// report this tick, nil if unreadable.
+// Sync keeps an agent on the helper programs, the decoy and the config its node asks for; stats is the
+// agent's report this tick, nil if unreadable.
 func (s *AgentSyncService) Sync(ctx context.Context, rt *runtime.AgentRuntime, n *model.Node, stats *agentproto.Stats) error {
-	return errors.Join(s.syncSidecars(ctx, rt, n, stats, time.Now()), s.syncConfig(ctx, rt, n, stats))
+	now := time.Now()
+	return errors.Join(s.syncSidecars(ctx, rt, n, stats, now), s.syncDecoy(ctx, rt, n, stats, now), s.syncConfig(ctx, rt, n, stats))
 }
 
 // syncConfig pushes the config an agent should run when its node is dirty or the periodic comparison
