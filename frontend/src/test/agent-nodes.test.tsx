@@ -124,6 +124,26 @@ describe('AgentNodeFormModal', () => {
     expect(save.mock.calls[1][0]).toMatchObject({ id: 4, sidecars: [] });
   });
 
+  it('offers Psiphon beside Tor, and sends both in the order they are listed', async () => {
+    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
+    renderWithProviders(
+      <AgentNodeFormModal open node={null} save={save} onOpenChange={() => {}} />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'edge-1' } });
+    fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'node.example.com' } });
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: /Psiphon, a SOCKS proxy on 127.0.0.1:19060/ }),
+    );
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: /Tor, a SOCKS proxy on 127.0.0.1:19050/ }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0][0].sidecars).toEqual(['tor', 'psiphon']);
+  });
+
   it('labels the agent with tags, suggesting the ones the nodes already carry', async () => {
     vi.spyOn(HttpUtil, 'get').mockImplementation(async (url: string) =>
       url === '/panel/api/nodes/list'
@@ -324,6 +344,24 @@ describe('NodeList with an agent node', () => {
     renderList(noop, noop, noop, noop, { list: [tor('failed', 'apt-get: no network')] });
     expect(chips().map((chip) => chip.textContent)).toEqual(['Tor: failed']);
     expect(chips()[0].className).toContain('ant-tag-error');
+  });
+
+  it('shows each helper program of an agent on its own', () => {
+    renderList(noop, noop, noop, noop, {
+      list: [
+        {
+          ...nodes[1],
+          sidecars: ['tor', 'psiphon'],
+          sidecarStates: [
+            { name: 'tor', state: 'failed', message: 'no network' },
+            { name: 'psiphon', state: 'running', message: 'tunnel up' },
+          ],
+        },
+      ],
+    });
+
+    const chips = Array.from(document.querySelectorAll('.node-sidecars .ant-tag'));
+    expect(chips.map((chip) => chip.textContent)).toEqual(['Tor: failed', 'Psiphon: running']);
   });
 
   it('says what a helper program last said when pointed at', async () => {

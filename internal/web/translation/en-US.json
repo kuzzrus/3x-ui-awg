@@ -1312,10 +1312,12 @@
         "sidecars": "Helper programs",
         "sidecarsHint": "Programs the agent runs beside Xray. The agent installs one that the server lacks, which can take a few minutes. Send traffic through it with an outbound in the Xray template, limited to this node with its tag.",
         "sidecarNames": {
-          "tor": "Tor"
+          "tor": "Tor",
+          "psiphon": "Psiphon"
         },
         "sidecarDescriptions": {
-          "tor": "Tor, a SOCKS proxy on 127.0.0.1:19050 of the server"
+          "tor": "Tor, a SOCKS proxy on 127.0.0.1:19050 of the server",
+          "psiphon": "Psiphon, a SOCKS proxy on 127.0.0.1:19060 of the server (x86-64 servers only)"
         },
         "sidecarStates": {
           "pending": "waiting",

@@ -43,6 +43,22 @@ func IsInstalled() bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
+// MatchesPin reports whether the installed binary is the one this build pins by its checksum, which
+// one that an earlier build downloaded, or that was damaged since, is not.
+func MatchesPin() bool { return hasDigest(BinPath(), releaseSHA256) }
+
+// hasDigest reports whether the file at path is within the download limit and hashes to want.
+func hasDigest(path, want string) bool {
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	digest := sha256.New()
+	n, err := io.Copy(digest, io.LimitReader(file, maxDownloadBytes+1))
+	return err == nil && n <= maxDownloadBytes && hex.EncodeToString(digest.Sum(nil)) == want
+}
+
 // assetPath returns the path within psiphon-tunnel-core-binaries for the
 // running platform. Only linux/amd64 is published there, verified against the repo's own listing.
 func assetPath(goos, goarch string) (string, error) {

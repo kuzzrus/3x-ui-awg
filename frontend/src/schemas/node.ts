@@ -5,7 +5,7 @@ export const MAX_NODE_TAG_LENGTH = 32;
 const TAGS_INVALID = 'pages.nodes.agent.tagsInvalid';
 
 // The helper programs an agent can run beside its core, which the panel offers on the node's form.
-export const NODE_SIDECARS = ['tor'] as const;
+export const NODE_SIDECARS = ['tor', 'psiphon'] as const;
 
 export const NodeRecordSchema = z
   .object({

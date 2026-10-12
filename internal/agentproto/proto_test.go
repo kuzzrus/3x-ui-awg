@@ -198,6 +198,7 @@ func TestNormalizeSidecars(t *testing.T) {
 		{"empty", []string{}, nil, ""},
 		{"blank names are dropped", []string{"", "  "}, nil, ""},
 		{"one", []string{SidecarTor}, []string{SidecarTor}, ""},
+		{"each in the order they are listed", []string{SidecarPsiphon, " tor"}, []string{SidecarTor, SidecarPsiphon}, ""},
 		{"repeats and spaces", []string{" tor", "tor ", SidecarTor}, []string{SidecarTor}, ""},
 		{"unknown", []string{SidecarTor, "no-such-program"}, nil, "no-such-program"},
 		{"case matters", []string{"Tor"}, nil, "Tor"},
@@ -233,7 +234,7 @@ func TestSidecarsRevision(t *testing.T) {
 	if one == "" || one != SidecarsRevision([]string{SidecarTor}) {
 		t.Fatalf("the revision of a list is %q, want a value that is the same each time", one)
 	}
-	if one == SidecarsRevision([]string{SidecarTor, "other"}) {
+	if one == SidecarsRevision([]string{SidecarTor, SidecarPsiphon}) || one == SidecarsRevision([]string{SidecarPsiphon}) {
 		t.Fatal("two different lists have the same revision")
 	}
 }
