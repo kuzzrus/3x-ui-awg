@@ -2,7 +2,7 @@
 
 Design for an optional third kind of node: a thin, DB-less agent that only runs
 Xray-core for a master panel. The agent, its installer and the master side with its UI
-exist (phases 1 to 13 of [Phasing](#phasing)); the later items are not built.
+exist (phases 1 to 14 of [Phasing](#phasing)); the later items are not built.
 
 ## Problem
 
@@ -169,8 +169,8 @@ the node's tags.
 An agent can serve a decoy: what anyone who probes the port that the REALITY fallback of its core
 points at is shown, in place of an error. It is the decoy half of the panel's own reverse proxy
 (`internal/frontproxy`), run without a panel behind it, as a TLS listener on `127.0.0.1` (port 7443 unless
-the node says another) that answers every path with a page built into the agent or with a reverse
-proxy to a site the node names. The node carries it as `Node.Decoy` (agents only, replaced by each save,
+the node says another) that answers every path with a page built into the agent, with a reverse
+proxy to a site the node names, or with AdGuard Home. The node carries it as `Node.Decoy` (agents only, replaced by each save,
 so a form that names no mode takes it off), and the master checks it on save the way the agent does.
 
 The listener must terminate real TLS, as the fallback hands over bytes still encrypted, so the decoy has a
@@ -192,6 +192,18 @@ changed is swapped into the running listener, a new port, domain or certificate 
 would not start is left alone for 30 seconds. `GET /v1/status` carries how it stands (`off`, `starting`,
 `running` or `failed`) and where the certificate stands (`obtaining`, `obtained` with its expiry, or
 `failed` with why).
+
+AdGuard Home as the decoy is not a pretend site: a visitor who tries it finds a working DNS service, as on the
+panel. The agent installs the release the panel's own feature does (checked against the checksum the release
+publishes) and runs it on the loopback, on two ports that nothing held when it was set up and that its config
+keeps: one for its page, which the decoy serves at the root of the domain, and one for its DNS. A fixed port
+could belong to another service of the server by then, and the decoy would show that to a visitor. It is a
+helper program that the decoy asks for and the master does not list, so it appears in no list of the node and
+stops when the decoy is another or none. The account of AdGuard Home gets a password that nobody is given,
+since nobody is to sign in to a decoy, and its own login page is what a visitor who tries finds. The
+listener is not started until AdGuard Home runs and is stopped when it does not, for the same reason, and
+while it installs, which takes a few minutes, the state of the decoy is `starting` and says what it waits
+for; if AdGuard Home cannot be installed it is `failed`, with the reason.
 
 ### Geo files
 
@@ -459,7 +471,10 @@ says so; a tag or archive given explicitly is never swapped.
 11. **Helper programs**. Done: the Tor client of an agent node, set with `PUT /v1/sidecars`.
 12. **Psiphon**. Done: the second helper program, beside Tor.
 13. **Decoy site**. Done: a decoy page or proxy on an agent node, set with `PUT /v1/decoy`.
-14. Later, each on its own: AdGuard Home as a decoy, pull mode.
+14. **AdGuard Home as a decoy**. Done: a mode of the decoy, which the agent installs and runs for it.
+15. Later, each on its own: pull mode, in which the agent dials the master on the port the panel's reverse
+    proxy serves (443 behind a REALITY fallback), so a node needs no port of its own besides its core's; and
+    nodes as members of a subscription balancer (its members are picked inbound by inbound today).
 
 ## Open questions
 

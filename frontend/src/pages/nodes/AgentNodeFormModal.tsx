@@ -68,7 +68,7 @@ function decoyValues(node: NodeRecord, base: AgentFormValues): Partial<AgentForm
   const decoy = node.decoy;
   if (!decoy?.mode) return {};
   return {
-    decoyMode: decoy.mode === 'proxy' ? 'proxy' : 'template',
+    decoyMode: decoy.mode === 'proxy' || decoy.mode === 'adguard' ? decoy.mode : 'template',
     decoyTemplate: decoy.template || base.decoyTemplate,
     decoyProxyUrl: decoy.proxyUrl ?? '',
     decoyDomain: decoy.domain ?? '',

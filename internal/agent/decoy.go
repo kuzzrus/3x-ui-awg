@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/adguard"
 	"github.com/mhsanaei/3x-ui/v3/internal/agentproto"
 	"github.com/mhsanaei/3x-ui/v3/internal/frontproxy"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
@@ -45,15 +46,23 @@ func (frontProxyRunner) IsRunning() bool { return frontproxy.GetManager().IsRunn
 
 func (frontProxyRunner) CertStatus() frontproxy.CertStatus { return frontproxy.CurrentCertStatus() }
 
+// helperPrograms is what the decoy asks of the host of the helper programs: one to run for it, and how it stands.
+type helperPrograms interface {
+	Require(name string, on bool)
+	StateOf(name string) (state, message string)
+}
+
 // decoyHost serves the decoy the master asks for, starts it again when it would not start, and remembers
 // it across a restart, since the master may be out of reach then.
 type decoyHost struct {
-	state   *State
-	runner  decoyRunner
-	seed    string // makes the page of this node unlike that of another
-	storage string // where the certificates are kept
-	now     func() time.Time
-	wake    chan struct{}
+	state       *State
+	runner      decoyRunner
+	helpers     helperPrograms
+	adguardPort func() (int, error) // adguard.WebPort unless a test sets it
+	seed        string              // makes the page of this node unlike that of another
+	storage     string              // where the certificates are kept
+	now         func() time.Time
+	wake        chan struct{}
 	// privateProxy lets the proxied site be on a private address, which only a test with a site of its own on the loopback wants.
 	privateProxy bool
 
@@ -61,11 +70,15 @@ type decoyHost struct {
 	spec    agentproto.DecoySpec  // what is wanted
 	applied *agentproto.DecoySpec // what the listener runs with, nil when it does not run
 	failure string
+	waiting string // what the start is held up by, which is AdGuard Home that is not there yet
 	retryAt time.Time
 }
 
-func newDecoyHost(state *State, runner decoyRunner, seed, storage string) *decoyHost {
-	h := &decoyHost{state: state, runner: runner, seed: seed, storage: storage, now: time.Now, wake: make(chan struct{}, 1)}
+func newDecoyHost(state *State, runner decoyRunner, helpers helperPrograms, seed, storage string) *decoyHost {
+	h := &decoyHost{
+		state: state, runner: runner, helpers: helpers, adguardPort: adguard.WebPort,
+		seed: seed, storage: storage, now: time.Now, wake: make(chan struct{}, 1),
+	}
 	spec, err := state.Decoy()
 	if err != nil {
 		logger.Warning("agent: the decoy to serve is unreadable, serving none until the master says:", err)
@@ -95,7 +108,7 @@ func (h *decoyHost) Set(spec agentproto.DecoySpec) (agentproto.Decoy, error) {
 			return agentproto.Decoy{}, err
 		}
 		h.spec = spec
-		h.failure, h.retryAt = "", time.Time{}
+		h.failure, h.waiting, h.retryAt = "", "", time.Time{}
 	}
 	h.mu.Unlock()
 	if changed {
@@ -124,15 +137,15 @@ func (h *decoyHost) Revision() string {
 // State is how the decoy stands. The certificate is asked of the listener outside the lock.
 func (h *decoyHost) State() agentproto.DecoyState {
 	h.mu.Lock()
-	spec, failure, applied := h.spec, h.failure, h.applied != nil
+	spec, failure, waiting, applied := h.spec, h.failure, h.waiting, h.applied != nil
 	h.mu.Unlock()
 	switch {
 	case spec.Mode == agentproto.DecoyNone:
 		return agentproto.DecoyState{State: agentproto.DecoyStateOff}
 	case failure != "":
 		return agentproto.DecoyState{State: agentproto.DecoyStateFailed, Message: failure}
-	case !applied:
-		return agentproto.DecoyState{State: agentproto.DecoyStateStarting}
+	case waiting != "" || !applied:
+		return agentproto.DecoyState{State: agentproto.DecoyStateStarting, Message: waiting}
 	}
 	state := agentproto.DecoyState{State: agentproto.DecoyStateRunning}
 	cert := h.runner.CertStatus()
@@ -176,39 +189,66 @@ func (h *decoyHost) reconcile() {
 	h.mu.Lock()
 	spec, applied, retryAt := h.spec, h.applied, h.retryAt
 	h.mu.Unlock()
+	h.helpers.Require(adguardName, spec.Mode == agentproto.DecoyAdGuard)
 
-	switch {
-	case spec.Mode == agentproto.DecoyNone:
+	if spec.Mode == agentproto.DecoyNone {
 		h.stop()
+		return
+	}
+	opts, held := h.optionsOf(spec)
+	switch {
+	case held != nil:
+		// A listener that shows AdGuard Home must not outlive it: its port may be taken by whatever else runs here.
+		if applied != nil && applied.Mode == agentproto.DecoyAdGuard {
+			h.stop()
+		}
+		h.hold(held)
 	case applied != nil && h.runner.IsRunning() && listenerOf(*applied) == listenerOf(spec):
 		if *applied != spec {
-			h.runner.Reload(h.optionsOf(spec))
-			h.setApplied(&spec, "")
+			h.runner.Reload(opts)
+			h.setApplied(&spec)
 		}
 	case h.now().Before(retryAt):
 	default:
-		h.start(spec)
+		h.start(spec, opts)
 	}
 }
 
-func (h *decoyHost) start(spec agentproto.DecoySpec) {
+// held is what keeps a decoy from being served yet: a program it needs that is not up, or that failed.
+type held struct {
+	why    string
+	failed bool
+}
+
+// hold records what the start waits for, and leaves whatever is served until then as it is.
+func (h *decoyHost) hold(by *held) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if by.failed {
+		h.failure, h.waiting = by.why, ""
+		return
+	}
+	h.failure, h.waiting = "", by.why
+}
+
+func (h *decoyHost) start(spec agentproto.DecoySpec, opts frontproxy.Options) {
 	if h.runner.IsRunning() {
 		_ = h.runner.Stop()
 	}
-	if err := h.runner.Start(h.optionsOf(spec)); err != nil {
+	if err := h.runner.Start(opts); err != nil {
 		logger.Warningf("agent: the decoy would not start: %v", err)
 		h.mu.Lock()
-		h.applied, h.failure, h.retryAt = nil, tailOf(err.Error()), h.now().Add(decoyRestartAfter)
+		h.applied, h.failure, h.waiting, h.retryAt = nil, tailOf(err.Error()), "", h.now().Add(decoyRestartAfter)
 		h.mu.Unlock()
 		return
 	}
 	logger.Infof("agent: the decoy of %s is served on %s:%d", spec.Domain, decoyListen, spec.Port)
-	h.setApplied(&spec, "")
+	h.setApplied(&spec)
 }
 
-func (h *decoyHost) setApplied(spec *agentproto.DecoySpec, failure string) {
+func (h *decoyHost) setApplied(spec *agentproto.DecoySpec) {
 	h.mu.Lock()
-	h.applied, h.failure, h.retryAt = spec, failure, time.Time{}
+	h.applied, h.failure, h.waiting, h.retryAt = spec, "", "", time.Time{}
 	h.mu.Unlock()
 }
 
@@ -218,13 +258,22 @@ func (h *decoyHost) stop() {
 			logger.Warningf("agent: stopping the decoy: %v", err)
 		}
 	}
-	h.setApplied(nil, "")
+	h.setApplied(nil)
 }
 
-func (h *decoyHost) optionsOf(spec agentproto.DecoySpec) frontproxy.Options {
-	mode := frontproxy.DecoyTemplate
-	if spec.Mode == agentproto.DecoyProxy {
-		mode = frontproxy.DecoyProxy
+// optionsOf is what the listener is started with for spec. AdGuard Home has to be up first, so for it the
+// answer may instead be what the decoy is held up by.
+func (h *decoyHost) optionsOf(spec agentproto.DecoySpec) (frontproxy.Options, *held) {
+	decoy := frontproxy.DecoyConfig{Mode: frontproxy.DecoyTemplate, Template: spec.Template, PublicOnly: !h.privateProxy, Seed: h.seed}
+	switch spec.Mode {
+	case agentproto.DecoyProxy:
+		decoy.Mode, decoy.ProxyURL = frontproxy.DecoyProxy, spec.ProxyURL
+	case agentproto.DecoyAdGuard:
+		port, by := h.adguardUp()
+		if by != nil {
+			return frontproxy.Options{}, by
+		}
+		decoy.Mode, decoy.AdGuardPort = frontproxy.DecoyAdGuard, port
 	}
 	cert := frontproxy.CertAuto
 	if spec.Cert == agentproto.DecoyCertManual {
@@ -234,12 +283,27 @@ func (h *decoyHost) optionsOf(spec agentproto.DecoySpec) frontproxy.Options {
 		Listen:    decoyListen,
 		Port:      spec.Port,
 		DecoyOnly: true,
-		Decoy: frontproxy.DecoyConfig{
-			Mode: mode, Template: spec.Template, ProxyURL: spec.ProxyURL, PublicOnly: !h.privateProxy, Seed: h.seed,
-		},
+		Decoy:     decoy,
 		TLS: frontproxy.TLSSettings{
 			Mode: cert, Domain: spec.Domain, Email: spec.Email,
 			CertFile: spec.CertFile, KeyFile: spec.KeyFile, StorageDir: h.storage,
 		},
+	}, nil
+}
+
+// adguardUp is the port AdGuard Home serves its page on once it runs, and what the decoy is held up by before.
+func (h *decoyHost) adguardUp() (int, *held) {
+	state, message := h.helpers.StateOf(adguardName)
+	switch state {
+	case agentproto.SidecarRunning:
+		port, err := h.adguardPort()
+		if err != nil {
+			return 0, &held{why: tailOf("AdGuard Home: " + err.Error()), failed: true}
+		}
+		return port, nil
+	case agentproto.SidecarFailed:
+		return 0, &held{why: tailOf("AdGuard Home: " + message), failed: true}
+	default:
+		return 0, &held{why: "AdGuard Home: " + state}
 	}
 }

@@ -92,7 +92,7 @@ func TestDecoyHostServesTheChosenPageOverTLSAndOnlyForItsName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	host := newDecoyHost(state, frontProxyRunner{}, "node-seed", t.TempDir())
+	host := newDecoyHost(state, frontProxyRunner{}, &fakeHelpers{}, "node-seed", t.TempDir())
 	t.Cleanup(host.stop)
 	port := freeLoopbackPort(t)
 	spec := agentproto.DecoySpec{

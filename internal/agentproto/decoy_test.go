@@ -31,6 +31,10 @@ func TestNormalizeDecoyFillsTheDefaultsAndClearsWhatTheModeDoesNotUse(t *testing
 			in:   DecoySpec{Mode: DecoyProxy, Template: "parked", ProxyURL: " https://site.example/home ", Domain: "a.example"},
 			want: DecoySpec{Mode: DecoyProxy, ProxyURL: "https://site.example/home", Domain: "a.example", Cert: DecoyCertAuto, Port: DefaultDecoyPort},
 		},
+		"AdGuard Home keeps no page and no proxy address": {
+			in:   DecoySpec{Mode: DecoyAdGuard, Template: "parked", ProxyURL: "https://x.example", Domain: "a.example"},
+			want: DecoySpec{Mode: DecoyAdGuard, Domain: "a.example", Cert: DecoyCertAuto, Port: DefaultDecoyPort},
+		},
 		"files on the node keep no email": {
 			in:   DecoySpec{Mode: DecoyTemplate, Domain: "a.example", Cert: DecoyCertManual, Email: "ops@a.example", CertFile: "/etc/ssl/a.pem", KeyFile: "/etc/ssl/a.key"},
 			want: DecoySpec{Mode: DecoyTemplate, Template: DefaultDecoyTemplate, Domain: "a.example", Cert: DecoyCertManual, CertFile: "/etc/ssl/a.pem", KeyFile: "/etc/ssl/a.key", Port: DefaultDecoyPort},
