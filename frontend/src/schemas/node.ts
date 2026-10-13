@@ -157,7 +157,7 @@ export const AgentFormSchema = z
       .array(z.string().trim().min(1, TAGS_INVALID).max(MAX_NODE_TAG_LENGTH, TAGS_INVALID))
       .max(MAX_NODE_TAGS, TAGS_INVALID),
     sidecars: z.array(z.string()),
-    decoyMode: z.enum(['', 'template', 'proxy']),
+    decoyMode: z.enum(['', 'template', 'proxy', 'adguard']),
     decoyTemplate: z.string(),
     decoyProxyUrl: z.string().trim(),
     decoyDomain: z.string().trim(),

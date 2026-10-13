@@ -16,11 +16,12 @@ import (
 )
 
 // What an agent serves to whoever probes the port the REALITY fallback points at: nothing, one of the pages
-// built into the agent, or a reverse proxy to a site elsewhere.
+// built into the agent, a reverse proxy to a site elsewhere, or an AdGuard Home that the agent runs for it.
 const (
 	DecoyNone     = ""
 	DecoyTemplate = "template"
 	DecoyProxy    = "proxy"
+	DecoyAdGuard  = "adguard"
 )
 
 // Where the certificate of the decoy comes from: ACME over HTTP-01 on port 80, or files on the node.
@@ -124,6 +125,7 @@ func NormalizeDecoy(spec DecoySpec, rules DecoyRules) (DecoySpec, error) {
 		if err := checkProxyURL(out.ProxyURL, rules.PrivateProxy); err != nil {
 			return DecoySpec{}, err
 		}
+	case DecoyAdGuard:
 	default:
 		return DecoySpec{}, decoyError("unknown decoy mode %q", out.Mode)
 	}

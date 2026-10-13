@@ -437,6 +437,44 @@ func TestSidecarHostDoesNotLetOneInstallHoldUpAnotherProgram(t *testing.T) {
 	waitForHost(t, "Psiphon to run once it is there", func() bool { return stateOf(agentproto.SidecarPsiphon) == agentproto.SidecarRunning })
 }
 
+// The decoy runs AdGuard Home for itself: the master does not list it, and does not see it.
+func TestSidecarHostRunsWhatTheAgentRequiresAndLetsItGo(t *testing.T) {
+	state, err := OpenState(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	needed := &fakeProgram{installed: true}
+	host := newSidecarHost(state, map[string]sidecar{adguardName: needed})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		host.Run(ctx)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+	if got, _ := host.StateOf(adguardName); got != agentproto.SidecarPending {
+		t.Fatalf("a program nobody asked for stands %q before it is looked at, want pending", got)
+	}
+
+	host.Require(adguardName, true)
+	waitForHost(t, "the required program to run", needed.Running)
+	if got, _ := host.StateOf(adguardName); got != agentproto.SidecarRunning {
+		t.Fatalf("StateOf = %q, want running", got)
+	}
+	if states := host.States(); len(states) != 0 {
+		t.Fatalf("states = %+v, want the master to see none: it did not list the program", states)
+	}
+	if view := host.View(); view.Revision != "" || len(view.Enabled) != 0 {
+		t.Fatalf("view = %+v, want the list of the master untouched", view)
+	}
+
+	host.Require(adguardName, false)
+	waitForHost(t, "the program to stop once nothing needs it", func() bool { return !needed.Running() })
+}
+
 func TestSidecarHostStopsItsProgramsWhenTheContextEnds(t *testing.T) {
 	f := newHostFixture(t, &fakeProgram{installed: true})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -483,15 +521,18 @@ func TestSidecarHostGivesUpAnInstallWhenTheContextEnds(t *testing.T) {
 }
 
 // A name the protocol lists and the host has no program for would be taken by the agent and never run.
-func TestEveryKnownSidecarHasAProgramAndNothingElseDoes(t *testing.T) {
+func TestEveryKnownSidecarHasAProgramAndNothingElseButWhatTheAgentAsksFor(t *testing.T) {
 	programs := defaultSidecars()
 	for _, name := range agentproto.KnownSidecars {
 		if programs[name] == nil {
 			t.Errorf("no program runs %q, which the protocol lists", name)
 		}
 	}
-	if len(programs) != len(agentproto.KnownSidecars) {
-		t.Errorf("the host has %d programs, the protocol lists %d", len(programs), len(agentproto.KnownSidecars))
+	if want := len(agentproto.KnownSidecars) + 1; len(programs) != want || programs[adguardName] == nil {
+		t.Errorf("the host has %d programs, want the %d of the protocol and AdGuard Home, which the decoy asks for", len(programs), want)
+	}
+	if slices.Contains(agentproto.KnownSidecars, adguardName) {
+		t.Errorf("%q is a name of the protocol, which would let the master list a program the decoy owns", adguardName)
 	}
 }
 

@@ -191,7 +191,7 @@ has it.
 ### Decoy site on an agent node
 
 Under **Decoy site** in the settings of an agent node, pick what anyone who probes the node is shown: a
-page built into the panel, or a reverse proxy to a site you already host. It is the decoy of the panel's
+page built into the panel, a reverse proxy to a site you already host, or AdGuard Home. It is the decoy of the panel's
 own [reverse proxy](/docs/operations/reverse-proxy), on the node: a TLS listener on `127.0.0.1` and the
 port you choose (7443 by default), which the REALITY fallback of the node reaches. Set the fallback target
 of a REALITY inbound of this node to `127.0.0.1:<port>` yourself, and a probe that has no key is handed the
@@ -206,6 +206,11 @@ different on each node, so two nodes do not serve the same bytes.
 
 A reverse proxy needs a site on a public address. Anyone who probes the node can send the decoy anywhere, so a site
 on a private network, or on the node's own loopback, is refused, and so is a name that resolves to one.
+
+**AdGuard Home** is not a pretend site: the node installs it, which takes a few minutes, and a visitor who
+tries it finds a working DNS service behind a login page nobody has the password of. Until it is there the
+chip beside the node says what it waits for. It runs on the loopback of the node only, and takes some tens of
+megabytes of memory, so keep it for a node with room to spare.
 
 <Callout type="info">
   The decoy of a node is its own. It has nothing to do with the reverse proxy of the panel, which serves

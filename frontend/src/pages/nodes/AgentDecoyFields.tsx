@@ -36,6 +36,7 @@ export default function AgentDecoyFields() {
             { value: '', label: t('pages.nodes.agent.decoyModes.none') },
             { value: 'template', label: t('pages.nodes.agent.decoyModes.template') },
             { value: 'proxy', label: t('pages.nodes.agent.decoyModes.proxy') },
+            { value: 'adguard', label: t('pages.nodes.agent.decoyModes.adguard') },
           ]}
         />
       </FormField>

@@ -212,6 +212,32 @@ describe('AgentNodeFormModal', () => {
     });
   });
 
+  it('serves AdGuard Home as the decoy, which needs no page and no site', async () => {
+    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
+    renderWithProviders(
+      <AgentNodeFormModal open node={null} save={save} onOpenChange={() => {}} />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'edge-1' } });
+    fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'node.example.com' } });
+    chooseSelectOption(
+      screen.getByLabelText('Decoy site').id,
+      'AdGuard Home, which the node installs and runs',
+    );
+    expect(screen.queryByLabelText('Page')).toBeNull();
+    expect(screen.queryByLabelText('Address of the site')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Domain'), { target: { value: 'decoy.example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0][0]).toMatchObject({
+      decoyMode: 'adguard',
+      decoyDomain: 'decoy.example.com',
+      decoyCert: 'auto',
+      decoyPort: 7443,
+    });
+  });
+
   it('shows the decoy an agent holds, and takes it off when asked to', async () => {
     const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
     const node: NodeRecord = {

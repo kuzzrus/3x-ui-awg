@@ -1320,7 +1320,8 @@
         "decoyModes": {
           "none": "None",
           "template": "A page built into the panel",
-          "proxy": "A reverse proxy to a site"
+          "proxy": "A reverse proxy to a site",
+          "adguard": "AdGuard Home, which the node installs and runs"
         },
         "decoyTemplate": "Page",
         "decoyProxyUrl": "Address of the site",

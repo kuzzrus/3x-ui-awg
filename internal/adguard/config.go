@@ -56,11 +56,8 @@ func Seed(opts SeedOptions) (string, error) {
 	if _, err := os.Stat(ConfigPath()); err == nil {
 		return "", nil
 	}
-	if opts.WebPort <= 0 || opts.WebPort > 65535 {
-		return "", fmt.Errorf("invalid AdGuard Home web port %d", opts.WebPort)
-	}
-	if opts.DNSPort <= 0 || opts.DNSPort > 65535 {
-		return "", fmt.Errorf("invalid AdGuard Home DNS port %d", opts.DNSPort)
+	if err := checkPorts(opts.WebPort, opts.DNSPort); err != nil {
+		return "", err
 	}
 	password, err := generatePassword()
 	if err != nil {

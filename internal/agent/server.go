@@ -45,14 +45,15 @@ func NewServer(core *Core, state *State, secret string) (*Server, error) {
 		return nil, err
 	}
 	// The core reads its geo files from the folder it is started from.
+	sidecars := newSidecarHost(state, defaultSidecars())
 	s := &Server{
 		core:     core,
 		secret:   secret,
 		guid:     guid,
 		geoDir:   config.GetBinFolderPath(),
 		updater:  &updater{stateDir: state.Dir()},
-		sidecars: newSidecarHost(state, defaultSidecars()),
-		decoy:    newDecoyHost(state, frontProxyRunner{}, guid, filepath.Join(state.Dir(), decoyCertsDir)),
+		sidecars: sidecars,
+		decoy:    newDecoyHost(state, frontProxyRunner{}, sidecars, guid, filepath.Join(state.Dir(), decoyCertsDir)),
 	}
 	s.routes = map[string]http.HandlerFunc{}
 	s.paths = map[string]bool{}

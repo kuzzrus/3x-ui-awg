@@ -68,18 +68,72 @@ func (r *fakeRunner) counts() (started, reloaded, stops int) {
 	return len(r.started), len(r.reloaded), r.stops
 }
 
+func (r *fakeRunner) lastReload() frontproxy.Options {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.reloaded[len(r.reloaded)-1]
+}
+
 func (r *fakeRunner) lastStart() frontproxy.Options {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.started[len(r.started)-1]
 }
 
+// fakeHelpers is the host of the helper programs as the decoy sees it: which programs it was asked to run,
+// and how each stands, which a test sets.
+type fakeHelpers struct {
+	mu       sync.Mutex
+	required map[string]bool
+	states   map[string][2]string // name -> state, message
+}
+
+func (f *fakeHelpers) Require(name string, on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.required == nil {
+		f.required = map[string]bool{}
+	}
+	if on {
+		f.required[name] = true
+	} else {
+		delete(f.required, name)
+	}
+}
+
+func (f *fakeHelpers) StateOf(name string) (string, string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if one, ok := f.states[name]; ok {
+		return one[0], one[1]
+	}
+	return agentproto.SidecarPending, ""
+}
+
+func (f *fakeHelpers) stand(name, state, message string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.states == nil {
+		f.states = map[string][2]string{}
+	}
+	f.states[name] = [2]string{state, message}
+}
+
+func (f *fakeHelpers) wants(name string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.required[name]
+}
+
 type decoyFixture struct {
-	t      *testing.T
-	state  *State
-	runner *fakeRunner
-	host   *decoyHost
-	clock  time.Time
+	t           *testing.T
+	state       *State
+	runner      *fakeRunner
+	helpers     *fakeHelpers
+	adguardPort int
+	adguardErr  error
+	host        *decoyHost
+	clock       time.Time
 }
 
 func newDecoyFixture(t *testing.T) *decoyFixture {
@@ -88,13 +142,14 @@ func newDecoyFixture(t *testing.T) *decoyFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &decoyFixture{t: t, state: state, runner: &fakeRunner{}, clock: time.Unix(1_700_000_000, 0)}
+	f := &decoyFixture{t: t, state: state, runner: &fakeRunner{}, helpers: &fakeHelpers{}, adguardPort: 19080, clock: time.Unix(1_700_000_000, 0)}
 	f.host = f.hostOn(state)
 	return f
 }
 
 func (f *decoyFixture) hostOn(state *State) *decoyHost {
-	host := newDecoyHost(state, f.runner, "node-seed", "/state/decoy-certs")
+	host := newDecoyHost(state, f.runner, f.helpers, "node-seed", "/state/decoy-certs")
+	host.adguardPort = func() (int, error) { return f.adguardPort, f.adguardErr }
 	host.now = func() time.Time { return f.clock }
 	return host
 }
@@ -138,6 +193,148 @@ func TestDecoyHostServesOnlyTheDecoyOnTheLoopback(t *testing.T) {
 	f.host.reconcile()
 	if started, reloaded, _ := f.runner.counts(); started != 1 || reloaded != 0 {
 		t.Fatalf("a pass over a running decoy started %d and reloaded %d times", started, reloaded)
+	}
+}
+
+func adguardDecoy() agentproto.DecoySpec {
+	return agentproto.DecoySpec{Mode: agentproto.DecoyAdGuard, Domain: "node.example", Email: "ops@node.example"}
+}
+
+func TestDecoyHostRunsAdGuardHomeAndServesItsPage(t *testing.T) {
+	f := newDecoyFixture(t)
+	f.set(adguardDecoy())
+
+	// AdGuard Home is asked for, and nothing is served while it is not there.
+	f.host.reconcile()
+	if !f.helpers.wants(adguardName) {
+		t.Fatal("the decoy did not ask for AdGuard Home to run")
+	}
+	if started, _, _ := f.runner.counts(); started != 0 {
+		t.Fatalf("started %d times before AdGuard Home was up", started)
+	}
+	if got := f.host.State(); got.State != agentproto.DecoyStateStarting || got.Message != "AdGuard Home: pending" {
+		t.Fatalf("state = %+v, want starting, held up by AdGuard Home", got)
+	}
+	f.helpers.stand(adguardName, agentproto.SidecarInstalling, "")
+	f.host.reconcile()
+	if got := f.host.State(); got.Message != "AdGuard Home: installing" {
+		t.Fatalf("state = %+v, want what it waits for said", got)
+	}
+
+	f.helpers.stand(adguardName, agentproto.SidecarRunning, "")
+	f.host.reconcile()
+	opts := f.runner.lastStart()
+	if started, _, _ := f.runner.counts(); started != 1 || opts.Decoy.Mode != frontproxy.DecoyAdGuard || opts.Decoy.AdGuardPort != 19080 || !opts.DecoyOnly {
+		t.Fatalf("started %d times with %+v, want the decoy that serves the page of AdGuard Home on its port", started, opts.Decoy)
+	}
+	if got := f.host.State(); got.State != agentproto.DecoyStateRunning || got.Message != "" {
+		t.Fatalf("state = %+v, want running", got)
+	}
+}
+
+// AdGuard Home that is gone leaves a port that any other service of the server may take, and a
+// listener that shows that port would show the service to whoever probes the node.
+func TestDecoyHostStopsServingAdGuardHomeWhenItIsGone(t *testing.T) {
+	f := newDecoyFixture(t)
+	f.set(adguardDecoy())
+	f.helpers.stand(adguardName, agentproto.SidecarRunning, "")
+	f.host.reconcile()
+	if !f.runner.IsRunning() {
+		t.Fatal("the decoy was not served although AdGuard Home was up")
+	}
+
+	f.helpers.stand(adguardName, agentproto.SidecarFailed, "listen tcp 127.0.0.1:19080: bind: address already in use")
+	f.host.reconcile()
+	if _, _, stops := f.runner.counts(); stops != 1 || f.runner.IsRunning() {
+		t.Fatalf("stops = %d, running = %v; want the listener stopped once AdGuard Home was gone", stops, f.runner.IsRunning())
+	}
+	if got := f.host.State(); got.State != agentproto.DecoyStateFailed || !strings.Contains(got.Message, "address already in use") {
+		t.Fatalf("state = %+v, want failed with why", got)
+	}
+
+	f.helpers.stand(adguardName, agentproto.SidecarRunning, "")
+	f.host.reconcile()
+	if started, _, _ := f.runner.counts(); started != 2 || f.host.State().State != agentproto.DecoyStateRunning {
+		t.Fatalf("started %d times, state %+v; want the decoy served again once AdGuard Home is back", started, f.host.State())
+	}
+}
+
+// A page that is served stays served while AdGuard Home that replaces it is being installed.
+func TestDecoyHostKeepsServingThePageWhileAdGuardHomeIsInstalled(t *testing.T) {
+	f := newDecoyFixture(t)
+	f.set(page("parked"))
+	f.host.reconcile()
+
+	spec := adguardDecoy()
+	f.set(spec)
+	f.helpers.stand(adguardName, agentproto.SidecarInstalling, "")
+	f.host.reconcile()
+	if _, _, stops := f.runner.counts(); stops != 0 || !f.runner.IsRunning() {
+		t.Fatalf("stops = %d, running = %v; want the page still served during the install", stops, f.runner.IsRunning())
+	}
+	if got := f.host.State(); got.State != agentproto.DecoyStateStarting || got.Message != "AdGuard Home: installing" {
+		t.Fatalf("state = %+v, want starting, held up by the install", got)
+	}
+
+	f.helpers.stand(adguardName, agentproto.SidecarRunning, "")
+	f.host.reconcile()
+	if _, reloaded, _ := f.runner.counts(); reloaded != 1 || f.runner.lastReload().Decoy.Mode != frontproxy.DecoyAdGuard {
+		t.Fatalf("reloaded %d times, want AdGuard Home swapped in once it is up", reloaded)
+	}
+}
+
+func TestDecoyHostSaysWhyAdGuardHomeIsNotThere(t *testing.T) {
+	f := newDecoyFixture(t)
+	f.set(adguardDecoy())
+	f.helpers.stand(adguardName, agentproto.SidecarFailed, "no AdGuard Home release for linux/mips")
+	f.host.reconcile()
+	got := f.host.State()
+	if got.State != agentproto.DecoyStateFailed || got.Message != "AdGuard Home: no AdGuard Home release for linux/mips" {
+		t.Fatalf("state = %+v, want failed with why", got)
+	}
+	if started, _, _ := f.runner.counts(); started != 0 {
+		t.Fatalf("started %d times without AdGuard Home", started)
+	}
+
+	f.helpers.stand(adguardName, agentproto.SidecarRunning, "")
+	f.adguardErr = errors.New("AdGuardHome.yaml has no http.address")
+	f.host.reconcile()
+	if got := f.host.State(); got.State != agentproto.DecoyStateFailed || !strings.Contains(got.Message, "no http.address") {
+		t.Fatalf("state = %+v, want failed with why its page cannot be found", got)
+	}
+
+	f.adguardErr = nil
+	f.host.reconcile()
+	if got := f.host.State(); got.State != agentproto.DecoyStateRunning {
+		t.Fatalf("state = %+v, want running once AdGuard Home is there", got)
+	}
+}
+
+func TestDecoyHostLetsGoOfAdGuardHomeWhenTheDecoyChanges(t *testing.T) {
+	f := newDecoyFixture(t)
+	f.set(adguardDecoy())
+	f.helpers.stand(adguardName, agentproto.SidecarRunning, "")
+	f.host.reconcile()
+	if !f.helpers.wants(adguardName) {
+		t.Fatal("the decoy did not ask for AdGuard Home")
+	}
+
+	f.set(page("parked"))
+	f.host.reconcile()
+	if f.helpers.wants(adguardName) {
+		t.Fatal("the decoy still asks for AdGuard Home after it became a page")
+	}
+	started, reloaded, _ := f.runner.counts()
+	if started != 1 || reloaded != 1 || f.runner.lastReload().Decoy.Mode != frontproxy.DecoyTemplate {
+		t.Fatalf("started %d, reloaded %d; want the page swapped in the running listener", started, reloaded)
+	}
+
+	f.set(adguardDecoy())
+	f.host.reconcile()
+	f.set(agentproto.DecoySpec{})
+	f.host.reconcile()
+	if f.helpers.wants(adguardName) {
+		t.Fatal("the decoy still asks for AdGuard Home after it was taken off")
 	}
 }
 
@@ -340,7 +537,7 @@ func TestStateServesNoDecoyItCannotRead(t *testing.T) {
 		if _, err := state.Decoy(); err == nil {
 			t.Errorf("%s: the stored decoy was taken for one", name)
 		}
-		if host := newDecoyHost(state, &fakeRunner{}, "seed", dir); host.Revision() != "" {
+		if host := newDecoyHost(state, &fakeRunner{}, &fakeHelpers{}, "seed", dir); host.Revision() != "" {
 			t.Errorf("%s: a host started on it serves revision %q, want none until the master says", name, host.Revision())
 		}
 	}

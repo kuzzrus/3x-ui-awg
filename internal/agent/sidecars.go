@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -33,9 +34,14 @@ type sidecar interface {
 	Result() string
 }
 
-// defaultSidecars are the programs this build can run, by the names of the protocol.
+// defaultSidecars are the programs this build can run: the ones the master lists, by the names of the
+// protocol, and the ones that something inside the agent asks for, which it does not.
 func defaultSidecars() map[string]sidecar {
-	return map[string]sidecar{agentproto.SidecarTor: torProgram{}, agentproto.SidecarPsiphon: &psiphonProgram{}}
+	return map[string]sidecar{
+		agentproto.SidecarTor:     torProgram{},
+		agentproto.SidecarPsiphon: &psiphonProgram{},
+		adguardName:               &adguardProgram{},
+	}
 }
 
 // sidecarSlot is what the host knows of one program between two passes.
@@ -53,9 +59,10 @@ type sidecarHost struct {
 	now      func() time.Time         // time.Now unless a test sets it
 	wake     map[string]chan struct{} // one for the supervisor of each program, which holds at most one poke
 
-	mu      sync.Mutex
-	enabled []string
-	slots   map[string]*sidecarSlot
+	mu       sync.Mutex
+	enabled  []string
+	required map[string]bool // programs something inside the agent needs, besides the ones the master listed
+	slots    map[string]*sidecarSlot
 }
 
 func newSidecarHost(state *State, programs map[string]sidecar) *sidecarHost {
@@ -64,6 +71,7 @@ func newSidecarHost(state *State, programs map[string]sidecar) *sidecarHost {
 		programs: programs,
 		now:      time.Now,
 		wake:     make(map[string]chan struct{}, len(programs)),
+		required: map[string]bool{},
 		slots:    map[string]*sidecarSlot{},
 	}
 	for name := range programs {
@@ -95,14 +103,49 @@ func (h *sidecarHost) Set(names []string) (agentproto.Sidecars, error) {
 	}
 	h.mu.Unlock()
 	if changed {
-		for _, wake := range h.wake {
-			select {
-			case wake <- struct{}{}:
-			default:
-			}
+		for name := range h.wake {
+			h.poke(name)
 		}
 	}
 	return h.View(), nil
+}
+
+// poke asks the supervisor of a program to look again; one that was asked already is not asked twice.
+func (h *sidecarHost) poke(name string) {
+	select {
+	case h.wake[name] <- struct{}{}:
+	default:
+	}
+}
+
+// Require makes a program run because something inside the agent needs it, or stops asking for it. The
+// master does not list these, and they are not among the states it reads.
+func (h *sidecarHost) Require(name string, on bool) {
+	h.mu.Lock()
+	changed := h.required[name] != on
+	if on {
+		h.required[name] = true
+	} else {
+		delete(h.required, name)
+	}
+	h.mu.Unlock()
+	if changed {
+		h.poke(name)
+	}
+}
+
+// StateOf is how one program stands and what it said last, whether the master listed it or not.
+func (h *sidecarHost) StateOf(name string) (state, message string) {
+	h.mu.Lock()
+	slot := h.slots[name]
+	h.mu.Unlock()
+	if slot == nil {
+		return agentproto.SidecarPending, ""
+	}
+	if program := h.programs[name]; program != nil && slot.state == agentproto.SidecarRunning {
+		return slot.state, tailOf(program.Result())
+	}
+	return slot.state, slot.message
 }
 
 func (h *sidecarHost) View() agentproto.Sidecars {
@@ -158,7 +201,7 @@ func (h *sidecarHost) sayLatest(states []agentproto.SidecarState) {
 func (h *sidecarHost) Run(ctx context.Context) {
 	defer h.stopAll()
 	var supervisors sync.WaitGroup
-	for _, name := range agentproto.KnownSidecars {
+	for _, name := range slices.Sorted(maps.Keys(h.programs)) {
 		if program := h.programs[name]; program != nil {
 			supervisors.Go(func() { h.supervise(ctx, name, program) })
 		}
@@ -195,7 +238,7 @@ func (h *sidecarHost) tend(ctx context.Context, name string, program sidecar) {
 func (h *sidecarHost) wanted(name string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return slices.Contains(h.enabled, name)
+	return slices.Contains(h.enabled, name) || h.required[name]
 }
 
 // slotOf copies the slot of a program, making a pending one the first time.
@@ -270,7 +313,7 @@ func (h *sidecarHost) keepRunning(ctx context.Context, name string, program side
 }
 
 func (h *sidecarHost) stopAll() {
-	for _, name := range agentproto.KnownSidecars {
+	for _, name := range slices.Sorted(maps.Keys(h.programs)) {
 		program := h.programs[name]
 		if program == nil || !program.Running() {
 			continue
