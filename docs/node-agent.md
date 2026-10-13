@@ -197,7 +197,8 @@ AdGuard Home as the decoy is not a pretend site: a visitor who tries it finds a 
 panel. The agent installs the release the panel's own feature does (checked against the checksum the release
 publishes) and runs it on the loopback, on two ports that nothing held when it was set up and that its config
 keeps: one for its page, which the decoy serves at the root of the domain, and one for its DNS. A fixed port
-could belong to another service of the server by then, and the decoy would show that to a visitor. It is a
+could belong to another service of the server by then, and the decoy would show that to a visitor. A port that
+something has come to hold since is chosen again, with the other, at the next start. It is a
 helper program that the decoy asks for and the master does not list, so it appears in no list of the node and
 stops when the decoy is another or none. The account of AdGuard Home gets a password that nobody is given,
 since nobody is to sign in to a decoy, and its own login page is what a visitor who tries finds. The

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/adguard"
+	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 )
 
 const (
@@ -22,6 +23,7 @@ const (
 // adguardProgram is the AdGuard Home of internal/adguard, run on the loopback for the decoy to show.
 type adguardProgram struct {
 	client *http.Client // the download client, unless a test sets one
+	start  func() error // starts AdGuard Home, unless a test sets one
 }
 
 func (*adguardProgram) Installed() bool { return adguard.IsInstalled() && adguard.IsConfigured() }
@@ -34,8 +36,8 @@ func (p *adguardProgram) Install(ctx context.Context) error {
 	if err := adguard.Install(ctx, client); err != nil {
 		return err
 	}
-	// The ports are free now and kept in its config, from which the decoy reads the one of the page: another
-	// service of the server may hold a fixed one, and the decoy would show that to whoever probes it.
+	// The ports are free now and kept in its config, from which the decoy reads the one of the page: a fixed one may
+	// belong to another service, which the decoy would show. Start chooses again when something comes to hold one.
 	webPort, dnsPort, err := freeLoopbackPorts()
 	if err != nil {
 		return err
@@ -85,7 +87,41 @@ func probeLoopbackPort(network string, want *int) (int, error) {
 	return ln.Addr().(*net.TCPAddr).Port, nil
 }
 
-func (*adguardProgram) Start() error   { return adguard.GetManager().Start() }
+func (p *adguardProgram) Start() error {
+	if err := moveBusyPorts(); err != nil {
+		return err
+	}
+	if p.start != nil {
+		return p.start()
+	}
+	return adguard.GetManager().Start()
+}
+
+// moveBusyPorts gives AdGuard Home other ports when something holds one of its two, which were only free when they
+// were chosen. It is not running here, so its config can be rewritten.
+func moveBusyPorts() error {
+	web, err := adguard.WebPort()
+	if err != nil {
+		return err
+	}
+	dns, err := adguard.DNSPort()
+	if err != nil {
+		return err
+	}
+	_, webErr := probeLoopbackPort("tcp", &web)
+	_, dnsTCPErr := probeLoopbackPort("tcp", &dns)
+	_, dnsUDPErr := probeLoopbackPort("udp", &dns)
+	if webErr == nil && dnsTCPErr == nil && dnsUDPErr == nil {
+		return nil
+	}
+	moved, movedDNS, err := freeLoopbackPorts()
+	if err != nil {
+		return err
+	}
+	logger.Warningf("agent: a port of AdGuard Home is held by something else, moving it from %d and %d to %d and %d", web, dns, moved, movedDNS)
+	return adguard.SetPorts(moved, movedDNS)
+}
+
 func (*adguardProgram) Stop() error    { return adguard.GetManager().Stop() }
 func (*adguardProgram) Running() bool  { return adguard.GetManager().IsRunning() }
 func (*adguardProgram) Result() string { return adguard.GetManager().LastResult() }
