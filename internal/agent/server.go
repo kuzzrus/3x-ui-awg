@@ -111,11 +111,10 @@ func (s *Server) RunHosts(ctx context.Context) {
 	wg.Wait()
 }
 
-// Serve answers on ln until ctx ends; tlsConfig carries the certificate and the SNI gate.
-func (s *Server) Serve(ctx context.Context, ln net.Listener, tlsConfig *tls.Config) error {
-	srv := &http.Server{
+// newHTTPServer is the server the master's requests are answered by, however they reach the agent.
+func (s *Server) newHTTPServer() *http.Server {
+	return &http.Server{
 		Handler:           s,
-		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       2 * time.Minute,
 		WriteTimeout:      5 * time.Minute,
@@ -123,6 +122,12 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, tlsConfig *tls.Conf
 		MaxHeaderBytes:    16 << 10,
 		ErrorLog:          log.New(&s.httpLog, "", 0),
 	}
+}
+
+// Serve answers on ln until ctx ends; tlsConfig carries the certificate and the SNI gate.
+func (s *Server) Serve(ctx context.Context, ln net.Listener, tlsConfig *tls.Config) error {
+	srv := s.newHTTPServer()
+	srv.TLSConfig = tlsConfig
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stopped := make(chan struct{})

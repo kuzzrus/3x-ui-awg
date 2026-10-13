@@ -27,7 +27,7 @@
     },
     "schemas": {
       "AgentNodeRequest": {
-        "description": "AgentNodeRequest is what adding an agent node needs: where the agent will be reachable.\nIts secret and certificate are minted here, not chosen by the admin.",
+        "description": "AgentNodeRequest is what adding an agent node needs: where the agent will be reachable, or the master it dials.\nIts secret and certificate are minted here, not chosen by the admin.",
         "properties": {
           "address": {
             "type": "string"
@@ -68,6 +68,12 @@
             "example": "maintenance",
             "type": "string"
           },
+          "masterPin": {
+            "type": "string"
+          },
+          "masterUrl": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -75,9 +81,14 @@
             "type": "string"
           },
           "port": {
+            "description": "Port is where the master reaches the agent, which an agent that dials the master does not have.",
             "maximum": 65535,
             "minimum": 1,
             "type": "integer"
+          },
+          "pull": {
+            "description": "Pull makes the agent dial the master at MasterUrl, the panel's address as the node reaches it, base path\nincluded. MasterPin is the SHA-256 of the panel's certificate, for a panel whose own is not a public one.",
+            "type": "boolean"
           },
           "remark": {
             "type": "string"
@@ -107,9 +118,12 @@
           "decoyPort",
           "decoyProxyUrl",
           "decoyTemplate",
+          "masterPin",
+          "masterUrl",
           "name",
           "outboundTag",
           "port",
+          "pull",
           "remark",
           "sidecars",
           "tags"
@@ -134,6 +148,32 @@
         },
         "required": [
           "bundle"
+        ],
+        "type": "object"
+      },
+      "AgentRepairRequest": {
+        "description": "AgentRepairRequest says how an agent node is paired again. Left empty, it pairs the agent the way it was paired.\nPull changes the way, and then the new one needs its own fields: MasterUrl for pull, Port for push.",
+        "properties": {
+          "masterPin": {
+            "type": "string"
+          },
+          "masterUrl": {
+            "type": "string"
+          },
+          "port": {
+            "maximum": 65535,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "pull": {
+            "nullable": true,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "masterPin",
+          "masterUrl",
+          "port"
         ],
         "type": "object"
       },
@@ -3508,6 +3548,11 @@
             "minimum": 1,
             "type": "integer"
           },
+          "pull": {
+            "description": "Pull is set on an agent node whose agent dials the panel, instead of the panel dialing the agent. It has no\nport for the panel to reach, so Port is not used. A node never changes it, except by being paired again.",
+            "example": false,
+            "type": "boolean"
+          },
           "remark": {
             "type": "string"
           },
@@ -3612,6 +3657,7 @@
           "panelVersion",
           "pinnedCertSha256",
           "port",
+          "pull",
           "remark",
           "scheme",
           "sidecarStates",
@@ -4068,6 +4114,10 @@
             "example": 2053,
             "type": "integer"
           },
+          "pull": {
+            "example": false,
+            "type": "boolean"
+          },
           "remark": {
             "example": "Primary edge",
             "type": "string"
@@ -4169,6 +4219,7 @@
           "panelVersion",
           "pinnedCertSha256",
           "port",
+          "pull",
           "remark",
           "scheme",
           "sidecarStates",
@@ -11348,6 +11399,7 @@
                       "parentGuid": "",
                       "pinnedCertSha256": "",
                       "port": 2053,
+                      "pull": false,
                       "remark": "Primary edge",
                       "scheme": "https",
                       "sidecarStates": [
@@ -11580,6 +11632,7 @@
                     "parentGuid": "",
                     "pinnedCertSha256": "",
                     "port": 2053,
+                    "pull": false,
                     "remark": "Primary edge",
                     "scheme": "https",
                     "sidecarStates": [
@@ -11761,6 +11814,7 @@
                     "parentGuid": "",
                     "pinnedCertSha256": "",
                     "port": 2053,
+                    "pull": false,
                     "remark": "Primary edge",
                     "scheme": "https",
                     "sidecarStates": [
@@ -11797,7 +11851,7 @@
         "tags": [
           "Nodes"
         ],
-        "summary": "Register a node that runs the thin x-ui-agent instead of a full panel. The agent is not installed yet, so the node is not probed. The panel mints the secret and the certificate of the agent and returns the pairing bundle once: it holds the private key, is never stored, and is what install-agent.sh asks for on the node. tags label the node: a routing rule whose nodeTags name one of them is part of the agent’s config. sidecars lists the helper programs the agent runs beside its core (\"tor\", \"psiphon\"); the agent installs one that the server lacks. decoyMode (template, proxy or adguard; empty is none), decoyTemplate, decoyProxyUrl, decoyDomain, decoyCert (auto or manual), decoyEmail, decoyCertFile, decoyKeyFile and decoyPort set the decoy site the agent serves to whoever probes it.",
+        "summary": "Register a node that runs the thin x-ui-agent instead of a full panel. The agent is not installed yet, so the node is not probed. The panel mints the secret and the certificate of the agent and returns the pairing bundle once: it holds the private key, is never stored, and is what install-agent.sh asks for on the node. tags label the node: a routing rule whose nodeTags name one of them is part of the agent’s config. sidecars lists the helper programs the agent runs beside its core (\"tor\", \"psiphon\"); the agent installs one that the server lacks. decoyMode (template, proxy or adguard; empty is none), decoyTemplate, decoyProxyUrl, decoyDomain, decoyCert (auto or manual), decoyEmail, decoyCertFile, decoyKeyFile and decoyPort set the decoy site the agent serves to whoever probes it. pull=true makes the agent dial the panel instead: masterUrl is the https address of the panel as the node reaches it, base path included, masterPin the SHA-256 of its certificate when that is not a public one, and port is not needed; the bundle then holds no certificate or key.",
         "operationId": "post_panel_api_nodes_addAgent",
         "requestBody": {
           "required": true,
@@ -11860,7 +11914,7 @@
         "tags": [
           "Nodes"
         ],
-        "summary": "Pair an agent node again: mint a new secret and certificate and return the new bundle once. The agent that held the old bundle is cut off at once; install the new bundle on the node to bring it back.",
+        "summary": "Pair an agent node again: mint a new secret (and certificate) and return the new bundle once. The agent that held the old bundle is cut off at once; install the new bundle on the node to bring it back. With no fields the node is paired the way it was. pull=true pairs it so that the agent dials the panel, and needs masterUrl (masterPin is optional); pull=false pairs it so that the panel dials the agent, and needs its port.",
         "operationId": "post_panel_api_nodes_repairAgent_id",
         "parameters": [
           {
@@ -11873,6 +11927,21 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "pull": true,
+                "masterUrl": "https://panel.example.com/secret/",
+                "masterPin": ""
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful response",
@@ -17638,6 +17707,7 @@
                   "parentGuid": "",
                   "pinnedCertSha256": "",
                   "port": 2053,
+                  "pull": false,
                   "remark": "Primary edge",
                   "scheme": "https",
                   "sidecarStates": [

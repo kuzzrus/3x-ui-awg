@@ -1772,7 +1772,7 @@ export const sections: readonly Section[] = [
         method: 'POST',
         path: '/panel/api/nodes/addAgent',
         summary:
-          'Register a node that runs the thin x-ui-agent instead of a full panel. The agent is not installed yet, so the node is not probed. The panel mints the secret and the certificate of the agent and returns the pairing bundle once: it holds the private key, is never stored, and is what install-agent.sh asks for on the node. tags label the node: a routing rule whose nodeTags name one of them is part of the agent\u2019s config. sidecars lists the helper programs the agent runs beside its core ("tor", "psiphon"); the agent installs one that the server lacks. decoyMode (template, proxy or adguard; empty is none), decoyTemplate, decoyProxyUrl, decoyDomain, decoyCert (auto or manual), decoyEmail, decoyCertFile, decoyKeyFile and decoyPort set the decoy site the agent serves to whoever probes it.',
+          'Register a node that runs the thin x-ui-agent instead of a full panel. The agent is not installed yet, so the node is not probed. The panel mints the secret and the certificate of the agent and returns the pairing bundle once: it holds the private key, is never stored, and is what install-agent.sh asks for on the node. tags label the node: a routing rule whose nodeTags name one of them is part of the agent\u2019s config. sidecars lists the helper programs the agent runs beside its core ("tor", "psiphon"); the agent installs one that the server lacks. decoyMode (template, proxy or adguard; empty is none), decoyTemplate, decoyProxyUrl, decoyDomain, decoyCert (auto or manual), decoyEmail, decoyCertFile, decoyKeyFile and decoyPort set the decoy site the agent serves to whoever probes it. pull=true makes the agent dial the panel instead: masterUrl is the https address of the panel as the node reaches it, base path included, masterPin the SHA-256 of its certificate when that is not a public one, and port is not needed; the bundle then holds no certificate or key.',
         body: '{\n  "name": "de-fra-2",\n  "remark": "",\n  "address": "node2.example.com",\n  "port": 8443,\n  "allowPrivateAddress": false,\n  "outboundTag": "",\n  "tags": ["eu"],\n  "sidecars": ["tor"]\n}',
         responseSchema: 'AgentPairing',
       },
@@ -1780,8 +1780,9 @@ export const sections: readonly Section[] = [
         method: 'POST',
         path: '/panel/api/nodes/repairAgent/:id',
         summary:
-          'Pair an agent node again: mint a new secret and certificate and return the new bundle once. The agent that held the old bundle is cut off at once; install the new bundle on the node to bring it back.',
+          'Pair an agent node again: mint a new secret (and certificate) and return the new bundle once. The agent that held the old bundle is cut off at once; install the new bundle on the node to bring it back. With no fields the node is paired the way it was. pull=true pairs it so that the agent dials the panel, and needs masterUrl (masterPin is optional); pull=false pairs it so that the panel dials the agent, and needs its port.',
         params: [{ name: 'id', in: 'path', type: 'number', desc: 'Agent node ID.' }],
+        body: '{\n  "pull": true,\n  "masterUrl": "https://panel.example.com/secret/",\n  "masterPin": ""\n}',
         responseSchema: 'AgentPairing',
       },
       {

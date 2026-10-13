@@ -145,6 +145,31 @@ pairing bundle.
   every agent's core keeps them current on that schedule.
 </Callout>
 
+### A node that connects to the panel
+
+By default the panel connects to the agent, so the TCP port of the agent has to be open to the panel. Choose **The
+node connects to the panel** when you add the agent and the agent connects to the panel instead: nothing on the node has
+to be open for it, so it works behind a NAT, and a node whose only public port is the 443 of its own Xray needs no other.
+The form then asks for the **Panel address**, which is the address of this panel as the node reaches it, with its web base
+path (`https://panel.example.com/path/`), and for the SHA-256 of the certificate of the panel only when that is not one
+from a public authority. The pairing bundle holds no certificate or key then, and the installer says that there is no port
+to open.
+
+The agent dials the panel the way a browser reaches it. When the panel sits behind its own
+[reverse proxy](/docs/operations/reverse-proxy), whose REALITY fallback is on 443, the node connects to that 443 and the
+panel needs nothing more than it already has: the reverse proxy passes the connection on under the base path. While the
+panel cannot be reached the node goes on with its last config, its helper programs and its decoy, and the agent dials
+again, a little less often each time up to every 30 seconds, until the panel is back.
+
+The row of such a node says **Agent (pull)** and shows no port. **Pair again** moves a node from one way to the other and
+keeps its inbounds: it asks for the address of the panel, or for the port of the agent.
+
+<Callout type="info">
+  A node that dials the panel is offline until its agent connects, and says so: **the agent has not connected to the
+  panel**. The address of the panel must be an https address, since the agent checks the certificate of the panel, or
+  the pin you gave, before it sends its secret.
+</Callout>
+
 ### Route per node
 
 The routing rules and outbounds of the master are one template, and every agent node runs

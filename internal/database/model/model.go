@@ -818,6 +818,10 @@ type Node struct {
 	InboundTags         []string `json:"inboundTags" form:"inboundTags" gorm:"serializer:json;column:inbound_tags"`
 	OutboundTag         string   `json:"outboundTag" form:"outboundTag" gorm:"column:outbound_tag"`
 
+	// Pull is set on an agent node whose agent dials the panel, instead of the panel dialing the agent. It has no
+	// port for the panel to reach, so Port is not used. A node never changes it, except by being paired again.
+	Pull bool `json:"pull" form:"pull" gorm:"column:pull;default:false" example:"false"`
+
 	// Tags label an agent node: a routing rule whose nodeTags name one of them is part of its config.
 	Tags []string `json:"tags" form:"tags" gorm:"serializer:json;column:tags"`
 

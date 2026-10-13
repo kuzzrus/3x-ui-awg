@@ -20,6 +20,9 @@ export type AgentNodePayload = Pick<
   | 'remark'
   | 'address'
   | 'port'
+  | 'pull'
+  | 'masterUrl'
+  | 'masterPin'
   | 'allowPrivateAddress'
   | 'outboundTag'
   | 'tags'
@@ -34,6 +37,14 @@ export type AgentNodePayload = Pick<
   | 'decoyKeyFile'
   | 'decoyPort'
 >;
+
+// How an agent node is paired again: the way it was when nothing is said.
+export interface AgentRepairPayload {
+  pull?: boolean;
+  port?: number;
+  masterUrl?: string;
+  masterPin?: string;
+}
 
 export interface NodeUpdateResult {
   id: number;
@@ -74,8 +85,14 @@ export function useNodeMutations() {
   });
 
   const repairAgentMut = useMutation({
-    mutationFn: async (id: number): Promise<Msg<AgentPairing>> => {
-      const raw = await HttpUtil.post(`/panel/api/nodes/repairAgent/${id}`);
+    mutationFn: async ({
+      id,
+      payload,
+    }: {
+      id: number;
+      payload?: AgentRepairPayload;
+    }): Promise<Msg<AgentPairing>> => {
+      const raw = await HttpUtil.post(`/panel/api/nodes/repairAgent/${id}`, payload);
       return parseMsg(raw, AgentPairingSchema, 'nodes/repairAgent');
     },
     onSuccess: (msg) => {
@@ -141,7 +158,8 @@ export function useNodeMutations() {
   return {
     create: (payload: Partial<NodeRecord>) => createMut.mutateAsync(payload),
     createAgent: (payload: AgentNodePayload) => createAgentMut.mutateAsync(payload),
-    repairAgent: (id: number) => repairAgentMut.mutateAsync(id),
+    repairAgent: (id: number, payload?: AgentRepairPayload) =>
+      repairAgentMut.mutateAsync({ id, payload }),
     update: (id: number, payload: Partial<NodeRecord>) => updateMut.mutateAsync({ id, payload }),
     remove: (id: number) => removeMut.mutateAsync(id),
     restartXray: (id: number) => restartXrayMut.mutateAsync(id),

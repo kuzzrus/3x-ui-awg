@@ -12,9 +12,12 @@ export const EXAMPLES: Record<string, unknown> = {
     "decoyPort": 7443,
     "decoyProxyUrl": "",
     "decoyTemplate": "maintenance",
+    "masterPin": "",
+    "masterUrl": "",
     "name": "",
     "outboundTag": "",
     "port": 1,
+    "pull": false,
     "remark": "",
     "sidecars": [
       ""
@@ -26,6 +29,12 @@ export const EXAMPLES: Record<string, unknown> = {
   "AgentPairing": {
     "bundle": "xab1.eyJ2IjoxLCJhZGRyZXNzIjoibm9kZS5leGFtcGxlLmNvbSJ9",
     "node": null
+  },
+  "AgentRepairRequest": {
+    "masterPin": "",
+    "masterUrl": "",
+    "port": 1,
+    "pull": null
   },
   "AllSetting": {
     "datepicker": "",
@@ -906,6 +915,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "parentGuid": "",
     "pinnedCertSha256": "",
     "port": 2053,
+    "pull": false,
     "remark": "",
     "scheme": "https",
     "sidecarStates": [
@@ -1050,6 +1060,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "parentGuid": "",
     "pinnedCertSha256": "",
     "port": 2053,
+    "pull": false,
     "remark": "Primary edge",
     "scheme": "https",
     "sidecarStates": [

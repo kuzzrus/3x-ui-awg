@@ -359,6 +359,7 @@ func TestManagerAgentFor(t *testing.T) {
 		"a new secret":  func(n *model.Node) { n.ApiToken = "s2" },
 		"a new pin":     func(n *model.Node) { n.PinnedCertSha256 = "p2" },
 		"a new address": func(n *model.Node) { n.Address = "203.0.113.8" },
+		"the other way": func(n *model.Node) { n.Pull = !n.Pull },
 	} {
 		changed := *node
 		change(&changed)

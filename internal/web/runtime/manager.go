@@ -200,6 +200,7 @@ func sameRemoteIdentity(a, b *model.Node) bool {
 		return a == b
 	}
 	return a.Id == b.Id &&
+		a.Pull == b.Pull &&
 		a.Scheme == b.Scheme &&
 		a.Address == b.Address &&
 		a.Port == b.Port &&

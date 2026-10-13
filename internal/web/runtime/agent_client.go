@@ -88,6 +88,15 @@ func NewAgentClient(n *model.Node, proxyURL string) (*AgentClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decrypt agent secret: %w", err)
 	}
+	if n.Pull {
+		// The agent dialled the panel and its requests go over that connection, to a host that only has to parse.
+		return &AgentClient{
+			node:   n,
+			secret: secret,
+			base:   "http://agent.invalid",
+			client: &http.Client{Transport: GetAgentTunnels().RoundTripper(n.Id)},
+		}, nil
+	}
 	addr, err := netsafe.NormalizeHost(n.Address)
 	if err != nil {
 		return nil, err
@@ -306,7 +315,7 @@ func (c *AgentClient) PutGeo(ctx context.Context, name, path string) (*agentprot
 	patient.Timeout = 0
 	resp, err := patient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("PUT %s: %w", agentproto.PathGeo, err)
+		return nil, transportError(http.MethodPut, agentproto.PathGeo, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -360,7 +369,7 @@ func (c *AgentClient) do(ctx context.Context, method, path string, query url.Val
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("%s %s: %w", method, path, err)
+		return transportError(method, path, err)
 	}
 	defer resp.Body.Close()
 
@@ -376,6 +385,15 @@ func (c *AgentClient) do(ctx context.Context, method, path string, query url.Val
 		return fmt.Errorf("decode %s response: %w", path, err)
 	}
 	return nil
+}
+
+// transportError is a request that did not get an answer. An agent that has not connected is said so plainly,
+// without the address that only stands in for it.
+func transportError(method, path string, err error) error {
+	if errors.Is(err, ErrAgentNotConnected) {
+		return ErrAgentNotConnected
+	}
+	return fmt.Errorf("%s %s: %w", method, path, err)
 }
 
 // agentErrorFor turns a non-200 answer into an AgentError. The agent answers 404 to

@@ -14,6 +14,7 @@ type NodeView struct {
 	Name                string   `json:"name" example:"edge-1"`
 	Remark              string   `json:"remark" example:"Primary edge"`
 	Kind                string   `json:"kind" example:"panel"`
+	Pull                bool     `json:"pull" example:"false"`
 	Scheme              string   `json:"scheme" example:"https"`
 	Address             string   `json:"address" example:"node.example.com"`
 	Port                int      `json:"port" example:"2053"`
@@ -87,6 +88,7 @@ func toNodeView(n *model.Node) *NodeView {
 		Name:                n.Name,
 		Remark:              n.Remark,
 		Kind:                kind,
+		Pull:                n.Pull,
 		Scheme:              n.Scheme,
 		Address:             n.Address,
 		Port:                n.Port,

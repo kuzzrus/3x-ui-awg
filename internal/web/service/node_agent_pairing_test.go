@@ -147,7 +147,7 @@ func TestRepairAgentCutsOffTheAgentOfTheOldBundle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	second, err := svc.RepairAgent(id)
+	second, err := svc.RepairAgent(id, nil)
 	if err != nil {
 		t.Fatalf("RepairAgent: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestRepairAgentRefusesWhatIsNotAnAgent(t *testing.T) {
 	if err := database.GetDB().Create(panel).Error; err != nil {
 		t.Fatal(err)
 	}
-	if pairing, err := (&NodeService{}).RepairAgent(panel.Id); err == nil {
+	if pairing, err := (&NodeService{}).RepairAgent(panel.Id, nil); err == nil {
 		t.Fatalf("RepairAgent minted a bundle for a panel node: %+v", pairing)
 	}
 	stored, err := (&NodeService{}).GetById(panel.Id)

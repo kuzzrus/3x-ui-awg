@@ -2,7 +2,7 @@
 
 Design for an optional third kind of node: a thin, DB-less agent that only runs
 Xray-core for a master panel. The agent, its installer and the master side with its UI
-exist (phases 1 to 14 of [Phasing](#phasing)); the later items are not built.
+exist (phases 1 to 15 of [Phasing](#phasing)); the later items are not built.
 
 ## Problem
 
@@ -35,7 +35,6 @@ Non-goals (for v1):
   helper programs that an outbound reaches on the node's loopback (Tor, Psiphon) are another matter:
   see [Helper programs](#helper-programs).
 - Per-client IP limits on agent nodes.
-- Pull mode (agent dials the master). Addable later.
 
 ## Decisions
 
@@ -48,7 +47,7 @@ Non-goals (for v1):
 | How changes propagate       | Reuse the stock `ConfigDirty` mechanism: a mutation marks the node dirty, the sync job renders and pushes the whole config. The agent hot-applies when it can and restarts when it must. |
 | Traffic                     | Agent reports cumulative counters; the master diffs them against what it already accounted of each counter (`agent_counters`).                                                           |
 | Installer                   | A separate `install-agent.sh`, not an `--agent` branch in `install.sh`.                                                                                                                  |
-| Push or pull                | Push (master dials the agent) in v1.                                                                                                                                                     |
+| Push or pull                | Push (the master dials the agent) by default, and pull (the agent dials the master) per node: see [Pull mode](#pull-mode).                                                               |
 
 ### Why a new protocol and not the panel dialect
 
@@ -271,6 +270,49 @@ through `/proc` and ends up in shell history); unattended installs read it from 
   sent. A compromised master means compromised agents, exactly as with stock nodes
   and their API tokens.
 
+## Pull mode
+
+Push mode needs a port of the node that the master can reach. In pull mode the agent dials the master, which
+sends its requests back over that connection, so the node opens no port for the master. It suits a node behind a
+NAT, and a node whose only public port is the 443 of its core, with the [decoy](#decoy-site) behind its REALITY
+fallback: the node shows that one port to the world, and the master is reached on its own 443 the way a browser
+reaches the panel. A node chooses its way when it is added and changes it only by being paired again
+(`Node.Pull`, which a save never sets).
+
+- **Connection.** The agent opens a WebSocket to `wss://<master>/<base path>/agent/connect/<node id>`, naming the
+  subprotocol `x-ui-agent.v1` and sending `Authorization: Bearer <secret>`. The address is the one the panel is served
+  on, so a master behind a reverse proxy, or one whose proxy is the fallback of a REALITY inbound on 443, is reached as
+  it is by a browser. The endpoint asks for no session: the secret is all of its authentication. A request that
+  does not carry the secret of an enabled agent node in pull mode, that names another node, or that does not name the
+  subprotocol, is answered with the bare 404 that the agent gives.
+- **The roles turn.** Over that WebSocket the master speaks HTTP/2 to the agent: the agent serves the `/v1/*` handlers it
+  serves in push mode (an `http.Server` that speaks HTTP/2 without TLS, with the same handler), and the master's client
+  sends its requests through the connection (an `http.ClientConn`) in place of dialing. Every call of the protocol, its
+  revisions and its 404 for what the agent does not know are the same in both modes, and only where the connection comes
+  from differs. A message of the WebSocket carries at most 32 KiB, and the two ends join them again.
+- **Trust.** No TLS runs inside the connection. The outer one tells the agent who the master is: the chain of the
+  master's own certificate, or the pin that the bundle carries for a panel whose certificate is not a public one. The
+  secret tells the master who the agent is, and every request still carries it, as in push mode. The agent's
+  certificate and the SNI gate have nothing to do here, since nothing listens.
+- **Bundle.** A pull bundle is version 2: the address of the master with its base path, the id of the node, the
+  secret, and optionally the pin. It holds no certificate and no key. An agent from before pull mode refuses it as a
+  version it does not support, and the installer, which always installs the newest agent, prints that the agent opens no
+  port in place of asking for one to be opened.
+- **One connection per node.** A new connection replaces the old one and closes it, so an agent that dials again after a
+  silent loss is not kept out by its own dead connection. The master sends an HTTP/2 PING after 15 s of silence and
+  drops the connection when it is not answered in 10 s, and the agent pings every 20 s and drops one that has
+  been silent for more than 70 s, which it checks at each ping. After a loss the agent waits 1 s before it dials, then twice as long after each failure up to
+  30 s with some jitter, and starts again from 1 s after a connection that held for 30 s. A node that is deleted, disabled
+  or paired again loses its connection at once, and its old agent is answered 404.
+- **Master side.** `runtime.AgentTunnels` holds the connection of each node. The client of a node in pull mode is the
+  same `AgentClient`, with a transport that picks the connection the node holds at each request, so it keeps working across
+  reconnects. A node that holds none reads offline, saying that the agent has not connected. The agent runs on as it
+  does with the master out of reach: its core, helper programs and decoy keep serving what they were last given.
+- **Pairing.** `POST /panel/api/nodes/addAgent` with `pull=true` takes `masterUrl`, an `https` address with the base
+  path of the panel as the node reaches it, and optionally `masterPin`. The node keeps a placeholder port (443) and no pin
+  of its own. `POST /panel/api/nodes/repairAgent/:id` takes the same fields and `pull`, which changes the way: pairing a
+  node for pull needs `masterUrl`, and pairing it for push needs the `port` of the agent.
+
 ## Master-side integration
 
 New code lives in new files. The stock files get small hooks guarded by `Kind`:
@@ -396,7 +438,8 @@ policy.
 
 ## Failure behavior
 
-- Master unreachable: the agent keeps serving its last good config.
+- Master unreachable: the agent keeps serving its last good config. In pull mode it also dials again, with a growing
+  wait, until the master is back.
 - Agent unreachable: the node goes `offline` through the normal heartbeat; mutations
   keep the node dirty and the next successful tick pushes the final state.
 - Config rejected by the core: 422 from `PUT /v1/config`, last good config kept, the
@@ -442,7 +485,7 @@ says so; a tag or archive given explicitly is never swapped.
   last good config stay, and the agent comes back up on that config.
 - A reboot starts the agent and its core from the last good config without the master.
 - `x-ui-agent -check-bundle -bundle-file <path>` validates a bundle and prints the
-  address it names.
+  address it names, or `pull` and the address of the master for a bundle of an agent that dials it.
 
 ## Phasing
 
@@ -473,9 +516,9 @@ says so; a tag or archive given explicitly is never swapped.
 12. **Psiphon**. Done: the second helper program, beside Tor.
 13. **Decoy site**. Done: a decoy page or proxy on an agent node, set with `PUT /v1/decoy`.
 14. **AdGuard Home as a decoy**. Done: a mode of the decoy, which the agent installs and runs for it.
-15. Later, each on its own: pull mode, in which the agent dials the master on the port the panel's reverse
-    proxy serves (443 behind a REALITY fallback), so a node needs no port of its own besides its core's; and
-    nodes as members of a subscription balancer (its members are picked inbound by inbound today).
+15. **Pull mode**. Done: an agent that dials the master on the port the panel's reverse proxy serves (443 behind
+    a REALITY fallback), so a node needs no port of its own besides its core's.
+16. Later: nodes as members of a subscription balancer (its members are picked inbound by inbound today).
 
 ## Open questions
 

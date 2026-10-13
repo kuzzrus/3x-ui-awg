@@ -13,22 +13,29 @@ import (
 
 const (
 	// BundlePrefix names the format and version of an encoded pairing bundle.
-	BundlePrefix   = "xab1."
-	bundleVersion  = 1
-	maxBundleBytes = 16 << 10
-	maxHostLen     = 253
-	maxLabelLen    = 63
+	BundlePrefix  = "xab1."
+	bundleVersion = 1
+	// bundleVersionPull is the bundle of an agent that dials the master, which has no port to serve.
+	bundleVersionPull = 2
+	maxBundleBytes    = 16 << 10
+	maxHostLen        = 253
+	maxLabelLen       = 63
 )
 
 // Bundle is everything an agent needs to serve one master. It carries the
 // private key, so it is a credential and is never stored by the master.
 type Bundle struct {
 	Version int    `json:"v"`
-	Address string `json:"address"`
-	Port    int    `json:"port"`
+	Address string `json:"address,omitempty"`
+	Port    int    `json:"port,omitempty"`
 	Secret  string `json:"secret"`
-	CertPEM string `json:"cert"`
-	KeyPEM  string `json:"key"`
+	CertPEM string `json:"cert,omitempty"`
+	KeyPEM  string `json:"key,omitempty"`
+	// Master, Node and Pin are what version 2 has in place of the four fields above: the panel the agent
+	// dials with its base path, the id of the node there, and the SHA-256 of the panel's certificate.
+	Master string `json:"master,omitempty"`
+	Node   int    `json:"node,omitempty"`
+	Pin    string `json:"pin,omitempty"`
 }
 
 // NewBundle mints the secret and the pinned identity for a new agent. The
@@ -58,6 +65,19 @@ func NewBundle(address string, port int, now time.Time) (*Bundle, string, error)
 		KeyPEM:  id.KeyPEM,
 	}, id.Fingerprint, nil
 }
+
+// NewPullBundle is the bundle of an agent that dials master, the address of the panel with its base path, as
+// node, and proves itself with secret. pin is the SHA-256 of the panel's certificate, for one that is not public.
+func NewPullBundle(master string, node int, secret, pin string) (*Bundle, error) {
+	b := &Bundle{Version: bundleVersionPull, Secret: secret, Master: master, Node: node, Pin: pin}
+	if err := b.Validate(); err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+// Pull reports whether the agent dials the master, rather than the master dialing it.
+func (b *Bundle) Pull() bool { return b.Version == bundleVersionPull }
 
 // Encode renders the bundle as a single copy-pasteable token.
 func (b *Bundle) Encode() (string, error) {
@@ -95,11 +115,35 @@ func ParseBundle(token string) (*Bundle, error) {
 	return &b, nil
 }
 
-// Validate checks the endpoint, the secret and that the key matches the cert.
+// Validate checks the endpoint, the secret and that the key matches the cert, or for a pull bundle
+// the address of the master, the node and the pin.
 func (b *Bundle) Validate() error {
-	if b.Version != bundleVersion {
+	switch b.Version {
+	case bundleVersion:
+		return b.validatePush()
+	case bundleVersionPull:
+		return b.validatePull()
+	default:
 		return fmt.Errorf("pairing bundle version %d is not supported", b.Version)
 	}
+}
+
+func (b *Bundle) validatePull() error {
+	if _, err := ConnectURL(b.Master, b.Node); err != nil {
+		return err
+	}
+	if _, err := DecodeSecret(b.Secret); err != nil {
+		return err
+	}
+	if b.Pin != "" {
+		if _, err := ParsePin(b.Pin); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (b *Bundle) validatePush() error {
 	if err := validateEndpoint(b.Address, b.Port); err != nil {
 		return err
 	}
