@@ -127,7 +127,11 @@ phases add endpoints under the same prefix.
    file names, creating the folder; empty and `none` stay off), and refuses with a 422 a
    config it could not drive: no `api` inbound on 127.0.0.1, no stats section, no
    Handler or Stats service, no routing rule for the api inbound, or client counters
-   switched off for level 0.
+   switched off for level 0. The api inbound and the metrics listener are for the agent
+   alone, and the template that every config comes from gives them the same ports on every
+   server, so a server that runs another Xray holds them already: the agent keeps the ports
+   of the config while they are free, chooses others when something holds them, and chooses
+   again if one is taken before the core starts.
 
 On boot the agent opens its port, then loads the last good config and starts Xray without
 waiting for the master, so a reboot with the master down does not take the node offline.

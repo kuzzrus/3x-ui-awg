@@ -62,6 +62,7 @@ type Core struct {
 	closed    bool
 	retryAt   time.Time
 	backoff   time.Duration
+	ports     localPorts
 }
 
 func NewCore(state *State, logDir string) *Core {
@@ -187,6 +188,7 @@ func (c *Core) build(body []byte, restartOnUserRemoval bool) (*applied, error) {
 	if err := os.MkdirAll(c.logDir, logDirMode); err != nil {
 		return nil, fmt.Errorf("create the log folder: %w", err)
 	}
+	c.localize(cfg)
 	return &applied{
 		revision: agentproto.RevisionOf(body, restartOnUserRemoval),
 		restart:  restartOnUserRemoval,
@@ -297,6 +299,8 @@ func (c *Core) stopProcess() {
 // start launches a new core process with a and waits until it is serving. Only a
 // core that got that far replaces what the Core reports as running.
 func (c *Core) start(ctx context.Context, a *applied) error {
+	c.forgetTakenPorts()
+	c.localize(a.cfg)
 	p := xray.NewProcess(a.cfg)
 	if err := p.Start(); err != nil {
 		return fmt.Errorf("start xray: %w", err)
