@@ -155,11 +155,15 @@ func (s *SubJsonService) GetJson(subId string, host string, alwaysReturnArray bo
 			inboundConfigs = append(inboundConfigs, s.getConfig(subReq, inbound, client, host)...)
 		}
 		if len(inboundConfigs) > 0 {
-			entries = append(entries, subConfigEntry{
+			entry := subConfigEntry{
 				sortIndex: inbound.SubSortIndex,
 				id:        inbound.Id,
 				configs:   inboundConfigs,
-			})
+			}
+			if inbound.NodeID != nil {
+				entry.nodeID = *inbound.NodeID
+			}
+			entries = append(entries, entry)
 		}
 	}
 	entries = s.appendBalancerEntries(entries)
@@ -251,7 +255,17 @@ type subConfigEntry struct {
 	sortIndex int
 	kind      int
 	id        int
+	nodeID    int // the node that runs the inbound of a kind 0 entry, 0 for the panel itself
 	configs   []json_util.RawMessage
+}
+
+// balancerSelects reports whether the inbound behind entry is a member of balancer:
+// picked on its own, or one of the inbounds of a node that the balancer picked.
+func balancerSelects(balancer *model.SubBalancer, entry subConfigEntry) bool {
+	if slices.Contains(balancer.InboundIds, entry.id) {
+		return true
+	}
+	return entry.nodeID != 0 && slices.Contains(balancer.NodeIds, entry.nodeID)
 }
 
 const (
@@ -474,7 +488,7 @@ func (s *SubJsonService) buildBalancerConfig(balancer *model.SubBalancer, entrie
 	// entryProxies is the pre-extracted proxy outbounds per entry; kind!=0 rows
 	// have none. Clone before retagging so the cached map stays reusable.
 	for i, entry := range entries {
-		if entry.kind != 0 || !slices.Contains(balancer.InboundIds, entry.id) {
+		if entry.kind != 0 || !balancerSelects(balancer, entry) {
 			continue
 		}
 		for _, outbound := range entryProxies[i] {

@@ -8,6 +8,8 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/common"
+
+	"gorm.io/gorm"
 )
 
 var subBalancerStrategies = map[string]struct{}{
@@ -35,14 +37,68 @@ func (s *SubBalancerService) validate(b *model.SubBalancer) error {
 	if _, ok := subBalancerStrategies[b.Strategy]; !ok {
 		return common.NewError("invalid balancer strategy:", b.Strategy)
 	}
-	if len(b.InboundIds) == 0 {
-		return common.NewError("balancer must select at least one inbound")
+	if err := s.validateNodes(b); err != nil {
+		return err
+	}
+	if len(b.InboundIds) == 0 && len(b.NodeIds) == 0 {
+		return common.NewError("balancer must select at least one inbound or node")
+	}
+	if b.InboundIds == nil {
+		// A balancer of nodes alone still lists its inbounds, as an empty array.
+		b.InboundIds = []int{}
 	}
 	if err := s.validateWeights(b); err != nil {
 		return err
 	}
 	if b.SortOrder < 1 {
 		b.SortOrder = 1
+	}
+	return nil
+}
+
+// validateNodes drops repeated node ids and refuses one that names no node, so a
+// mistyped id cannot sit in a balancer where it never matches anything.
+func (s *SubBalancerService) validateNodes(b *model.SubBalancer) error {
+	if len(b.NodeIds) == 0 {
+		b.NodeIds = nil
+		return nil
+	}
+	unique := make([]int, 0, len(b.NodeIds))
+	for _, id := range b.NodeIds {
+		if id < 1 {
+			return common.NewError("balancer node id must be positive")
+		}
+		if !slices.Contains(unique, id) {
+			unique = append(unique, id)
+		}
+	}
+	var found int64
+	if err := database.GetDB().Model(&model.Node{}).Where("id IN ?", unique).Count(&found).Error; err != nil {
+		return err
+	}
+	if int(found) != len(unique) {
+		return common.NewError("balancer selects a node that does not exist")
+	}
+	b.NodeIds = unique
+	return nil
+}
+
+// DropNodeTx takes a deleted node out of every balancer that selects it, so none keeps an id
+// that nothing can resolve. It runs in the transaction that deletes the node.
+func (s *SubBalancerService) DropNodeTx(tx *gorm.DB, nodeID int) error {
+	var balancers []model.SubBalancer
+	if err := tx.Find(&balancers).Error; err != nil {
+		return err
+	}
+	for i := range balancers {
+		before := balancers[i].NodeIds
+		balancers[i].NodeIds = slices.DeleteFunc(before, func(id int) bool { return id == nodeID })
+		if len(balancers[i].NodeIds) == len(before) {
+			continue
+		}
+		if err := tx.Save(&balancers[i]).Error; err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -113,6 +169,7 @@ func (s *SubBalancerService) Update(id int, balancer *model.SubBalancer, enabled
 	current.Remark = balancer.Remark
 	current.Strategy = balancer.Strategy
 	current.InboundIds = balancer.InboundIds
+	current.NodeIds = balancer.NodeIds
 	current.MemberWeights = balancer.MemberWeights
 	current.SortOrder = balancer.SortOrder
 	if enabled != nil {

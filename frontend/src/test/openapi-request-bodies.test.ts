@@ -72,8 +72,9 @@ describe('generated OpenAPI request bodies', () => {
     const balancerUpdate = requestBody('/panel/api/sub-balancers/{id}').content[
       'application/x-www-form-urlencoded'
     ];
-    expect(balancerUpdate.schema.required).toEqual(['remark', 'inboundIds']);
+    expect(balancerUpdate.schema.required).toEqual(['remark']);
     expect(balancerUpdate.encoding?.inboundIds).toEqual({ style: 'form', explode: true });
+    expect(balancerUpdate.encoding?.nodeIds).toEqual({ style: 'form', explode: true });
     expect(balancerUpdate.encoding?.memberWeights).toEqual({ contentType: 'application/json' });
 
     const inboundUpdate = requestBody('/panel/api/inbounds/update/{id}').content[

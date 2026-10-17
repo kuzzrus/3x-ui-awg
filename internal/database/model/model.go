@@ -1370,15 +1370,19 @@ type OutboundSubscription struct {
 	OutboundCount        int    `json:"outboundCount" gorm:"-"`
 }
 
-// SubBalancer is one extra JSON-subscription config document whose members are
-// the selected inbounds' proxy outbounds. SortOrder shares SubSortIndex semantics.
+// SubBalancer is one extra JSON-subscription config document whose members are the proxy
+// outbounds of the selected inbounds and nodes. SortOrder shares SubSortIndex semantics.
 type SubBalancer struct {
 	Id         int    `json:"id" form:"id" gorm:"primaryKey;autoIncrement" example:"1"`
 	Remark     string `json:"remark" form:"remark" validate:"required,max=256" example:"auto-fastest"`
 	Strategy   string `json:"strategy" form:"strategy" validate:"omitempty,oneof=leastLoad leastPing random roundRobin" example:"random"`
 	InboundIds []int  `json:"inboundIds" form:"inboundIds" gorm:"serializer:json;column:inbound_ids" example:"[1,3]"`
+	// A node stands for the subscriber's inbounds on it as they are when the subscription is built, so
+	// one added later joins without an edit. An inbound picked both ways is one member.
+	NodeIds []int `json:"nodeIds,omitempty" form:"nodeIds" gorm:"serializer:json;column:node_ids" example:"[2]"`
 	// inboundId -> leastLoad weight; absent entries mean 1.0. Only meaningful
 	// with Strategy "leastLoad" — xray ignores costs on every other strategy.
+	// Keyed by inbound: the inbounds of a node weigh 1 unless they are picked one by one too.
 	MemberWeights map[int]float64 `json:"memberWeights,omitempty" form:"memberWeights" gorm:"serializer:json;column:member_weights"`
 	SortOrder     int             `json:"sortOrder" form:"sortOrder" gorm:"column:sort_order" validate:"omitempty,gte=1" example:"1"`
 	// No gorm default:true — a bool default makes an explicit false at insert

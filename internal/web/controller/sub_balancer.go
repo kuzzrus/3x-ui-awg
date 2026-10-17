@@ -29,7 +29,7 @@ func NewSubBalancerController(g *gin.RouterGroup) *SubBalancerController {
 }
 
 // parseSubBalancerForm reads the urlencoded form (HttpUtil default): scalars
-// via ShouldBind, inboundIds as repeated keys. enabled is returned as *bool so
+// via ShouldBind, inboundIds and nodeIds as repeated keys. enabled is returned as *bool so
 // Update can keep the stored value when the key is absent; a bad value is a 400.
 func parseSubBalancerForm(c *gin.Context) (*model.SubBalancer, *bool, error) {
 	form := struct {
@@ -59,6 +59,13 @@ func parseSubBalancerForm(c *gin.Context) (*model.SubBalancer, *bool, error) {
 			return nil, nil, fmt.Errorf("invalid inbound id %q: %w", raw, err)
 		}
 		balancer.InboundIds = append(balancer.InboundIds, id)
+	}
+	for _, raw := range c.PostFormArray("nodeIds") {
+		id, err := strconv.Atoi(raw)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid node id %q: %w", raw, err)
+		}
+		balancer.NodeIds = append(balancer.NodeIds, id)
 	}
 	// Weights arrive as one JSON object ("memberWeights":{"3":0.5}); gin cannot
 	// bind bracket-keyed maps from urlencoded forms, unlike repeated scalars.
