@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -25,18 +26,19 @@ import (
 
 // pullPanel is a panel with the node endpoints and the one the agents dial, behind TLS and a base path.
 type pullPanel struct {
-	t      *testing.T
-	engine *gin.Engine
-	server *httptest.Server
+	t       *testing.T
+	engine  *gin.Engine
+	server  *httptest.Server
+	connect *AgentConnectController
 }
 
 func newPullPanel(t *testing.T) *pullPanel {
 	t.Helper()
 	engine := newNodeCredentialTestEngine(t)
-	NewAgentConnectController(engine.Group("/base"))
+	connect := NewAgentConnectController(engine.Group("/base"))
 	server := httptest.NewTLSServer(engine)
 	t.Cleanup(server.Close)
-	return &pullPanel{t: t, engine: engine, server: server}
+	return &pullPanel{t: t, engine: engine, server: server, connect: connect}
 }
 
 func (p *pullPanel) masterURL() string { return p.server.URL + "/base/" }
@@ -222,6 +224,47 @@ func TestPairingAgainCutsOffTheAgentWithTheOldSecret(t *testing.T) {
 	}
 	if _, status := panel.dial(idText, again.Secret, agentproto.ConnectProtocol); status != http.StatusSwitchingProtocols {
 		t.Errorf("the new secret: %d, want the connection to be taken", status)
+	}
+}
+
+// A dial can be let in with the secret of the day and then be overtaken by what changes the node, before the panel has
+// registered it. The agents of a node are dropped when that happens, so this one must not be left out of it.
+func TestAnAgentThatDialledBeforeItsNodeChangedIsNotRegistered(t *testing.T) {
+	for name, change := range map[string]func(p *pullPanel, id string){
+		"the node was paired again": func(p *pullPanel, id string) {
+			postFormAnyStatus(p.engine, "/panel/api/nodes/repairAgent/"+id, url.Values{"masterUrl": {p.masterURL()}, "masterPin": {p.pin()}})
+		},
+		"the node was deleted": func(p *pullPanel, id string) {
+			postFormAnyStatus(p.engine, "/panel/api/nodes/del/"+id, nil)
+		},
+		"the node was disabled": func(p *pullPanel, id string) {
+			postFormAnyStatus(p.engine, "/panel/api/nodes/setEnable/"+id, url.Values{"enable": {"false"}})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			panel := newPullPanel(t)
+			id, bundle := panel.addPullNode("edge")
+			idText := strconv.Itoa(id)
+			panel.connect.beforeAttach = func() { change(panel, idText) }
+
+			ws, status := panel.dial(idText, bundle.Secret, agentproto.ConnectProtocol)
+			if status != http.StatusSwitchingProtocols {
+				t.Fatalf("the dial was answered %d, want the upgrade", status)
+			}
+			// The panel closes the connection that it turned away, and the agent sees that.
+			_ = ws.SetReadDeadline(time.Now().Add(10 * time.Second))
+			var err error
+			for err == nil {
+				_, _, err = ws.ReadMessage() // the first message is the HTTP/2 preface that the panel sent
+			}
+			var closed *websocket.CloseError
+			if !errors.As(err, &closed) {
+				t.Fatalf("the agent read %v, want the panel to have closed the connection", err)
+			}
+			if runtime.GetAgentTunnels().Connected(id) {
+				t.Fatal("an agent that dialled before its node changed is registered")
+			}
+		})
 	}
 }
 

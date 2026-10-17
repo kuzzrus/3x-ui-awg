@@ -460,10 +460,11 @@ func TestSidecarHostRunsWhatTheAgentRequiresAndLetsItGo(t *testing.T) {
 	}
 
 	host.Require(adguardName, true)
-	waitForHost(t, "the required program to run", needed.Running)
-	if got, _ := host.StateOf(adguardName); got != agentproto.SidecarRunning {
-		t.Fatalf("StateOf = %q, want running", got)
-	}
+	// The fake is running before the host has recorded that, so it is the state that is waited for.
+	waitForHost(t, "the required program to stand running", func() bool {
+		got, _ := host.StateOf(adguardName)
+		return got == agentproto.SidecarRunning && needed.Running()
+	})
 	if states := host.States(); len(states) != 0 {
 		t.Fatalf("states = %+v, want the master to see none: it did not list the program", states)
 	}

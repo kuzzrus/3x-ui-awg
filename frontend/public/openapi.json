@@ -152,7 +152,7 @@
         "type": "object"
       },
       "AgentRepairRequest": {
-        "description": "AgentRepairRequest says how an agent node is paired again. Left empty, it pairs the agent the way it was paired.\nPull changes the way, and then the new one needs its own fields: MasterUrl for pull, Port for push.",
+        "description": "AgentRepairRequest says how an agent node is paired again. Left empty, a node that the panel dials is paired as it was,\nwhile one that dials the panel needs its MasterUrl again. Pull changes the way: MasterUrl is needed for pull, Port for push.",
         "properties": {
           "masterPin": {
             "type": "string"
@@ -11914,7 +11914,7 @@
         "tags": [
           "Nodes"
         ],
-        "summary": "Pair an agent node again: mint a new secret (and certificate) and return the new bundle once. The agent that held the old bundle is cut off at once; install the new bundle on the node to bring it back. With no fields the node is paired the way it was. pull=true pairs it so that the agent dials the panel, and needs masterUrl (masterPin is optional); pull=false pairs it so that the panel dials the agent, and needs its port.",
+        "summary": "Pair an agent node again: mint a new secret (and certificate) and return the new bundle once. The agent that held the old bundle is cut off at once; install the new bundle on the node to bring it back. With no fields a node that the panel dials is paired the way it was, and a node whose agent dials the panel needs masterUrl again. pull=true pairs it so that the agent dials the panel, and needs masterUrl (masterPin is optional); pull=false pairs it so that the panel dials the agent, and needs its port.",
         "operationId": "post_panel_api_nodes_repairAgent_id",
         "parameters": [
           {

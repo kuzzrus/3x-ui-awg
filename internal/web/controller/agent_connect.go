@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"slices"
 	"strconv"
@@ -20,6 +21,8 @@ type AgentConnectController struct {
 	nodes    service.NodeService
 	tunnels  *runtime.AgentTunnels
 	upgrader websocket.Upgrader
+	// beforeAttach runs between the upgrade and the registration, which is where a test makes the node change.
+	beforeAttach func()
 }
 
 func NewAgentConnectController(g *gin.RouterGroup) *AgentConnectController {
@@ -47,7 +50,16 @@ func (a *AgentConnectController) connect(c *gin.Context) {
 		logger.Debugf("agent connect: node %d: %v", id, err)
 		return
 	}
-	if err := a.tunnels.Attach(id, ws); err != nil {
+	if a.beforeAttach != nil {
+		a.beforeAttach()
+	}
+	// The secret was read before the upgrade, so it is read again where the connection is registered: a node that was
+	// paired again, disabled or deleted meanwhile has dropped its agents already and must not get this one.
+	welcome := func() bool {
+		current, ok := a.nodes.PullAgentSecret(id)
+		return ok && subtle.ConstantTimeCompare([]byte(current), []byte(secret)) == 1
+	}
+	if err := a.tunnels.Attach(id, ws, welcome); err != nil {
 		logger.Warningf("agent connect: node %d: %v", id, err)
 		return
 	}

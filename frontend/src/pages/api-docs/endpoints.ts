@@ -1780,7 +1780,7 @@ export const sections: readonly Section[] = [
         method: 'POST',
         path: '/panel/api/nodes/repairAgent/:id',
         summary:
-          'Pair an agent node again: mint a new secret (and certificate) and return the new bundle once. The agent that held the old bundle is cut off at once; install the new bundle on the node to bring it back. With no fields the node is paired the way it was. pull=true pairs it so that the agent dials the panel, and needs masterUrl (masterPin is optional); pull=false pairs it so that the panel dials the agent, and needs its port.',
+          'Pair an agent node again: mint a new secret (and certificate) and return the new bundle once. The agent that held the old bundle is cut off at once; install the new bundle on the node to bring it back. With no fields a node that the panel dials is paired the way it was, and a node whose agent dials the panel needs masterUrl again. pull=true pairs it so that the agent dials the panel, and needs masterUrl (masterPin is optional); pull=false pairs it so that the panel dials the agent, and needs its port.',
         params: [{ name: 'id', in: 'path', type: 'number', desc: 'Agent node ID.' }],
         body: '{\n  "pull": true,\n  "masterUrl": "https://panel.example.com/secret/",\n  "masterPin": ""\n}',
         responseSchema: 'AgentPairing',

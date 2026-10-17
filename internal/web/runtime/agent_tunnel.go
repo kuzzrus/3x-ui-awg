@@ -15,6 +15,9 @@ import (
 // ErrAgentNotConnected is what a call to an agent in pull mode fails with while that agent holds no connection.
 var ErrAgentNotConnected = errors.New("the agent has not connected to the panel")
 
+// ErrAgentTurnedAway is what Attach fails with for an agent that dialled with a secret or a node that is no longer valid.
+var ErrAgentTurnedAway = errors.New("the agent was turned away: its node or its secret has changed since it dialled")
+
 // tunnelSetupTimeout bounds the HTTP/2 handshake with an agent that has just connected.
 const tunnelSetupTimeout = 10 * time.Second
 
@@ -26,9 +29,8 @@ type AgentTunnels struct {
 }
 
 type agentTunnel struct {
-	conn  *agentproto.Conn
-	cc    *http.ClientConn
-	since time.Time
+	conn *agentproto.Conn
+	cc   *http.ClientConn
 }
 
 var agentTunnels = NewAgentTunnels()
@@ -39,10 +41,10 @@ func GetAgentTunnels() *AgentTunnels { return agentTunnels }
 // NewAgentTunnels is a registry of its own, which is what a test wants.
 func NewAgentTunnels() *AgentTunnels { return &AgentTunnels{conns: map[int]*agentTunnel{}} }
 
-// Attach makes ws the connection of the agent of node, and closes the one it replaces: an agent that dials
-// again has lost the old connection, even when the panel has not found out yet.
-func (t *AgentTunnels) Attach(node int, ws *websocket.Conn) error {
-	tunnel := &agentTunnel{since: time.Now()}
+// Attach makes ws the connection of the agent of node, and closes the one it replaces: an agent that dials again has
+// lost the old connection. welcome is asked once the registry is locked, so a Drop cannot slip in between.
+func (t *AgentTunnels) Attach(node int, ws *websocket.Conn, welcome func() bool) error {
+	tunnel := &agentTunnel{}
 	tunnel.conn = agentproto.NewConn(ws, func() { t.remove(node, tunnel) })
 	ctx, cancel := context.WithTimeout(context.Background(), tunnelSetupTimeout)
 	defer cancel()
@@ -54,6 +56,11 @@ func (t *AgentTunnels) Attach(node int, ws *websocket.Conn) error {
 	tunnel.cc = cc
 
 	t.mu.Lock()
+	if welcome != nil && !welcome() {
+		t.mu.Unlock()
+		_ = tunnel.conn.Close()
+		return ErrAgentTurnedAway
+	}
 	old := t.conns[node]
 	t.conns[node] = tunnel
 	t.mu.Unlock()

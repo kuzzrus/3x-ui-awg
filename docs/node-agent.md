@@ -311,7 +311,10 @@ reaches the panel. A node chooses its way when it is added and changes it only b
 - **Pairing.** `POST /panel/api/nodes/addAgent` with `pull=true` takes `masterUrl`, an `https` address with the base
   path of the panel as the node reaches it, and optionally `masterPin`. The node keeps a placeholder port (443) and no pin
   of its own. `POST /panel/api/nodes/repairAgent/:id` takes the same fields and `pull`, which changes the way: pairing a
-  node for pull needs `masterUrl`, and pairing it for push needs the `port` of the agent.
+  node for pull needs `masterUrl`, and pairing it for push needs the `port` of the agent. With no fields at all a node
+  that the panel dials is paired as it was, while a node whose agent dials the panel needs `masterUrl` again, since the
+  panel keeps no address of itself for it. A connection that was let in before the node was paired again, disabled or
+  deleted is not registered: the panel reads the secret once more where it registers the connection.
 
 ## Master-side integration
 

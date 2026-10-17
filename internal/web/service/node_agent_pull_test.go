@@ -176,7 +176,7 @@ func attachFor(t *testing.T, tunnels *runtime.AgentTunnels, node int) {
 	upgrader := websocket.Upgrader{Subprotocols: []string{agentproto.ConnectProtocol}}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if ws, err := upgrader.Upgrade(w, r, nil); err == nil {
-			_ = tunnels.Attach(node, ws)
+			_ = tunnels.Attach(node, ws, nil)
 		}
 	}))
 	t.Cleanup(srv.Close)

@@ -27,7 +27,7 @@ func tunnelMaster(t *testing.T, tunnels *AgentTunnels, node int) *httptest.Serve
 		if err != nil {
 			return
 		}
-		if err := tunnels.Attach(node, ws); err != nil {
+		if err := tunnels.Attach(node, ws, nil); err != nil {
 			t.Errorf("Attach: %v", err)
 		}
 	}))
@@ -105,6 +105,59 @@ func TestAgentTunnelsSendRequestsOverTheConnectionTheAgentOpened(t *testing.T) {
 }
 
 // An agent that dials again has lost the old connection, so the new one is the one that serves, and the old one is let go.
+// welcomeOf attaches the one connection that is made to it as the agent of node 3, and says how that ended.
+func welcomeOf(t *testing.T, tunnels *AgentTunnels, welcome func() bool) (*httptest.Server, <-chan error) {
+	t.Helper()
+	upgrader := websocket.Upgrader{Subprotocols: []string{agentproto.ConnectProtocol}}
+	attached := make(chan error, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			attached <- err
+			return
+		}
+		attached <- tunnels.Attach(3, ws, welcome)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, attached
+}
+
+// An agent that dialled with a secret that the node has since replaced must not be registered, or the panel would
+// hand the new secret to it.
+func TestAgentTunnelsAttachTurnsAwayAnAgentThatIsNoLongerWelcome(t *testing.T) {
+	tunnels := NewAgentTunnels()
+	srv, attached := welcomeOf(t, tunnels, func() bool { return false })
+	ended := dialAgent(t, srv, answers("agent"))
+	if err := <-attached; !errors.Is(err, ErrAgentTurnedAway) {
+		t.Fatalf("Attach: %v, want ErrAgentTurnedAway", err)
+	}
+	if tunnels.Connected(3) {
+		t.Fatal("an agent that was turned away is registered")
+	}
+	select {
+	case <-ended:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the agent that was turned away was not told the connection was closed")
+	}
+}
+
+// What makes the check hold against a Drop is that it is made where nothing else can change the registry.
+func TestAgentTunnelsAttachAsksWhetherTheAgentIsWelcomeWithTheRegistryLocked(t *testing.T) {
+	tunnels := NewAgentTunnels()
+	srv, attached := welcomeOf(t, tunnels, func() bool {
+		if tunnels.mu.TryLock() {
+			tunnels.mu.Unlock()
+			t.Error("the registry was not locked while the agent was asked about")
+		}
+		return true
+	})
+	dialAgent(t, srv, answers("agent"))
+	if err := <-attached; err != nil {
+		t.Fatalf("Attach: %v", err)
+	}
+	waitFor(t, "the connection", func() bool { return tunnels.Connected(3) })
+}
+
 func TestAgentTunnelsAttachReplacesTheOldConnection(t *testing.T) {
 	tunnels := NewAgentTunnels()
 	srv := tunnelMaster(t, tunnels, 3)

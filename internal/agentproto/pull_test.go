@@ -622,6 +622,9 @@ func TestServeConnAnswersNoMoreRequestsAtOnceThanItAdvertises(t *testing.T) {
 	var running, peak atomic.Int32
 	release := make(chan struct{})
 	go ServeConn(context.Background(), agentEnd, &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/warmup" {
+			return
+		}
 		n := running.Add(1)
 		defer running.Add(-1)
 		for {
@@ -637,6 +640,14 @@ func TestServeConnAnswersNoMoreRequestsAtOnceThanItAdvertises(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A client that has not read the SETTINGS of the agent does not know the limit yet, and the agent refuses the surplus.
+	warmup, _ := http.NewRequest(http.MethodGet, "http://agent.invalid/v1/warmup", nil)
+	resp, err := cc.RoundTrip(warmup)
+	if err != nil {
+		t.Fatalf("the first request: %v", err)
+	}
+	_ = resp.Body.Close()
+
 	const requests = tunnelStreams + 8
 	var wg sync.WaitGroup
 	for range requests {

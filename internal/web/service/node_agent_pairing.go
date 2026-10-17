@@ -37,8 +37,8 @@ type AgentNodeRequest struct {
 	MasterPin string `json:"masterPin" form:"masterPin"`
 }
 
-// AgentRepairRequest says how an agent node is paired again. Left empty, it pairs the agent the way it was paired.
-// Pull changes the way, and then the new one needs its own fields: MasterUrl for pull, Port for push.
+// AgentRepairRequest says how an agent node is paired again. Left empty, a node that the panel dials is paired as it was,
+// while one that dials the panel needs its MasterUrl again. Pull changes the way: MasterUrl is needed for pull, Port for push.
 type AgentRepairRequest struct {
 	Pull      *bool  `json:"pull" form:"pull"`
 	Port      int    `json:"port" form:"port" validate:"omitempty,gte=1,lte=65535"`

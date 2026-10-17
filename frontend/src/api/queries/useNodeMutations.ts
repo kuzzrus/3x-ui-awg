@@ -38,7 +38,7 @@ export type AgentNodePayload = Pick<
   | 'decoyPort'
 >;
 
-// How an agent node is paired again: the way it was when nothing is said.
+// How an agent node is paired again: a node that the panel dials the way it was when nothing is said, and one that dials the panel with its address.
 export interface AgentRepairPayload {
   pull?: boolean;
   port?: number;
