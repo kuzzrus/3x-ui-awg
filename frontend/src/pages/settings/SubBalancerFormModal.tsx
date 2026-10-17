@@ -6,6 +6,7 @@ import { Controller, FormProvider, useForm, useWatch } from 'react-hook-form';
 import { FormField, rhfZodValidate } from '@/components/form/rhf';
 import SelectAllClearButtons from '@/components/form/SelectAllClearButtons';
 import { useInboundOptions } from '@/api/queries/useInboundOptions';
+import { useNodesQuery } from '@/api/queries/useNodesQuery';
 import { formatInboundLabel } from '@/lib/inbounds/label';
 import {
   SubBalancerFormSchema,
@@ -38,6 +39,7 @@ function initialState(balancer: SubBalancer | null): SubBalancerFormValues {
     remark: balancer?.remark ?? '',
     strategy: balancer?.strategy ?? 'random',
     inboundIds: [...(balancer?.inboundIds ?? [])],
+    nodeIds: [...(balancer?.nodeIds ?? [])],
     memberWeights: balancer?.memberWeights ? { ...balancer.memberWeights } : undefined,
     sortOrder: balancer?.sortOrder ?? 1,
     enabled: balancer?.enabled ?? true,
@@ -67,6 +69,7 @@ export default function SubBalancerFormModal({
   }, [open, balancer, methods]);
 
   const inboundIds = useWatch({ control: methods.control, name: 'inboundIds' });
+  const nodeIds = useWatch({ control: methods.control, name: 'nodeIds' });
   const strategy = useWatch({ control: methods.control, name: 'strategy' });
   // Weights only make sense for leastLoad; the fields hide but keep their
   // values so an accidental toggle away and back loses nothing until submit.
@@ -85,6 +88,32 @@ export default function SubBalancerFormModal({
         })),
     [inboundOptionsRaw, inboundIds],
   );
+
+  const { nodes } = useNodesQuery();
+  // A transitive sub-node (id 0) is a read-only projection of a node further down the tree, and no inbound is its own.
+  const nodeOptions = useMemo(
+    () =>
+      nodes
+        .filter((node) => !node.transitive && node.id > 0)
+        .map((node) => {
+          const label = node.name || node.remark || `#${node.id}`;
+          return { label, value: node.id, title: label };
+        }),
+    [nodes],
+  );
+
+  // A balancer needs a member and either list can supply it, so the two fields answer for each other.
+  const membersRequired = () =>
+    methods.getValues('inboundIds').length > 0 ||
+    methods.getValues('nodeIds').length > 0 ||
+    'pages.settings.subBalancers.errMembersRequired';
+
+  // The select-all and clear buttons set a list outright, which react-hook-form
+  // does not check against the other list on its own.
+  function setMembers(name: 'inboundIds' | 'nodeIds', ids: number[]) {
+    methods.setValue(name, ids, { shouldDirty: true });
+    void methods.trigger(['inboundIds', 'nodeIds']);
+  }
 
   function onFinish(values: SubBalancerFormValues) {
     const candidate: SubBalancerFormValues = { ...values };
@@ -157,10 +186,31 @@ export default function SubBalancerFormModal({
           </FormField>
 
           <FormField
+            label={t('pages.settings.subBalancers.nodes')}
+            name="nodeIds"
+            tooltip={t('pages.settings.subBalancers.nodesHelp')}
+            rules={{ validate: membersRequired, deps: ['inboundIds'] }}
+          >
+            <Select
+              mode="multiple"
+              options={nodeOptions}
+              maxTagCount="responsive"
+              listHeight={220}
+              showSearch={{ optionFilterProp: 'label' }}
+            />
+          </FormField>
+          <SelectAllClearButtons
+            options={nodeOptions}
+            value={nodeIds || []}
+            onChange={(v) => setMembers('nodeIds', v)}
+            selectAllLabel={t('pages.settings.subBalancers.selectAllNodes')}
+            clearLabel={t('pages.settings.subBalancers.clearAllNodes')}
+          />
+
+          <FormField
             label={t('pages.settings.subBalancers.inbounds')}
             name="inboundIds"
-            required
-            rules={{ validate: rhfZodValidate(SubBalancerFormSchema.shape.inboundIds) }}
+            rules={{ validate: membersRequired, deps: ['nodeIds'] }}
           >
             <Select
               mode="multiple"
@@ -173,7 +223,7 @@ export default function SubBalancerFormModal({
           <SelectAllClearButtons
             options={inboundOptions}
             value={inboundIds || []}
-            onChange={(v) => methods.setValue('inboundIds', v, { shouldDirty: true })}
+            onChange={(v) => setMembers('inboundIds', v)}
           />
 
           {showWeights && (inboundIds ?? []).length > 0 && (

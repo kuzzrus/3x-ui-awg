@@ -16,6 +16,17 @@ vi.mock('@/api/queries/useInboundOptions', () => ({
   }),
 }));
 
+vi.mock('@/api/queries/useNodesQuery', () => ({
+  useNodesQuery: () => ({
+    nodes: [
+      { id: 10, name: 'berlin' },
+      { id: 11, name: 'paris' },
+      { id: 0, name: 'under-berlin', guid: 'g1', parentGuid: 'p1', transitive: true },
+      { id: 0, name: 'under-paris', guid: 'g2', parentGuid: 'p2', transitive: true },
+    ],
+  }),
+}));
+
 function renderModal(balancer: SubBalancer | null, onConfirm = vi.fn()) {
   renderWithProviders(
     <SubBalancerFormModal open balancer={balancer} onClose={() => {}} onConfirm={onConfirm} />,
@@ -41,27 +52,52 @@ function remarkInput(): HTMLInputElement {
   return el as HTMLInputElement;
 }
 
-function inboundOptionTitles(): string[] {
-  const multi = document.querySelector('.ant-select-multiple');
-  if (!multi) throw new Error('Inbound multi-select not found');
-  fireEvent.mouseDown(multi as HTMLElement);
+type Picker = 'Nodes' | 'Inbounds';
+
+// The member pickers are both multi-selects; the label of their form item tells them apart.
+function picker(label: Picker): HTMLElement {
+  const item = Array.from(document.querySelectorAll('.ant-modal .ant-form-item')).find((el) =>
+    el.querySelector('label')?.textContent?.trim().startsWith(label),
+  );
+  const multi = item?.querySelector('.ant-select-multiple');
+  if (!multi) throw new Error(`${label} multi-select not found`);
+  return multi as HTMLElement;
+}
+
+function optionTitles(label: Picker): string[] {
+  fireEvent.mouseDown(picker(label));
   return Array.from(document.querySelectorAll('.ant-select-item-option')).map((o) =>
     (o.getAttribute('title') ?? o.textContent ?? '').trim(),
   );
 }
 
-function selectInbound(optionTitle: string) {
-  const multi = document.querySelector('.ant-select-multiple');
-  if (!multi) throw new Error('Inbound multi-select not found');
+function inboundOptionTitles(): string[] {
+  return optionTitles('Inbounds');
+}
+
+function pick(label: Picker, optionTitle: string) {
+  const multi = picker(label);
   // AntD 6 multiple selects have no .ant-select-selector; mousedown on the
   // root toggles the dropdown.
-  fireEvent.mouseDown(multi as HTMLElement);
+  fireEvent.mouseDown(multi);
   const option = Array.from(document.querySelectorAll('.ant-select-item-option')).find(
     (o) => (o.getAttribute('title') ?? o.textContent ?? '').trim() === optionTitle,
   );
   if (!option) throw new Error(`Option '${optionTitle}' not found`);
   fireEvent.click(option);
   fireEvent.keyDown(multi, { key: 'Escape' });
+}
+
+function selectInbound(optionTitle: string) {
+  pick('Inbounds', optionTitle);
+}
+
+function buttonNamed(name: string): HTMLElement {
+  const btn = Array.from(document.querySelectorAll<HTMLElement>('.ant-modal button')).find(
+    (b) => b.textContent?.trim() === name,
+  );
+  if (!btn) throw new Error(`Button '${name}' not found`);
+  return btn;
 }
 
 function selectStrategy(label: string) {
@@ -95,7 +131,7 @@ describe('SubBalancerFormModal', () => {
   it('reveals required-field errors after a save attempt, without confirming', async () => {
     const { onConfirm } = renderModal(null);
     fireEvent.click(primaryButton());
-    await waitFor(() => expect(erroredItemCount()).toBe(2));
+    await waitFor(() => expect(erroredItemCount()).toBe(3));
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
@@ -109,6 +145,7 @@ describe('SubBalancerFormModal', () => {
       remark: 'auto',
       strategy: 'random',
       inboundIds: [1],
+      nodeIds: [],
       sortOrder: 1,
       enabled: true,
     });
@@ -120,6 +157,7 @@ describe('SubBalancerFormModal', () => {
       remark: 'existing',
       strategy: 'leastPing',
       inboundIds: [2],
+      nodeIds: [],
       sortOrder: 3,
       enabled: false,
     });
@@ -130,6 +168,7 @@ describe('SubBalancerFormModal', () => {
       remark: 'existing',
       strategy: 'leastPing',
       inboundIds: [2],
+      nodeIds: [],
       sortOrder: 3,
       enabled: false,
     });
@@ -148,6 +187,7 @@ describe('SubBalancerFormModal', () => {
       remark: 'existing',
       strategy: 'random',
       inboundIds: [3],
+      nodeIds: [],
       sortOrder: 1,
       enabled: true,
     });
@@ -187,6 +227,7 @@ describe('SubBalancerFormModal', () => {
       remark: 'plain',
       strategy: 'random',
       inboundIds: [1],
+      nodeIds: [],
       sortOrder: 1,
       enabled: true,
     });
@@ -198,11 +239,126 @@ describe('SubBalancerFormModal', () => {
       remark: 'existing',
       strategy: 'leastLoad',
       inboundIds: [2],
+      nodeIds: [],
       memberWeights: { '2': 1.5 },
       sortOrder: 1,
       enabled: true,
     });
     await waitFor(() => expect(weightInputs()).toHaveLength(1));
     expect(weightInputs()[0].value).toBe('1.5');
+  });
+
+  // The nodes list of a panel with a tree below it holds the sub-nodes as rows with id 0, which no inbound belongs to.
+  it('offers the nodes of the panel and not the transitive sub-nodes under them', () => {
+    renderModal(null);
+    expect(optionTitles('Nodes')).toEqual(['berlin', 'paris']);
+  });
+
+  it('confirms a balancer of nodes alone, with no inbound', async () => {
+    const { onConfirm } = renderModal(null);
+    fireEvent.change(remarkInput(), { target: { value: 'by node' } });
+    pick('Nodes', 'berlin');
+    fireEvent.click(primaryButton());
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
+    expect(onConfirm).toHaveBeenCalledWith({
+      remark: 'by node',
+      strategy: 'random',
+      inboundIds: [],
+      nodeIds: [10],
+      sortOrder: 1,
+      enabled: true,
+    });
+  });
+
+  it('confirms nodes and inbounds picked together', async () => {
+    const { onConfirm } = renderModal(null);
+    fireEvent.change(remarkInput(), { target: { value: 'both' } });
+    pick('Nodes', 'paris');
+    pick('Nodes', 'berlin');
+    selectInbound('Second');
+    fireEvent.click(primaryButton());
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
+    expect(onConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({ inboundIds: [2], nodeIds: [11, 10] }),
+    );
+  });
+
+  // Either list satisfies the form, so a missing member is reported on both and
+  // picking one clears both.
+  it('flags both pickers when no member is picked and clears them when one is', async () => {
+    const { onConfirm } = renderModal(null);
+    fireEvent.change(remarkInput(), { target: { value: 'nothing yet' } });
+    fireEvent.click(primaryButton());
+    await waitFor(() => expect(erroredItemCount()).toBe(2));
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    pick('Nodes', 'berlin');
+    await waitFor(() => expect(erroredItemCount()).toBe(0));
+  });
+
+  it('flags both pickers again when the last member is taken away', async () => {
+    renderModal({
+      id: 11,
+      remark: 'one node',
+      strategy: 'random',
+      inboundIds: [],
+      nodeIds: [10],
+      sortOrder: 1,
+      enabled: true,
+    });
+    fireEvent.click(buttonNamed('Clear nodes'));
+    await waitFor(() => expect(erroredItemCount()).toBe(2));
+  });
+
+  it('seeds the nodes from the edited balancer', async () => {
+    const { onConfirm } = renderModal({
+      id: 12,
+      remark: 'by node',
+      strategy: 'random',
+      inboundIds: [],
+      nodeIds: [11],
+      sortOrder: 2,
+      enabled: true,
+    });
+    fireEvent.click(primaryButton());
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
+    expect(onConfirm).toHaveBeenCalledWith({
+      remark: 'by node',
+      strategy: 'random',
+      inboundIds: [],
+      nodeIds: [11],
+      sortOrder: 2,
+      enabled: true,
+    });
+  });
+
+  it('selects every node, and clears them again', async () => {
+    const { onConfirm } = renderModal(null);
+    fireEvent.change(remarkInput(), { target: { value: 'all nodes' } });
+    fireEvent.click(buttonNamed('Select all nodes'));
+    fireEvent.click(primaryButton());
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
+    expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ nodeIds: [10, 11] }));
+
+    onConfirm.mockClear();
+    fireEvent.click(buttonNamed('Clear nodes'));
+    fireEvent.click(primaryButton());
+    await waitFor(() => expect(erroredItemCount()).toBe(2));
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  // Weights are kept by inbound, so a node picked on its own has none to set.
+  it('offers no weight inputs for the inbounds of a node', async () => {
+    renderModal({
+      id: 13,
+      remark: 'by node',
+      strategy: 'leastLoad',
+      inboundIds: [],
+      nodeIds: [10],
+      sortOrder: 1,
+      enabled: true,
+    });
+    selectStrategy('Least load');
+    expect(document.querySelector('.sub-balancer-weights')).toBeNull();
   });
 });

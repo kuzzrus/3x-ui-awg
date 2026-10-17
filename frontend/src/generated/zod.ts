@@ -1146,6 +1146,7 @@ export const SubBalancerSchema = z.object({
   id: z.number().int(),
   inboundIds: z.array(z.number().int()),
   memberWeights: z.record(z.number().int(), z.number()).optional(),
+  nodeIds: z.array(z.number().int()).optional(),
   remark: z.string().max(256),
   sortOrder: z.number().int().min(1),
   strategy: z.enum(['leastLoad', 'leastPing', 'random', 'roundRobin']),

@@ -4710,7 +4710,7 @@ export const SCHEMAS: Record<string, unknown> = {
     "type": "object"
   },
   "SubBalancer": {
-    "description": "SubBalancer is one extra JSON-subscription config document whose members are\nthe selected inbounds' proxy outbounds. SortOrder shares SubSortIndex semantics.",
+    "description": "SubBalancer is one extra JSON-subscription config document whose members are the proxy\noutbounds of the selected inbounds and nodes. SortOrder shares SubSortIndex semantics.",
     "properties": {
       "createdAt": {
         "example": 1710000000000,
@@ -4740,8 +4740,18 @@ export const SCHEMAS: Record<string, unknown> = {
         "additionalProperties": {
           "type": "number"
         },
-        "description": "inboundId -\u003e leastLoad weight; absent entries mean 1.0. Only meaningful\nwith Strategy \"leastLoad\" — xray ignores costs on every other strategy.",
+        "description": "inboundId -\u003e leastLoad weight, 1.0 when absent; xray ignores costs on every other strategy.\nThe inbounds of a node weigh 1 unless they are also picked one by one.",
         "type": "object"
+      },
+      "nodeIds": {
+        "description": "A node stands for the subscriber's inbounds on it as they are when the subscription is built, so\none added later joins without an edit. An inbound picked both ways is one member.",
+        "example": [
+          2
+        ],
+        "items": {
+          "type": "integer"
+        },
+        "type": "array"
       },
       "remark": {
         "example": "auto-fastest",

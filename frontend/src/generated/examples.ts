@@ -1210,6 +1210,9 @@ export const EXAMPLES: Record<string, unknown> = {
       3
     ],
     "memberWeights": {},
+    "nodeIds": [
+      2
+    ],
     "remark": "auto-fastest",
     "sortOrder": 1,
     "strategy": "random",

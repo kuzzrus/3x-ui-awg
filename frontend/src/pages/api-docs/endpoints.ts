@@ -159,13 +159,21 @@ const subBalancerBodyParams: EndpointParam[] = [
     name: 'inboundIds',
     in: 'body (form)',
     type: 'integer[]',
-    desc: 'Repeated form keys selecting the member inbounds (required, at least one).',
+    desc: 'Repeated form keys selecting the member inbounds. At least one inbound or node is required.',
+    optional: true,
+  },
+  {
+    name: 'nodeIds',
+    in: 'body (form)',
+    type: 'integer[]',
+    desc: 'Repeated form keys selecting member nodes: every inbound the subscriber has on a selected node is a member, including inbounds added to the node later. Each id must name an existing node; repeats are dropped. A deleted node leaves the balancers that selected it.',
+    optional: true,
   },
   {
     name: 'memberWeights',
     in: 'body (form)',
     type: 'object',
-    desc: 'leastLoad only: JSON object mapping inbound id to a static weight > 0, e.g. {"3":0.2}. Lower weight = picked more often; absent ids weigh 1. Rejected for other strategies; entries for unselected inbounds are dropped.',
+    desc: 'leastLoad only: JSON object mapping inbound id to a static weight > 0, e.g. {"3":0.2}. Lower weight = picked more often; absent ids weigh 1. Rejected for other strategies; entries for unselected inbounds are dropped, and so are those of inbounds that are only on a selected node, which weigh 1.',
     optional: true,
   },
   {
@@ -2928,7 +2936,7 @@ export const sections: readonly Section[] = [
     id: 'sub-balancers',
     title: 'Subscription Balancers',
     description:
-      'Client-side balancers for the JSON subscription: each enabled balancer is emitted as one extra config document whose members are the proxy outbounds of the selected inbounds (routing.balancers + burstObservatory). Managed in Settings → Sub Balancers.',
+      'Client-side balancers for the JSON subscription: each enabled balancer is emitted as one extra config document whose members are the proxy outbounds of the selected inbounds and of every inbound on the selected nodes (routing.balancers + burstObservatory). Managed in Settings → Sub Balancers.',
     endpoints: [
       {
         method: 'GET',
@@ -2941,7 +2949,7 @@ export const sections: readonly Section[] = [
         method: 'POST',
         path: '/panel/api/sub-balancers',
         summary:
-          'Create a subscription balancer. It appears in the JSON subscription of every client that sits on at least one selected inbound.',
+          'Create a subscription balancer. It appears in the JSON subscription of every client that sits on at least one selected inbound or on an inbound of a selected node.',
         params: subBalancerBodyParams,
         responseSchema: 'SubBalancer',
       },
@@ -2949,7 +2957,7 @@ export const sections: readonly Section[] = [
         method: 'POST',
         path: '/panel/api/sub-balancers/:id',
         summary:
-          'Update a balancer by id. Accepts the same form fields as create (full-row update); omitting memberWeights clears stored weights, while omitting enabled keeps its current value.',
+          'Update a balancer by id. Accepts the same form fields as create (full-row update); omitting memberWeights clears stored weights and omitting nodeIds clears the stored nodes, while omitting enabled keeps its current value.',
         params: [
           { name: 'id', in: 'path', type: 'integer', desc: 'Balancer id.' },
           ...subBalancerBodyParams,

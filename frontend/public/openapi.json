@@ -4736,7 +4736,7 @@
         "type": "object"
       },
       "SubBalancer": {
-        "description": "SubBalancer is one extra JSON-subscription config document whose members are\nthe selected inbounds' proxy outbounds. SortOrder shares SubSortIndex semantics.",
+        "description": "SubBalancer is one extra JSON-subscription config document whose members are the proxy\noutbounds of the selected inbounds and nodes. SortOrder shares SubSortIndex semantics.",
         "properties": {
           "createdAt": {
             "example": 1710000000000,
@@ -4766,8 +4766,18 @@
             "additionalProperties": {
               "type": "number"
             },
-            "description": "inboundId -> leastLoad weight; absent entries mean 1.0. Only meaningful\nwith Strategy \"leastLoad\" — xray ignores costs on every other strategy.",
+            "description": "inboundId -> leastLoad weight, 1.0 when absent; xray ignores costs on every other strategy.\nThe inbounds of a node weigh 1 unless they are also picked one by one.",
             "type": "object"
+          },
+          "nodeIds": {
+            "description": "A node stands for the subscriber's inbounds on it as they are when the subscription is built, so\none added later joins without an edit. An inbound picked both ways is one member.",
+            "example": [
+              2
+            ],
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
           },
           "remark": {
             "example": "auto-fastest",
@@ -5019,7 +5029,7 @@
     },
     {
       "name": "Subscription Balancers",
-      "description": "Client-side balancers for the JSON subscription: each enabled balancer is emitted as one extra config document whose members are the proxy outbounds of the selected inbounds (routing.balancers + burstObservatory). Managed in Settings → Sub Balancers."
+      "description": "Client-side balancers for the JSON subscription: each enabled balancer is emitted as one extra config document whose members are the proxy outbounds of the selected inbounds and of every inbound on the selected nodes (routing.balancers + burstObservatory). Managed in Settings → Sub Balancers."
     },
     {
       "name": "Subscription Server",
@@ -16270,6 +16280,9 @@
                         3
                       ],
                       "memberWeights": {},
+                      "nodeIds": [
+                        2
+                      ],
                       "remark": "auto-fastest",
                       "sortOrder": 1,
                       "strategy": "random",
@@ -16286,7 +16299,7 @@
         "tags": [
           "Subscription Balancers"
         ],
-        "summary": "Create a subscription balancer. It appears in the JSON subscription of every client that sits on at least one selected inbound.",
+        "summary": "Create a subscription balancer. It appears in the JSON subscription of every client that sits on at least one selected inbound or on an inbound of a selected node.",
         "operationId": "post_panel_api_sub_balancers",
         "requestBody": {
           "required": true,
@@ -16309,11 +16322,18 @@
                     "items": {
                       "type": "integer"
                     },
-                    "description": "Repeated form keys selecting the member inbounds (required, at least one)."
+                    "description": "Repeated form keys selecting the member inbounds. At least one inbound or node is required."
+                  },
+                  "nodeIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    },
+                    "description": "Repeated form keys selecting member nodes: every inbound the subscriber has on a selected node is a member, including inbounds added to the node later. Each id must name an existing node; repeats are dropped. A deleted node leaves the balancers that selected it."
                   },
                   "memberWeights": {
                     "type": "object",
-                    "description": "leastLoad only: JSON object mapping inbound id to a static weight > 0, e.g. {\"3\":0.2}. Lower weight = picked more often; absent ids weigh 1. Rejected for other strategies; entries for unselected inbounds are dropped."
+                    "description": "leastLoad only: JSON object mapping inbound id to a static weight > 0, e.g. {\"3\":0.2}. Lower weight = picked more often; absent ids weigh 1. Rejected for other strategies; entries for unselected inbounds are dropped, and so are those of inbounds that are only on a selected node, which weigh 1."
                   },
                   "sortOrder": {
                     "type": "integer",
@@ -16326,12 +16346,15 @@
                   }
                 },
                 "required": [
-                  "remark",
-                  "inboundIds"
+                  "remark"
                 ]
               },
               "encoding": {
                 "inboundIds": {
+                  "style": "form",
+                  "explode": true
+                },
+                "nodeIds": {
                   "style": "form",
                   "explode": true
                 },
@@ -16372,6 +16395,9 @@
                       3
                     ],
                     "memberWeights": {},
+                    "nodeIds": [
+                      2
+                    ],
                     "remark": "auto-fastest",
                     "sortOrder": 1,
                     "strategy": "random",
@@ -16389,7 +16415,7 @@
         "tags": [
           "Subscription Balancers"
         ],
-        "summary": "Update a balancer by id. Accepts the same form fields as create (full-row update); omitting memberWeights clears stored weights, while omitting enabled keeps its current value.",
+        "summary": "Update a balancer by id. Accepts the same form fields as create (full-row update); omitting memberWeights clears stored weights and omitting nodeIds clears the stored nodes, while omitting enabled keeps its current value.",
         "operationId": "post_panel_api_sub_balancers_id",
         "parameters": [
           {
@@ -16423,11 +16449,18 @@
                     "items": {
                       "type": "integer"
                     },
-                    "description": "Repeated form keys selecting the member inbounds (required, at least one)."
+                    "description": "Repeated form keys selecting the member inbounds. At least one inbound or node is required."
+                  },
+                  "nodeIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    },
+                    "description": "Repeated form keys selecting member nodes: every inbound the subscriber has on a selected node is a member, including inbounds added to the node later. Each id must name an existing node; repeats are dropped. A deleted node leaves the balancers that selected it."
                   },
                   "memberWeights": {
                     "type": "object",
-                    "description": "leastLoad only: JSON object mapping inbound id to a static weight > 0, e.g. {\"3\":0.2}. Lower weight = picked more often; absent ids weigh 1. Rejected for other strategies; entries for unselected inbounds are dropped."
+                    "description": "leastLoad only: JSON object mapping inbound id to a static weight > 0, e.g. {\"3\":0.2}. Lower weight = picked more often; absent ids weigh 1. Rejected for other strategies; entries for unselected inbounds are dropped, and so are those of inbounds that are only on a selected node, which weigh 1."
                   },
                   "sortOrder": {
                     "type": "integer",
@@ -16440,12 +16473,15 @@
                   }
                 },
                 "required": [
-                  "remark",
-                  "inboundIds"
+                  "remark"
                 ]
               },
               "encoding": {
                 "inboundIds": {
+                  "style": "form",
+                  "explode": true
+                },
+                "nodeIds": {
                   "style": "form",
                   "explode": true
                 },
@@ -16486,6 +16522,9 @@
                       3
                     ],
                     "memberWeights": {},
+                    "nodeIds": [
+                      2
+                    ],
                     "remark": "auto-fastest",
                     "sortOrder": 1,
                     "strategy": "random",
@@ -16544,6 +16583,9 @@
                       3
                     ],
                     "memberWeights": {},
+                    "nodeIds": [
+                      2
+                    ],
                     "remark": "auto-fastest",
                     "sortOrder": 1,
                     "strategy": "random",
@@ -16604,6 +16646,9 @@
                       3
                     ],
                     "memberWeights": {},
+                    "nodeIds": [
+                      2
+                    ],
                     "remark": "auto-fastest",
                     "sortOrder": 1,
                     "strategy": "random",

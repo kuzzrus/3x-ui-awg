@@ -410,6 +410,16 @@ only reported. The template is refused when a rule or an outbound for every core
 only, since the panel's own core would lack it. A rule that names an outbound the template does not hold at all is left as it was, for
 templates in the field are full of them.
 
+A node can be a member of a subscription balancer (Settings → Sub Balancers), the client-side
+balancer of the JSON subscription, which has nothing to do with the balancers of the template. A
+balancer holds inbounds, nodes or both, and at least one of them. A node stands for the inbounds that
+the subscriber has on it and that are on, as they are when the subscription is built, so an inbound
+added to the node later joins the balancer without an edit, and an inbound that is picked in both
+ways is one member. It goes by the node an inbound belongs to, so a node of either kind works. A
+node that is deleted leaves the balancers that held it, in the same transaction, and a balancer left
+with no member is not emitted. The weights of the leastLoad strategy are kept by inbound: the
+inbounds of a node weigh 1, unless they are picked one by one as well.
+
 ## Traffic accounting
 
 The agent keeps no history. Each poll the master reads cumulative counters together with
@@ -529,7 +539,8 @@ says so; a tag or archive given explicitly is never swapped.
 14. **AdGuard Home as a decoy**. Done: a mode of the decoy, which the agent installs and runs for it.
 15. **Pull mode**. Done: an agent that dials the master on the port the panel's reverse proxy serves (443 behind
     a REALITY fallback), so a node needs no port of its own besides its core's.
-16. Later: nodes as members of a subscription balancer (its members are picked inbound by inbound today).
+16. **Nodes in a subscription balancer**. Done: a balancer holds nodes beside inbounds, and a node stands for
+    the inbounds that a subscriber has on it.
 17. Later: Psiphon through several countries at once, as one tunnel per country with a latency balancer and a probe of each
     (the panel runs one tunnel and one region at a time today, and a node one program that the master names `psiphon`).
 

@@ -946,6 +946,10 @@ func (s *NodeService) Delete(id int) error {
 		if err := tx.Where("node_guid IN ?", guids).Delete(&model.NodeClientIp{}).Error; err != nil {
 			return err
 		}
+		// A balancer that selects the node would keep an id nobody can resolve.
+		if err := (&SubBalancerService{}).DropNodeTx(tx, id); err != nil {
+			return err
+		}
 		return tx.Where("id = ?", id).Delete(&model.Node{}).Error
 	}); err != nil {
 		return err

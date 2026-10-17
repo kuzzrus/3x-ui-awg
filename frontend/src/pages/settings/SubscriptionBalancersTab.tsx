@@ -25,6 +25,7 @@ import {
 import { useSubBalancersQuery } from '@/api/queries/useSubBalancersQuery';
 import { useSubBalancerMutations } from '@/api/queries/useSubBalancerMutations';
 import { useInboundOptions } from '@/api/queries/useInboundOptions';
+import { useNodesQuery } from '@/api/queries/useNodesQuery';
 import { formatInboundLabel } from '@/lib/inbounds/label';
 import type { AllSetting } from '@/models/setting';
 import { onNumber } from '@/utils/onNumber';
@@ -70,6 +71,7 @@ export default function SubscriptionBalancersTab({
   const { balancers, loading, fetched, fetchError, refetch } = useSubBalancersQuery();
   const { create, update, remove } = useSubBalancerMutations();
   const { data: inboundOptionsRaw } = useInboundOptions();
+  const { nodes } = useNodesQuery();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<SubBalancer | null>(null);
 
@@ -81,6 +83,15 @@ export default function SubscriptionBalancersTab({
     return map;
   }, [inboundOptionsRaw]);
 
+  const nodeLabels = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const node of nodes) {
+      if (node.transitive || node.id <= 0) continue;
+      map.set(node.id, node.name || node.remark || `#${node.id}`);
+    }
+    return map;
+  }, [nodes]);
+
   async function onConfirm(values: SubBalancerFormValues) {
     const msg = editing ? await update(editing.id, values) : await create(values);
     if (msg?.success) setModalOpen(false);
@@ -91,6 +102,7 @@ export default function SubscriptionBalancersTab({
       remark: balancer.remark,
       strategy: balancer.strategy,
       inboundIds: balancer.inboundIds,
+      nodeIds: balancer.nodeIds,
       memberWeights: balancer.memberWeights ?? undefined,
       sortOrder: balancer.sortOrder,
       enabled: !balancer.enabled,
@@ -138,13 +150,23 @@ export default function SubscriptionBalancersTab({
       ),
     },
     {
-      title: t('pages.settings.subBalancers.inbounds'),
-      key: 'inbounds',
+      title: t('pages.settings.subBalancers.members'),
+      key: 'members',
       render: (_: unknown, r: SubBalancer) => {
-        const labels = r.inboundIds.map((id) => inboundLabels.get(id) ?? `#${id}`);
+        const nodeNames = r.nodeIds.map((id) => nodeLabels.get(id) ?? `#${id}`);
+        const inboundNames = r.inboundIds.map((id) => inboundLabels.get(id) ?? `#${id}`);
+        const counts: string[] = [];
+        if (nodeNames.length > 0) {
+          counts.push(t('pages.settings.subBalancers.nodesCount', { count: nodeNames.length }));
+        }
+        if (inboundNames.length > 0 || counts.length === 0) {
+          counts.push(
+            t('pages.settings.subBalancers.inboundsCount', { count: inboundNames.length }),
+          );
+        }
         return (
-          <Tooltip title={labels.join(', ')}>
-            <span>{t('pages.settings.subBalancers.inboundsCount', { count: labels.length })}</span>
+          <Tooltip title={[...nodeNames, ...inboundNames].join(', ')}>
+            <span>{counts.join(', ')}</span>
           </Tooltip>
         );
       },

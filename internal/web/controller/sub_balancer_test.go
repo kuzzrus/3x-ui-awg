@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
+	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 )
 
 func setupSubBalancerRouter(t *testing.T) *gin.Engine {
@@ -101,5 +103,50 @@ func TestSubBalancerController_UpdatePreservesEnabledWhenAbsent(t *testing.T) {
 	bal = responseObj(t, resp.Body.String())["obj"].(map[string]any)
 	if bal["enabled"] != true {
 		t.Fatalf("enabled=true -> %v, want true", bal["enabled"])
+	}
+}
+
+// nodeIds arrive as repeated form keys like inboundIds: nodes alone make a balancer, an update
+// replaces the list, and a value that is no id of a node is refused, not skipped.
+func TestSubBalancerController_NodeIds(t *testing.T) {
+	router := setupSubBalancerRouter(t)
+	var ids []string
+	for _, name := range []string{"berlin", "paris"} {
+		node := &model.Node{Name: name, Address: name + ".example.com", Port: 2053, Scheme: "https", ApiToken: "token"}
+		if err := database.GetDB().Create(node).Error; err != nil {
+			t.Fatalf("seed node %s: %v", name, err)
+		}
+		ids = append(ids, strconv.Itoa(node.Id))
+	}
+	base := "remark=auto&strategy=random&sortOrder=1"
+
+	resp := subBalancerPost(t, router, "/panel/api/sub-balancers", base+"&nodeIds="+ids[0]+"&nodeIds="+ids[1])
+	if !strings.Contains(resp.Body.String(), `"success":true`) {
+		t.Fatalf("create from nodes: %s", resp.Body.String())
+	}
+	bal := responseObj(t, resp.Body.String())["obj"].(map[string]any)
+	if got := fmt.Sprint(bal["nodeIds"]); got != "["+ids[0]+" "+ids[1]+"]" {
+		t.Fatalf("nodeIds = %s, want [%s %s]", got, ids[0], ids[1])
+	}
+	if got, ok := bal["inboundIds"].([]any); !ok || len(got) != 0 {
+		t.Fatalf("inboundIds = %v, want an empty array for a balancer of nodes", bal["inboundIds"])
+	}
+	id := strconv.Itoa(int(bal["id"].(float64)))
+
+	resp = subBalancerPost(t, router, "/panel/api/sub-balancers/"+id, base+"&nodeIds="+ids[1])
+	bal = responseObj(t, resp.Body.String())["obj"].(map[string]any)
+	if got := fmt.Sprint(bal["nodeIds"]); got != "["+ids[1]+"]" {
+		t.Fatalf("updated nodeIds = %s, want [%s]", got, ids[1])
+	}
+
+	for name, body := range map[string]string{
+		"not a number": base + "&nodeIds=" + ids[0] + "&nodeIds=abc",
+		"unknown node": base + "&nodeIds=999",
+		"no member":    base,
+	} {
+		resp = subBalancerPost(t, router, "/panel/api/sub-balancers", body)
+		if !strings.Contains(resp.Body.String(), `"success":false`) {
+			t.Fatalf("%s must be refused: %s", name, resp.Body.String())
+		}
 	}
 }

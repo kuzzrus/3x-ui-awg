@@ -1078,6 +1078,7 @@ export interface SubBalancer {
   id: number;
   inboundIds: number[];
   memberWeights?: Record<number, number>;
+  nodeIds?: number[];
   remark: string;
   sortOrder: number;
   strategy: string;
