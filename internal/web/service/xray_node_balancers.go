@@ -1,0 +1,531 @@
+package service
+
+import (
+	"cmp"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"slices"
+	"strings"
+	"sync/atomic"
+	"unicode/utf8"
+
+	"github.com/mhsanaei/3x-ui/v3/internal/database"
+	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
+	"github.com/mhsanaei/3x-ui/v3/internal/logger"
+	"github.com/mhsanaei/3x-ui/v3/internal/util/common"
+	"github.com/mhsanaei/3x-ui/v3/internal/util/json_util"
+	"github.com/mhsanaei/3x-ui/v3/internal/xray"
+)
+
+const (
+	// nodeMembersKey is the panel-only key of a balancer that names the nodes it sends traffic out through.
+	nodeMembersKey = "nodeMembers"
+	// nodeOutboundPrefix starts the tag of each outbound the panel writes for an inbound of a node.
+	nodeOutboundPrefix = "xui-node-"
+
+	maxBalancerNodes  = 64
+	maxBalancerClient = 256
+)
+
+// NodeOutbound is the outbound that one inbound of a node gives the client that logs in to it, as that client dials it.
+type NodeOutbound struct {
+	NodeID    int
+	ClientID  int
+	InboundID int
+	Outbound  map[string]any
+}
+
+// NodeOutboundSource writes the outbounds of the inbounds that the client with this email has on the nodes.
+// internal/sub writes them for the JSON subscription and imports this package, so the web layer hands it over.
+type NodeOutboundSource func(email string, nodeIDs []int) ([]NodeOutbound, error)
+
+var (
+	nodeOutboundSource   atomic.Pointer[NodeOutboundSource]
+	renderedNodeOutbound atomic.Value // the fingerprint of the node outbounds the panel's core was last given
+)
+
+// SetNodeOutboundSource sets where the outbounds of the nodes in a balancer come from.
+func SetNodeOutboundSource(source NodeOutboundSource) {
+	nodeOutboundSource.Store(&source)
+}
+
+// nodeMembers is who a balancer sends traffic out through: the nodes, reached as one client of the panel.
+type nodeMembers struct {
+	client  string
+	nodeIDs []int
+}
+
+// parseNodeMembers reads the nodeMembers of a balancer: the email of the client and the ids of the nodes.
+func parseNodeMembers(raw any) (nodeMembers, error) {
+	obj, ok := raw.(map[string]any)
+	if !ok {
+		return nodeMembers{}, errors.New("must be an object with a client and nodeIds")
+	}
+	var members nodeMembers
+	if rawClient, has := obj["client"]; has && rawClient != nil {
+		client, isString := rawClient.(string)
+		if !isString {
+			return nodeMembers{}, errors.New("client must be the email of a client")
+		}
+		members.client = strings.TrimSpace(client)
+		if utf8.RuneCountInString(members.client) > maxBalancerClient {
+			return nodeMembers{}, fmt.Errorf("client is longer than %d characters", maxBalancerClient)
+		}
+	}
+	if rawIDs, has := obj["nodeIds"]; has && rawIDs != nil {
+		list, isList := rawIDs.([]any)
+		if !isList {
+			return nodeMembers{}, errors.New("nodeIds must be a list of node ids")
+		}
+		for _, item := range list {
+			id, isNumber := item.(float64)
+			if !isNumber || id != math.Trunc(id) || id < 1 || id > math.MaxInt32 {
+				return nodeMembers{}, errors.New("nodeIds must be a list of node ids")
+			}
+			members.nodeIDs = append(members.nodeIDs, int(id))
+		}
+		slices.Sort(members.nodeIDs)
+		members.nodeIDs = slices.Compact(members.nodeIDs)
+		if len(members.nodeIDs) > maxBalancerNodes {
+			return nodeMembers{}, fmt.Errorf("a balancer takes at most %d nodes", maxBalancerNodes)
+		}
+	}
+	if len(members.nodeIDs) > 0 && members.client == "" {
+		return nodeMembers{}, errors.New("needs the client that logs in to the nodes")
+	}
+	return members, nil
+}
+
+// checkBalancerNodeMembers refuses a balancer whose nodeMembers are not a client and a list of node ids.
+func checkBalancerNodeMembers(routerCfg json_util.RawMessage) error {
+	var routing struct {
+		Balancers []map[string]any `json:"balancers"`
+	}
+	if len(routerCfg) == 0 || json.Unmarshal(routerCfg, &routing) != nil {
+		return nil
+	}
+	for i, balancer := range routing.Balancers {
+		raw, has := balancer[nodeMembersKey]
+		if !has {
+			continue
+		}
+		if _, err := parseNodeMembers(raw); err != nil {
+			return common.NewErrorf("xray template config invalid: balancer %d: nodeMembers %v", i+1, err)
+		}
+	}
+	return nil
+}
+
+// scopeNodeBalancers leaves the balancers made of nodes, and the rules that send to them, out of an agent's
+// config: the panel's own core is the only one with an outbound to a node.
+func scopeNodeBalancers(routerCfg json_util.RawMessage, scope configScope) json_util.RawMessage {
+	var routing map[string]any
+	if !scope.agent || len(routerCfg) == 0 || json.Unmarshal(routerCfg, &routing) != nil {
+		return routerCfg
+	}
+	balancers, _ := routing["balancers"].([]any)
+	dropped := map[string]bool{}
+	kept := make([]any, 0, len(balancers))
+	for _, raw := range balancers {
+		if balancer, ok := raw.(map[string]any); ok {
+			if _, has := balancer[nodeMembersKey]; has {
+				tag, _ := balancer["tag"].(string)
+				dropped[tag] = true
+				continue
+			}
+		}
+		kept = append(kept, raw)
+	}
+	if len(dropped) == 0 {
+		return routerCfg
+	}
+	routing["balancers"] = kept
+	if rules, ok := routing["rules"].([]any); ok {
+		keptRules := make([]any, 0, len(rules))
+		for _, raw := range rules {
+			if rule, isRule := raw.(map[string]any); isRule {
+				if target, _ := rule["balancerTag"].(string); target != "" && dropped[target] {
+					continue
+				}
+			}
+			keptRules = append(keptRules, raw)
+		}
+		routing["rules"] = keptRules
+	}
+	out, err := json.Marshal(routing)
+	if err != nil {
+		return routerCfg
+	}
+	return out
+}
+
+// nodeBalancer is a balancer of the template that sends traffic out through nodes.
+type nodeBalancer struct {
+	balancer map[string]any
+	members  nodeMembers
+	probed   bool
+}
+
+// nodeBalancersOf lists the balancers of a routing section that carry nodeMembers. One that cannot be read is
+// listed with no members, which leaves it empty.
+func nodeBalancersOf(routing map[string]any) []nodeBalancer {
+	balancers, _ := routing["balancers"].([]any)
+	var found []nodeBalancer
+	for _, raw := range balancers {
+		balancer, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		rawMembers, has := balancer[nodeMembersKey]
+		if !has {
+			continue
+		}
+		members, err := parseNodeMembers(rawMembers)
+		if err != nil {
+			tag, _ := balancer["tag"].(string)
+			logger.Warning("balancer", tag, "has unreadable nodeMembers, taken as empty:", err)
+		}
+		strategy, _ := balancer["strategy"].(map[string]any)
+		kind, _ := strategy["type"].(string)
+		fallback, _ := balancer["fallbackTag"].(string)
+		found = append(found, nodeBalancer{
+			balancer: balancer,
+			members:  members,
+			probed:   kind == "leastPing" || kind == "leastLoad" || fallback != "",
+		})
+	}
+	return found
+}
+
+// writtenNodeOutbound is one outbound the panel writes for an inbound of a node.
+type writtenNodeOutbound struct {
+	node, client, inbound int
+	tag                   string
+	raw                   json.RawMessage
+}
+
+// nodeOutboundPlan is what the nodes of the balancers come to: the outbounds to write, and for each balancer the
+// selector prefixes that reach them.
+type nodeOutboundPlan struct {
+	outbounds []writtenNodeOutbound
+	prefixes  [][]string
+}
+
+// fingerprint tells two plans apart: it changes when a node, an inbound or the client changes what is written.
+func (p nodeOutboundPlan) fingerprint() string {
+	if len(p.outbounds) == 0 && !slices.ContainsFunc(p.prefixes, func(prefixes []string) bool { return len(prefixes) > 0 }) {
+		return ""
+	}
+	sum := sha256.New()
+	for _, written := range p.outbounds {
+		sum.Write(written.raw)
+	}
+	for _, prefixes := range p.prefixes {
+		sum.Write([]byte(strings.Join(prefixes, ",") + ";"))
+	}
+	return hex.EncodeToString(sum.Sum(nil))
+}
+
+// planNodeOutbounds asks the source for the outbounds of each client of the balancers on the nodes that are on.
+// An outbound the core would refuse is left out, so one bad inbound cannot keep the config from loading.
+func planNodeOutbounds(balancers []nodeBalancer, quiet bool) nodeOutboundPlan {
+	warn := func(args ...any) {
+		if !quiet {
+			logger.Warning(args...)
+		}
+	}
+	plan := nodeOutboundPlan{prefixes: make([][]string, len(balancers))}
+	wanted := map[string][]int{}
+	var allNodes []int
+	for _, b := range balancers {
+		if b.members.client == "" || len(b.members.nodeIDs) == 0 {
+			continue
+		}
+		key := strings.ToLower(b.members.client)
+		wanted[key] = append(wanted[key], b.members.nodeIDs...)
+		allNodes = append(allNodes, b.members.nodeIDs...)
+	}
+	if len(wanted) == 0 {
+		return plan
+	}
+	sourcePtr := nodeOutboundSource.Load()
+	if sourcePtr == nil {
+		warn("balancers made of nodes have no source of outbounds, so they stay empty")
+		return plan
+	}
+	var enabled []int
+	if err := database.GetDB().Model(&model.Node{}).Where("id IN ? AND enable = ?", allNodes, true).Pluck("id", &enabled).Error; err != nil {
+		warn("node balancers: reading the nodes failed:", err)
+		return plan
+	}
+
+	reached := map[string]map[int]int{} // client -> node -> id of the client, for the nodes that have an outbound
+	written := map[string]writtenNodeOutbound{}
+	for _, b := range balancers {
+		key := strings.ToLower(b.members.client)
+		if _, done := reached[key]; done || b.members.client == "" || len(b.members.nodeIDs) == 0 {
+			continue
+		}
+		reached[key] = map[int]int{}
+		ids := slices.DeleteFunc(slices.Clone(wanted[key]), func(id int) bool { return !slices.Contains(enabled, id) })
+		slices.Sort(ids)
+		ids = slices.Compact(ids)
+		if len(ids) == 0 {
+			continue
+		}
+		outbounds, err := (*sourcePtr)(b.members.client, ids)
+		if err != nil {
+			warn("node balancers: the outbounds of client", b.members.client, "failed:", err)
+			continue
+		}
+		for _, item := range outbounds {
+			if item.Outbound == nil || !slices.Contains(ids, item.NodeID) {
+				continue
+			}
+			tag := fmt.Sprintf("%s%d-%d-%d", nodeOutboundPrefix, item.NodeID, item.ClientID, item.InboundID)
+			item.Outbound["tag"] = tag
+			raw, err := json.Marshal(item.Outbound)
+			if err == nil {
+				err = xray.ValidateOutboundConfig(raw)
+			}
+			if err != nil {
+				warn("node balancers: outbound", tag, "left out, the core refuses it:", err)
+				continue
+			}
+			written[tag] = writtenNodeOutbound{node: item.NodeID, client: item.ClientID, inbound: item.InboundID, tag: tag, raw: raw}
+			reached[key][item.NodeID] = item.ClientID
+		}
+	}
+
+	for i, b := range balancers {
+		for _, id := range b.members.nodeIDs {
+			if clientID, ok := reached[strings.ToLower(b.members.client)][id]; ok {
+				plan.prefixes[i] = append(plan.prefixes[i], fmt.Sprintf("%s%d-%d-", nodeOutboundPrefix, id, clientID))
+			}
+		}
+	}
+	for _, item := range written {
+		plan.outbounds = append(plan.outbounds, item)
+	}
+	slices.SortFunc(plan.outbounds, func(a, b writtenNodeOutbound) int {
+		return cmp.Or(cmp.Compare(a.node, b.node), cmp.Compare(a.client, b.client), cmp.Compare(a.inbound, b.inbound))
+	})
+	return plan
+}
+
+// expandNodeBalancers writes the outbounds to the nodes of the balancers that carry nodeMembers into the panel's
+// config. A balancer left with no outbound blocks its rules' traffic: it must not leave by the default outbound.
+func (s *XrayService) expandNodeBalancers(cfg *xray.Config) {
+	var routing map[string]any
+	if len(cfg.RouterConfig) == 0 || json.Unmarshal(cfg.RouterConfig, &routing) != nil {
+		renderedNodeOutbound.Store("")
+		return
+	}
+	balancers := nodeBalancersOf(routing)
+	if len(balancers) == 0 {
+		renderedNodeOutbound.Store("")
+		return
+	}
+	plan := planNodeOutbounds(balancers, false)
+	renderedNodeOutbound.Store(plan.fingerprint())
+
+	var outbounds []json.RawMessage
+	if len(cfg.OutboundConfigs) > 0 {
+		_ = json.Unmarshal(cfg.OutboundConfigs, &outbounds)
+	}
+	have := outboundTagSet(cfg.OutboundConfigs)
+	appended := map[string]bool{}
+	if len(outbounds) == 0 && len(plan.outbounds) > 0 {
+		logger.Warning("node balancers: the template has no outbound, so none is written: the first one is the default")
+	} else {
+		for _, written := range plan.outbounds {
+			if have[written.tag] {
+				logger.Warning("node balancers: outbound", written.tag, "is already in the template, so it is not written")
+				continue
+			}
+			outbounds = append(outbounds, written.raw)
+			have[written.tag] = true
+			appended[written.tag] = true
+		}
+	}
+
+	var probed []string
+	emptied := map[string]bool{}
+	for i, b := range balancers {
+		selector := []any{}
+		if existing, ok := b.balancer["selector"].([]any); ok {
+			selector = slices.Clone(existing)
+		}
+		for _, prefix := range plan.prefixes[i] {
+			if !anyTagHasPrefix(appended, prefix) {
+				continue
+			}
+			if !slices.Contains(selector, any(prefix)) {
+				selector = append(selector, prefix)
+			}
+			if b.probed {
+				probed = append(probed, prefix)
+			}
+		}
+		b.balancer["selector"] = selector
+		delete(b.balancer, nodeMembersKey)
+		if fallback, _ := b.balancer["fallbackTag"].(string); fallback == "" && !selectsAny(have, selector) {
+			tag, _ := b.balancer["tag"].(string)
+			emptied[tag] = true
+		}
+	}
+
+	if len(appended) > 0 {
+		raw, err := json.Marshal(outbounds)
+		if err != nil {
+			return
+		}
+		cfg.OutboundConfigs = raw
+	}
+	if len(probed) > 0 {
+		cfg.Observatory = extendSubjectSelector(cfg.Observatory, probed)
+		cfg.BurstObservatory = extendSubjectSelector(cfg.BurstObservatory, probed)
+	}
+	if len(emptied) > 0 {
+		blockEmptiedBalancers(cfg, routing, emptied)
+	}
+	if raw, err := json.Marshal(routing); err == nil {
+		cfg.RouterConfig = raw
+	}
+}
+
+// blockEmptiedBalancers sends the rules that lead to a balancer without any outbound to the blackhole, adding it if needed.
+func blockEmptiedBalancers(cfg *xray.Config, routing map[string]any, emptied map[string]bool) {
+	rules, _ := routing["rules"].([]any)
+	blocked := false
+	for _, raw := range rules {
+		rule, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if target, _ := rule["balancerTag"].(string); target != "" && emptied[target] {
+			delete(rule, "balancerTag")
+			rule["outboundTag"] = missingOutboundTag
+			blocked = true
+			logger.Warning("node balancers: balancer", target, "has no outbound, so the rules that lead to it block their traffic")
+		}
+	}
+	if !blocked || outboundTagSet(cfg.OutboundConfigs)[missingOutboundTag] {
+		return
+	}
+	var list []json.RawMessage
+	if len(cfg.OutboundConfigs) > 0 && json.Unmarshal(cfg.OutboundConfigs, &list) != nil {
+		return
+	}
+	list = append(list, json.RawMessage(`{"protocol":"blackhole","tag":"`+missingOutboundTag+`"}`))
+	if raw, err := json.Marshal(list); err == nil {
+		cfg.OutboundConfigs = raw
+	}
+}
+
+// anyTagHasPrefix reports whether one of the tags starts with the prefix.
+func anyTagHasPrefix(tags map[string]bool, prefix string) bool {
+	for tag := range tags {
+		if strings.HasPrefix(tag, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// selectsAny reports whether the selector reaches one of the outbounds.
+func selectsAny(tags map[string]bool, selector []any) bool {
+	for tag := range tags {
+		for _, entry := range selector {
+			if prefix, ok := entry.(string); ok && strings.HasPrefix(tag, prefix) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// extendSubjectSelector adds prefixes to the subjectSelector of an observatory, which it leaves alone when there is none.
+func extendSubjectSelector(raw json_util.RawMessage, prefixes []string) json_util.RawMessage {
+	var section map[string]any
+	if len(raw) == 0 || json.Unmarshal(raw, &section) != nil {
+		return raw
+	}
+	selector, _ := section["subjectSelector"].([]any)
+	for _, prefix := range prefixes {
+		if !slices.Contains(selector, any(prefix)) {
+			selector = append(selector, prefix)
+		}
+	}
+	section["subjectSelector"] = selector
+	out, err := json.Marshal(section)
+	if err != nil {
+		return raw
+	}
+	return out
+}
+
+// RefreshNodeOutbounds asks for a restart check when the outbounds to the nodes of the balancers are no longer the
+// ones the panel's core was given: a node changed a port, a key, or what the client may log in to.
+func (s *XrayService) RefreshNodeOutbounds() {
+	template, err := s.settingService.GetXrayConfigTemplate()
+	if err != nil {
+		return
+	}
+	cfg := &xray.Config{}
+	var routing map[string]any
+	if json.Unmarshal([]byte(template), cfg) != nil || len(cfg.RouterConfig) == 0 || json.Unmarshal(cfg.RouterConfig, &routing) != nil {
+		return
+	}
+	var fingerprint string
+	if balancers := nodeBalancersOf(routing); len(balancers) > 0 {
+		fingerprint = planNodeOutbounds(balancers, true).fingerprint()
+	}
+	if last, _ := renderedNodeOutbound.Load().(string); fingerprint != last {
+		s.SetToNeedRestart()
+	}
+}
+
+// RemoveNodeReferences takes a deleted node out of the nodeMembers of the balancers of the template.
+func (s *XraySettingService) RemoveNodeReferences(nodeID int) (bool, error) {
+	template, err := s.GetXrayConfigTemplate()
+	if err != nil {
+		return false, err
+	}
+	updated, changed, err := mutateXrayTemplateRouting(template, func(cfg map[string]any) bool {
+		routing, _ := cfg["routing"].(map[string]any)
+		balancers, _ := routing["balancers"].([]any)
+		mutated := false
+		for _, raw := range balancers {
+			balancer, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			members, ok := balancer[nodeMembersKey].(map[string]any)
+			if !ok {
+				continue
+			}
+			ids, ok := members["nodeIds"].([]any)
+			if !ok {
+				continue
+			}
+			left := slices.DeleteFunc(slices.Clone(ids), func(id any) bool { n, isNumber := id.(float64); return isNumber && int(n) == nodeID })
+			if len(left) != len(ids) {
+				members["nodeIds"] = left
+				mutated = true
+			}
+		}
+		return mutated
+	})
+	if err != nil || !changed {
+		return false, err
+	}
+	if err := s.SaveXraySetting(updated); err != nil {
+		return false, err
+	}
+	return true, nil
+}

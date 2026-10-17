@@ -393,6 +393,7 @@ func (s *XrayService) newConfigFromTemplate(scope configScope) (*xray.Config, ma
 	xrayConfig.API = ensureAPIServices(xrayConfig.API)
 	xrayConfig.Policy = ensureStatsPolicy(xrayConfig.Policy)
 	xrayConfig.RouterConfig = stripDisabledRules(xrayConfig.RouterConfig, scope)
+	xrayConfig.RouterConfig = scopeNodeBalancers(xrayConfig.RouterConfig, scope)
 	var left map[string][]string
 	xrayConfig.OutboundConfigs, left = scopeOutbounds(xrayConfig.OutboundConfigs, scope)
 	// Template outbounds authored before the xray-core #6258 XHTTP rename may
@@ -450,6 +451,7 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 
 	// Merge subscription-derived outbounds (if any) into the final outbounds array.
 	mergeActiveSubscriptionOutbounds(xrayConfig)
+	s.expandNodeBalancers(xrayConfig)
 	for _, note := range repairLeftOut(xrayConfig, left) {
 		logger.Warning("panel's own core:", note)
 	}

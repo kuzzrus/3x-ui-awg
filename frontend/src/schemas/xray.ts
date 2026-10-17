@@ -132,17 +132,37 @@ export const RuleFormSchema = z.object({
   balancerTag: z.string(),
 });
 
-export const BalancerFormSchema = z.object({
-  tag: z
-    .string()
-    .trim()
-    .min(1, 'pages.xray.balancerTagRequired')
-    .refine((val) => !val.startsWith('_bl_'), { message: 'pages.xray.balancer.reservedPrefix' }),
-  strategy: BalancerStrategyTypeSchema.default('random'),
-  selector: z.array(z.string()).min(1, 'pages.xray.balancerSelectorRequired'),
-  fallbackTag: z.string().default(''),
-  settings: BalancerStrategySettingsSchema.optional(),
-});
+export const BalancerFormSchema = z
+  .object({
+    tag: z
+      .string()
+      .trim()
+      .min(1, 'pages.xray.balancerTagRequired')
+      .refine((val) => !val.startsWith('_bl_'), { message: 'pages.xray.balancer.reservedPrefix' }),
+    strategy: BalancerStrategyTypeSchema.default('random'),
+    selector: z.array(z.string()),
+    fallbackTag: z.string().default(''),
+    settings: BalancerStrategySettingsSchema.optional(),
+    // The nodes the balancer sends traffic out through, and the client that logs in to them.
+    nodeIds: z.array(z.number().int().positive()).default([]),
+    nodeClient: z.string().trim().default(''),
+  })
+  .superRefine((values, ctx) => {
+    if (values.selector.length === 0 && values.nodeIds.length === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['selector'],
+        message: 'pages.xray.balancerSelectorRequired',
+      });
+    }
+    if (values.nodeIds.length > 0 && values.nodeClient === '') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['nodeClient'],
+        message: 'pages.xray.balancer.nodeClientRequired',
+      });
+    }
+  });
 
 export const OutboundTagSchema = z
   .string()

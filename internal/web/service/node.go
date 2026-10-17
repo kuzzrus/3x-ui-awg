@@ -961,6 +961,12 @@ func (s *NodeService) Delete(id int) error {
 	for _, metric := range NodeMetricKeys {
 		nodeMetrics.drop(nodeMetricKey(id, metric))
 	}
+	// A balancer of the template that sends traffic out through the node lets it go as well.
+	if changed, err := (&XraySettingService{}).RemoveNodeReferences(id); err != nil {
+		logger.Warning("node", id, "deleted, but the balancers of the Xray template still name it:", err)
+	} else if changed {
+		(&XrayService{}).SetToNeedRestart()
+	}
 	return nil
 }
 

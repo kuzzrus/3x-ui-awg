@@ -24,6 +24,7 @@ import {
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 
+import { useNodesQuery } from '@/api/queries/useNodesQuery';
 import BalancerFormModal from './BalancerFormModal';
 import type { BalancerFormValue } from './BalancerFormModal';
 import { syncObservatories } from './balancer-helpers';
@@ -75,6 +76,8 @@ interface BalancerRow {
   fallbackTag: string;
   displayFallbackTag: string;
   settings?: BalancerStrategySettings;
+  nodeClient: string;
+  nodeIds: number[];
 }
 
 const STRATEGY_LABELS: Record<string, string> = {
@@ -98,6 +101,13 @@ export default function BalancersTab({
   const [editingBalancer, setEditingBalancer] = useState<BalancerFormValue | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
+  const { nodes } = useNodesQuery();
+  const nodeNames = useMemo(
+    () =>
+      new Map(nodes.filter((n) => n.id > 0).map((n) => [n.id, n.name || n.remark || `#${n.id}`])),
+    [nodes],
+  );
+
   const balancerObjects = useMemo(
     () => (templateSettings?.routing?.balancers || []) as BalancerObject[],
     [templateSettings?.routing?.balancers],
@@ -113,6 +123,8 @@ export default function BalancersTab({
       fallbackTag: b.fallbackTag || '',
       displayFallbackTag: resolveLoopbackFallback(templateSettings!, b.fallbackTag || ''),
       settings: b.strategy?.settings,
+      nodeClient: b.nodeMembers?.client ?? '',
+      nodeIds: b.nodeMembers?.nodeIds ?? [],
     }));
   }, [balancerObjects, templateSettings]);
 
@@ -232,6 +244,9 @@ export default function BalancersTab({
         selector: [...form.selector],
         fallbackTag: '',
       };
+      if (form.nodeIds.length > 0) {
+        wire.nodeMembers = { client: form.nodeClient, nodeIds: [...form.nodeIds] };
+      }
       if (form.strategy && form.strategy !== 'random') {
         wire.strategy = { type: form.strategy };
         if (form.strategy === 'leastLoad' && form.settings) {
@@ -380,12 +395,26 @@ export default function BalancersTab({
       title: 'Selector',
       key: 'selector',
       align: 'center',
-      render: (_v, record) =>
-        (record.selector || []).map((sel) => (
-          <Tag key={sel} className="info-large-tag" style={{ margin: 0, marginRight: 4 }}>
-            {sel}
-          </Tag>
-        )),
+      render: (_v, record) => (
+        <>
+          {(record.selector || []).map((sel) => (
+            <Tag key={sel} className="info-large-tag" style={{ margin: 0, marginRight: 4 }}>
+              {sel}
+            </Tag>
+          ))}
+          {record.nodeIds.map((id) => (
+            <Tooltip key={`node-${id}`} title={record.nodeClient}>
+              <Tag
+                color="geekblue"
+                className="info-large-tag"
+                style={{ margin: 0, marginRight: 4 }}
+              >
+                {nodeNames.get(id) ?? `#${id}`}
+              </Tag>
+            </Tooltip>
+          ))}
+        </>
+      ),
     },
     {
       title: 'Fallback',

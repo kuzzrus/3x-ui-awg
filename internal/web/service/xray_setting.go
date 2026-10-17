@@ -60,6 +60,9 @@ func (s *XraySettingService) CheckXrayConfig(XrayTemplateConfig string) error {
 	if err := checkOutboundNodeTags(xrayConfig.OutboundConfigs); err != nil {
 		return err
 	}
+	if err := checkBalancerNodeMembers(xrayConfig.RouterConfig); err != nil {
+		return err
+	}
 	shared := subscriptionOutboundTags()
 	if err := checkSharedEntriesReachTheirOutbounds(xrayConfig.RouterConfig, xrayConfig.OutboundConfigs, shared); err != nil {
 		return err

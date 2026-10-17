@@ -8,6 +8,8 @@ import type { Path } from 'react-hook-form';
 
 import { InputAddon } from '@/components/ui';
 import { FormField } from '@/components/form/rhf';
+import { useClientOptions } from '@/api/queries/useClientOptions';
+import { useNodesQuery } from '@/api/queries/useNodesQuery';
 import type { XraySettingsValue } from '@/hooks/useXraySetting';
 import { BalancerFormSchema, type BalancerFormValues } from '@/schemas/xray';
 import {
@@ -45,7 +47,14 @@ const STRATEGIES = BalancerStrategyTypeSchema.options.map((value) => ({
 
 function initialState(balancer: BalancerFormValue | null): BalancerFormValues {
   if (!balancer) {
-    return { tag: '', strategy: 'random', selector: [], fallbackTag: '' };
+    return {
+      tag: '',
+      strategy: 'random',
+      selector: [],
+      fallbackTag: '',
+      nodeIds: [],
+      nodeClient: '',
+    };
   }
   return {
     tag: balancer.tag ?? '',
@@ -53,6 +62,8 @@ function initialState(balancer: BalancerFormValue | null): BalancerFormValues {
     selector: [...(balancer.selector ?? [])],
     fallbackTag: balancer.fallbackTag ?? '',
     settings: balancer.settings,
+    nodeIds: [...balancer.nodeIds],
+    nodeClient: balancer.nodeClient,
   };
 }
 
@@ -88,6 +99,17 @@ export default function BalancerFormModal({
   const tagValue = useWatch({ control: methods.control, name: 'tag' }) ?? '';
   const fallbackTag = useWatch({ control: methods.control, name: 'fallbackTag' }) ?? '';
   const currentTag = tagValue.trim();
+
+  const { data: clientEmails = [] } = useClientOptions(open);
+  const { nodes } = useNodesQuery();
+  // A transitive sub-node (id 0) is a read-only projection of a node further down the tree, and no inbound is its own.
+  const nodeOptions = useMemo(
+    () =>
+      nodes
+        .filter((node) => !node.transitive && node.id > 0)
+        .map((node) => ({ value: node.id, label: node.name || node.remark || `#${node.id}` })),
+    [nodes],
+  );
 
   const availableBalancerTags = useMemo(
     () => balancerTags.filter((tg) => tg !== currentTag),
@@ -247,11 +269,34 @@ export default function BalancerFormModal({
           <FormField name="strategy" label={t('pages.xray.balancer.balancerStrategy')}>
             <Select options={STRATEGIES} />
           </FormField>
-          <FormField name="selector" label={t('pages.xray.balancer.selector')} required>
+          <FormField name="selector" label={t('pages.xray.balancer.selector')}>
             <Select
               mode="tags"
               tokenSeparators={[',']}
               options={outboundTags.map((tg) => ({ value: tg, label: tg }))}
+            />
+          </FormField>
+          <FormField
+            name="nodeIds"
+            label={t('pages.xray.balancer.nodes')}
+            tooltip={t('pages.xray.balancer.nodesHint')}
+          >
+            <Select
+              mode="multiple"
+              options={nodeOptions}
+              maxTagCount="responsive"
+              showSearch={{ optionFilterProp: 'label' }}
+            />
+          </FormField>
+          <FormField
+            name="nodeClient"
+            label={t('pages.xray.balancer.nodeClient')}
+            tooltip={t('pages.xray.balancer.nodeClientHint')}
+          >
+            <Select
+              showSearch
+              allowClear
+              options={clientEmails.map((email) => ({ value: email, label: email }))}
             />
           </FormField>
           <FormField

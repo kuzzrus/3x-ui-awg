@@ -115,6 +115,8 @@ func runWebServer() {
 		log.Fatalf("Error initializing database: %v", err)
 	}
 
+	// The first config of the core is written by Start, so the nodes of its balancers have to be known by then.
+	service.SetNodeOutboundSource(sub.NodeOutbounds)
 	server := web.NewServer()
 	global.SetWebServer(server)
 	err = server.Start()

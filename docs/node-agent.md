@@ -410,6 +410,20 @@ only reported. The template is refused when a rule or an outbound for every core
 only, since the panel's own core would lack it. A rule that names an outbound the template does not hold at all is left as it was, for
 templates in the field are full of them.
 
+A balancer of the template can send traffic out through nodes. Its `nodeMembers`, a panel-only key like
+`nodeTags`, holds `client`, the email of a client of the panel, and `nodeIds`, the nodes. The panel's own core
+gets an outbound to each of those nodes that is on, written as the JSON subscription writes it for a client app,
+from every enabled inbound the client has on the node (its first endpoint; the tag is
+`xui-node-<node>-<client>-<inbound>`). They come after the outbounds of the template and of the subscriptions, so
+none of them is the default outbound. Their prefixes are added to the selector of the balancer and, when the balancer
+probes (leastPing, leastLoad, or a fallback), to the subjectSelector of the observatory. An outbound the core would
+refuse is left out with a warning. A balancer that reaches no outbound at all and has no fallback sends the rules that
+lead to it to the blackhole `x-ui-missing-outbound`, since the default outbound would let that traffic out of the
+panel itself. The outbounds follow the nodes: every 30 seconds the panel compares them with what the core runs, and a
+changed port, key or inbound is applied through the API when it can be, without a restart. Agent configs get neither
+the balancer nor the rules that lead to it, for only the panel's own core has an outbound to a node. The template is
+refused when `nodeMembers` is not a client and a list of node ids, and a deleted node leaves the lists.
+
 A node can be a member of a subscription balancer (Settings → Sub Balancers), the client-side
 balancer of the JSON subscription, which has nothing to do with the balancers of the template. A
 balancer holds inbounds, nodes or both, and at least one of them. A node stands for the inbounds that
@@ -543,6 +557,8 @@ says so; a tag or archive given explicitly is never swapped.
     the inbounds that a subscriber has on it.
 17. Later: Psiphon through several countries at once, as one tunnel per country with a latency balancer and a probe of each
     (the panel runs one tunnel and one region at a time today, and a node one program that the master names `psiphon`).
+18. **Nodes in the Xray balancer**. Done for the panel's own core: a balancer of the template sends traffic out through
+    nodes. Later: an agent node that forwards to other nodes, which needs the outbounds in its config.
 
 ## Open questions
 
