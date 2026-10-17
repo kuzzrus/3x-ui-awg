@@ -12,10 +12,12 @@ export const RuleWebhookSchema = z.object({
 });
 export type RuleWebhook = z.infer<typeof RuleWebhookSchema>;
 
-export const RuleObjectSchema = z.object({
+// Loose: the page saves back what the schema returns, so a key it does not name would be lost.
+export const RuleObjectSchema = z.looseObject({
   type: z.literal('field').default('field'),
   enabled: z.boolean().optional(),
   comment: z.string().optional(),
+  nodeTags: z.array(z.string()).optional(),
   domain: z.array(z.string()).optional(),
   ip: z.array(z.string()).optional(),
   port: PortValueSchema.optional(),
@@ -68,7 +70,7 @@ export const BalancerStrategySchema = z.object({
 });
 export type BalancerStrategy = z.infer<typeof BalancerStrategySchema>;
 
-export const BalancerObjectSchema = z.object({
+export const BalancerObjectSchema = z.looseObject({
   tag: z.string().trim().min(1),
   selector: z.array(z.string()).min(1),
   fallbackTag: z.string().optional(),
