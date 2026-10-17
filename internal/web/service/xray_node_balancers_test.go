@@ -10,6 +10,8 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
+
+	"github.com/xtls/xray-core/infra/conf"
 )
 
 // vlessOutbound is an outbound the core accepts, as the JSON subscription writes one for a client.
@@ -98,6 +100,7 @@ func ruleToBalancer(domain, balancer string) map[string]any {
 	return map[string]any{"type": "field", "domain": []any{domain}, "balancerTag": balancer}
 }
 
+// renderPanelConfig builds the config of the panel's own core, as the page that shows it does: it is given to nothing.
 func renderPanelConfig(t *testing.T) *xray.Config {
 	t.Helper()
 	cfg, err := (&XrayService{}).GetXrayConfig()
@@ -105,6 +108,39 @@ func renderPanelConfig(t *testing.T) *xray.Config {
 		t.Fatalf("GetXrayConfig: %v", err)
 	}
 	return cfg
+}
+
+// giveTheCore does what a restart does once the core has the config it built: it notes the node outbounds.
+func giveTheCore(t *testing.T) *xray.Config {
+	t.Helper()
+	cfg, nodeOutbounds, err := (&XrayService{}).buildXrayConfig()
+	if err != nil {
+		t.Fatalf("buildXrayConfig: %v", err)
+	}
+	givenNodeOutbounds.Store(nodeOutbounds)
+	return cfg
+}
+
+// coreBuildsBalancers builds the balancers of the config as xray-core does, which refuses one with no selector
+// and so the whole config.
+func coreBuildsBalancers(t *testing.T, cfg *xray.Config) {
+	t.Helper()
+	var routing struct {
+		Balancers json.RawMessage `json:"balancers"`
+	}
+	if err := json.Unmarshal(cfg.RouterConfig, &routing); err != nil {
+		t.Fatal(err)
+	}
+	if len(routing.Balancers) == 0 {
+		routing.Balancers = json.RawMessage("[]")
+	}
+	router := new(conf.RouterConfig)
+	if err := json.Unmarshal([]byte(`{"balancers":`+string(routing.Balancers)+`}`), router); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := router.Build(); err != nil {
+		t.Fatalf("the core refuses the balancers of %s: %v", cfg.RouterConfig, err)
+	}
 }
 
 func outboundTagList(t *testing.T, cfg *xray.Config) []string {
@@ -285,21 +321,35 @@ func TestNodeBalancerAsksTheObservatoryToProbeTheNodes(t *testing.T) {
 	}
 }
 
-func TestNodeBalancerWithNoOutboundBlocksItsRules(t *testing.T) {
+// The core refuses a balancer with an empty selector, and the whole config with it, so one that reaches no outbound is
+// left out; the rules that led to it go to its fallback, or block.
+func TestNodeBalancerThatReachesNothingIsLeftOutAndItsRulesAreKeptSafe(t *testing.T) {
 	setupSettingTestDB(t)
 	berlin := seedTaggedAgent(t, "berlin")
 	useNodeOutbounds(t, map[string][]NodeOutbound{})
-	kept := balancerOfNodes("kept", "random", "relay@x", berlin)
-	kept["fallbackTag"] = "direct"
-	useBalancers(t, []any{balancerOfNodes("exits", "random", "relay@x", berlin), kept},
-		ruleToBalancer("geosite:empty", "exits"), ruleToBalancer("geosite:fallback", "kept"))
+	withFallback := balancerOfNodes("with-fallback", "random", "relay@x", berlin)
+	withFallback["fallbackTag"] = "direct"
+	lostFallback := balancerOfNodes("lost-fallback", "random", "relay@x", berlin)
+	lostFallback["fallbackTag"] = "no-such-outbound"
+	useBalancers(t, []any{balancerOfNodes("exits", "random", "relay@x", berlin), withFallback, lostFallback},
+		ruleToBalancer("geosite:empty", "exits"), ruleToBalancer("geosite:fallback", "with-fallback"),
+		ruleToBalancer("geosite:lost", "lost-fallback"))
 
 	cfg := renderPanelConfig(t)
-	if rule := ruleForDomain(t, cfg, "geosite:empty"); rule["outboundTag"] != missingOutboundTag || rule["balancerTag"] != nil {
-		t.Fatalf("a rule that leads to a balancer with no outbound must block its traffic, got %v", rule)
+	coreBuildsBalancers(t, cfg)
+	for _, tag := range []string{"exits", "with-fallback", "lost-fallback"} {
+		if balancerNamed(t, cfg, tag) != nil {
+			t.Fatalf("balancer %s reaches nothing and must not be in the config: %s", tag, cfg.RouterConfig)
+		}
 	}
-	if rule := ruleForDomain(t, cfg, "geosite:fallback"); rule["balancerTag"] != "kept" {
-		t.Fatalf("a balancer with a fallback is left as it is, got %v", rule)
+	if rule := ruleForDomain(t, cfg, "geosite:empty"); rule["outboundTag"] != missingOutboundTag || rule["balancerTag"] != nil {
+		t.Fatalf("a rule that led to a balancer with no outbound must block its traffic, got %v", rule)
+	}
+	if rule := ruleForDomain(t, cfg, "geosite:fallback"); rule["outboundTag"] != "direct" || rule["balancerTag"] != nil {
+		t.Fatalf("a rule that led to a balancer with a fallback must send to the fallback, got %v", rule)
+	}
+	if rule := ruleForDomain(t, cfg, "geosite:lost"); rule["outboundTag"] != missingOutboundTag {
+		t.Fatalf("a fallback the config lacks must not be sent to, got %v", rule)
 	}
 	tags := outboundTagList(t, cfg)
 	if n := slices.Index(tags, missingOutboundTag); n < 0 || slices.Index(tags[n+1:], missingOutboundTag) >= 0 {
@@ -307,18 +357,37 @@ func TestNodeBalancerWithNoOutboundBlocksItsRules(t *testing.T) {
 	}
 }
 
-func TestNodeBalancerWithoutASourceBlocksItsRules(t *testing.T) {
+func TestNodeBalancerWithoutASourceIsLeftOutAndItsRulesBlock(t *testing.T) {
 	setupSettingTestDB(t)
 	berlin := seedTaggedAgent(t, "berlin")
 	nodeOutboundSource.Store(nil)
 	useBalancers(t, []any{balancerOfNodes("exits", "random", "relay@x", berlin)}, ruleToBalancer("geosite:test", "exits"))
 
 	cfg := renderPanelConfig(t)
+	coreBuildsBalancers(t, cfg)
 	if rule := ruleForDomain(t, cfg, "geosite:test"); rule["outboundTag"] != missingOutboundTag {
 		t.Fatalf("got %v, want the rule to block", rule)
 	}
 	if strings.Contains(string(cfg.RouterConfig), nodeMembersKey) {
 		t.Fatalf("the panel-only key reached the core: %s", cfg.RouterConfig)
+	}
+}
+
+func TestNodeBalancerKeepsItsOwnOutboundsWhenNoNodeIsReached(t *testing.T) {
+	setupSettingTestDB(t)
+	berlin := seedTaggedAgent(t, "berlin")
+	useNodeOutbounds(t, map[string][]NodeOutbound{})
+	b := balancerOfNodes("mixed", "random", "relay@x", berlin)
+	b["selector"] = []any{"direct"}
+	useBalancers(t, []any{b}, ruleToBalancer("geosite:test", "mixed"))
+
+	cfg := renderPanelConfig(t)
+	coreBuildsBalancers(t, cfg)
+	if got := selectorOf(balancerNamed(t, cfg, "mixed")); !slices.Equal(got, []string{"direct"}) {
+		t.Fatalf("selector = %v, want the outbound of the template alone", got)
+	}
+	if rule := ruleForDomain(t, cfg, "geosite:test"); rule["balancerTag"] != "mixed" || rule["outboundTag"] != nil {
+		t.Fatalf("a balancer that still reaches an outbound keeps its rules, got %v", rule)
 	}
 }
 
@@ -379,34 +448,46 @@ func TestAConfigWithoutNodeBalancersIsLeftAsItWas(t *testing.T) {
 		t.Fatal(err)
 	}
 	routing, outbounds := string(cfg.RouterConfig), string(cfg.OutboundConfigs)
-	svc.expandNodeBalancers(cfg)
+	if fingerprint := svc.expandNodeBalancers(cfg); fingerprint != "" {
+		t.Fatalf("a template with no balancer of nodes has the node outbounds %q", fingerprint)
+	}
 	if string(cfg.RouterConfig) != routing || string(cfg.OutboundConfigs) != outbounds {
 		t.Fatal("a template with no balancer of nodes was rewritten")
 	}
 }
 
-func TestAgentConfigLeavesOutTheBalancersMadeOfNodes(t *testing.T) {
+// Only the panel's own core has an outbound to a node, so an agent loses the balancer. The traffic of the rules
+// that led to it must not leave from the agent instead: they block, and the node says so.
+func TestAgentConfigLeavesOutTheBalancersMadeOfNodesAndBlocksTheirRules(t *testing.T) {
 	setupSettingTestDB(t)
 	agent := seedTaggedAgent(t, "agent-1")
 	berlin := seedTaggedAgent(t, "berlin")
 	useNodeOutbounds(t, map[string][]NodeOutbound{"relay@x": {nodeOut(berlin, 7, 11, "berlin.example.com", 443)}})
 	plain := map[string]any{"tag": "plain", "selector": []any{"direct"}}
 	useBalancers(t, []any{balancerOfNodes("exits", "random", "relay@x", berlin), plain},
-		ruleToBalancer("geosite:nodes", "exits"), ruleToBalancer("geosite:plain", "plain"))
+		ruleToBalancer("geosite:nodes", "exits"), ruleToBalancer("geosite:again", "exits"), ruleToBalancer("geosite:plain", "plain"))
 
 	svc := &XrayService{}
 	agentCfg, err := svc.GetAgentConfig(agent)
 	if err != nil {
 		t.Fatal(err)
 	}
+	coreBuildsBalancers(t, agentCfg)
 	if balancerNamed(t, agentCfg, "exits") != nil || balancerNamed(t, agentCfg, "plain") == nil {
 		t.Fatalf("an agent must lose the balancer of nodes and keep the other: %s", agentCfg.RouterConfig)
 	}
-	rules, _ := routingOf(t, agentCfg)["rules"].([]any)
-	for _, raw := range rules {
-		if rule, _ := raw.(map[string]any); rule["balancerTag"] == "exits" {
-			t.Fatalf("a rule that leads to the balancer of nodes stayed in the config of an agent: %v", rule)
+	for _, domain := range []string{"geosite:nodes", "geosite:again"} {
+		if rule := ruleForDomain(t, agentCfg, domain); rule["outboundTag"] != missingOutboundTag || rule["balancerTag"] != nil {
+			t.Fatalf("a rule that led to the balancer of nodes must block on an agent, got %v", rule)
 		}
+	}
+	tags := outboundTagList(t, agentCfg)
+	if n := slices.Index(tags, missingOutboundTag); n < 0 || slices.Index(tags[n+1:], missingOutboundTag) >= 0 {
+		t.Fatalf("want one blackhole %s among %v", missingOutboundTag, tags)
+	}
+	problem := agentConfigProblem(agent)
+	if !strings.Contains(problem, `balancer "exits"`) || strings.Count(problem, `balancer "exits"`) != 1 {
+		t.Fatalf("the node must say once that its rules to the balancer of nodes block, got %q", problem)
 	}
 	if rule := ruleForDomain(t, agentCfg, "geosite:plain"); rule["balancerTag"] != "plain" {
 		t.Fatalf("the rule of the other balancer must stay, got %v", rule)
@@ -503,29 +584,37 @@ func TestDeletingANodeTakesItOutOfTheBalancersOfTheTemplate(t *testing.T) {
 	}
 }
 
+// useChangingPort serves the outbound of one node whose port the test can change, and clears what the core was given.
+func useChangingPort(t *testing.T, node int, port *int) *XrayService {
+	t.Helper()
+	SetNodeOutboundSource(func(string, []int) ([]NodeOutbound, error) {
+		return []NodeOutbound{nodeOut(node, 7, 11, "berlin.example.com", *port)}, nil
+	})
+	t.Cleanup(func() { nodeOutboundSource.Store(nil) })
+	givenNodeOutbounds.Store("")
+	t.Cleanup(func() { givenNodeOutbounds.Store("") })
+	svc := &XrayService{}
+	svc.IsNeedRestartAndSetFalse()
+	t.Cleanup(func() { svc.IsNeedRestartAndSetFalse() })
+	return svc
+}
+
 func TestRefreshNodeOutboundsAsksForACheckWhenTheNodesChange(t *testing.T) {
 	setupSettingTestDB(t)
 	berlin := seedTaggedAgent(t, "berlin")
 	port := 443
-	SetNodeOutboundSource(func(string, []int) ([]NodeOutbound, error) {
-		return []NodeOutbound{nodeOut(berlin, 7, 11, "berlin.example.com", port)}, nil
-	})
-	t.Cleanup(func() { nodeOutboundSource.Store(nil) })
-	svc := &XrayService{}
-	svc.IsNeedRestartAndSetFalse()
-	t.Cleanup(func() { svc.IsNeedRestartAndSetFalse() })
+	svc := useChangingPort(t, berlin, &port)
 
-	renderedNodeOutbound.Store("")
 	svc.RefreshNodeOutbounds()
 	if svc.IsNeedRestartAndSetFalse() {
 		t.Fatal("a template with no balancer of nodes asked for a check")
 	}
 
 	useBalancers(t, []any{balancerOfNodes("exits", "random", "relay@x", berlin)}, ruleToBalancer("geosite:test", "exits"))
-	renderPanelConfig(t)
+	giveTheCore(t)
 	svc.RefreshNodeOutbounds()
 	if svc.IsNeedRestartAndSetFalse() {
-		t.Fatal("nothing changed since the config was written, yet a check was asked for")
+		t.Fatal("nothing changed since the core was given its config, yet a check was asked for")
 	}
 
 	port = 8443
@@ -534,9 +623,43 @@ func TestRefreshNodeOutboundsAsksForACheckWhenTheNodesChange(t *testing.T) {
 		t.Fatal("the node changed a port, but no check was asked for")
 	}
 
-	renderPanelConfig(t)
+	giveTheCore(t)
 	svc.RefreshNodeOutbounds()
 	if svc.IsNeedRestartAndSetFalse() {
-		t.Fatal("a check was asked for again after the config was written")
+		t.Fatal("a check was asked for again after the core was given the new config")
+	}
+}
+
+// The page that shows the config builds one that goes to nothing, and must not make the core look up to date.
+func TestShowingTheConfigDoesNotHideAChangeOfTheNodes(t *testing.T) {
+	setupSettingTestDB(t)
+	berlin := seedTaggedAgent(t, "berlin")
+	port := 443
+	svc := useChangingPort(t, berlin, &port)
+	useBalancers(t, []any{balancerOfNodes("exits", "random", "relay@x", berlin)}, ruleToBalancer("geosite:test", "exits"))
+	giveTheCore(t)
+
+	port = 8443
+	renderPanelConfig(t)
+	svc.RefreshNodeOutbounds()
+	if !svc.IsNeedRestartAndSetFalse() {
+		t.Fatal("the core still runs the old port, but showing the config made a check seem needless")
+	}
+}
+
+func TestRefreshNodeOutboundsLeavesACoreThatWasStoppedAlone(t *testing.T) {
+	setupSettingTestDB(t)
+	berlin := seedTaggedAgent(t, "berlin")
+	port := 443
+	svc := useChangingPort(t, berlin, &port)
+	useBalancers(t, []any{balancerOfNodes("exits", "random", "relay@x", berlin)}, ruleToBalancer("geosite:test", "exits"))
+	giveTheCore(t)
+	port = 8443
+
+	isManuallyStopped.Store(true)
+	t.Cleanup(func() { isManuallyStopped.Store(false) })
+	svc.RefreshNodeOutbounds()
+	if svc.IsNeedRestartAndSetFalse() {
+		t.Fatal("a core the operator stopped was asked to check its config, which would be built again at every tick")
 	}
 }

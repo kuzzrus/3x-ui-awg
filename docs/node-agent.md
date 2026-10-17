@@ -417,11 +417,13 @@ from every enabled inbound the client has on the node (its first endpoint; the t
 `xui-node-<node>-<client>-<inbound>`). They come after the outbounds of the template and of the subscriptions, so
 none of them is the default outbound. Their prefixes are added to the selector of the balancer and, when the balancer
 probes (leastPing, leastLoad, or a fallback), to the subjectSelector of the observatory. An outbound the core would
-refuse is left out with a warning. A balancer that reaches no outbound at all and has no fallback sends the rules that
-lead to it to the blackhole `x-ui-missing-outbound`, since the default outbound would let that traffic out of the
-panel itself. The outbounds follow the nodes: every 30 seconds the panel compares them with what the core runs, and a
-changed port, key or inbound is applied through the API when it can be, without a restart. Agent configs get neither
-the balancer nor the rules that lead to it, for only the panel's own core has an outbound to a node. The template is
+refuse is left out with a warning. The core refuses a balancer with an empty selector, and the whole config with it, so
+a balancer that reaches no outbound at all is left out of the config: the rules that led to it send to its fallback when
+it has one, and to the blackhole `x-ui-missing-outbound` otherwise, since the default outbound would let that traffic
+out of the panel itself. The outbounds follow the nodes: every 30 seconds the panel compares them with what the core was
+last given, and a changed port, key or inbound is applied through the API when it can be, without a restart. Agent
+configs do not get the balancer, for only the panel's own core has an outbound to a node. The rules that lead to it
+block their traffic there, rather than let it out of the agent, and the node reports the adjustment. The template is
 refused when `nodeMembers` is not a client and a list of node ids, and a deleted node leaves the lists.
 
 A node can be a member of a subscription balancer (Settings → Sub Balancers), the client-side

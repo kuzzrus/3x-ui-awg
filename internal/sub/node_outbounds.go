@@ -61,23 +61,10 @@ func NodeOutbounds(email string, nodeIDs []int) ([]service.NodeOutbound, error) 
 		// One outbound per inbound: the first endpoint, which is the one a client app lists first.
 		for _, doc := range js.getConfig(req, inbound, client, req.address) {
 			if proxy := extractProxyOutbound(doc); proxy != nil {
-				nameVlessEncryption(proxy)
 				out = append(out, service.NodeOutbound{NodeID: nodeID, ClientID: rows[i].Id, InboundID: inbound.Id, Outbound: proxy})
 				break
 			}
 		}
 	}
 	return out, nil
-}
-
-// nameVlessEncryption makes the encryption of a VLESS outbound none when it is empty: the core refuses an empty
-// one, and an inbound made through the API need not carry the key.
-func nameVlessEncryption(outbound map[string]any) {
-	settings, ok := outbound["settings"].(map[string]any)
-	if !ok || outbound["protocol"] != "vless" {
-		return
-	}
-	if encryption, _ := settings["encryption"].(string); encryption == "" {
-		settings["encryption"] = "none"
-	}
 }

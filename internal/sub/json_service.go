@@ -866,6 +866,10 @@ func (s *SubJsonService) genVless(subReq *SubService, inbound *model.Inbound, st
 	// Add encryption for VLESS outbound from inbound settings
 	inboundSettings := subReq.linkSettings(inbound)
 	encryption, _ := inboundSettings["encryption"].(string)
+	if encryption == "" {
+		// The core refuses an empty one, and an inbound made through the API need not name it.
+		encryption = "none"
+	}
 
 	settings := map[string]any{
 		"address":    inbound.Listen,

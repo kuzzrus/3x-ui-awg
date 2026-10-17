@@ -414,21 +414,28 @@ func mergeActiveSubscriptionOutbounds(cfg *xray.Config) {
 
 // GetXrayConfig retrieves and builds the Xray configuration from settings and inbounds.
 func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
+	xrayConfig, _, err := s.buildXrayConfig()
+	return xrayConfig, err
+}
+
+// buildXrayConfig is GetXrayConfig with the fingerprint of the node outbounds in the config. Only the caller that
+// hands the config to the core records it: a config that is built to be shown was never given to anything.
+func (s *XrayService) buildXrayConfig() (*xray.Config, string, error) {
 	xrayConfig, left, err := s.newConfigFromTemplate(configScope{})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	// Bridge amneziawg outbounds before anything else reads OutboundConfigs;
 	// the core has no amneziawg proxy and would reject the raw entry.
 	if err := transformAmneziaWGOutbounds(xrayConfig); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	_, _, _ = s.inboundService.AddTraffic(nil, nil)
 
 	inbounds, err := s.inboundService.GetAllInbounds()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	for _, inbound := range inbounds {
 		if !inbound.Enable {
@@ -444,14 +451,14 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 		}
 		inboundConfig, err := s.renderInboundConfig(inbound)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		xrayConfig.InboundConfigs = append(xrayConfig.InboundConfigs, *inboundConfig)
 	}
 
 	// Merge subscription-derived outbounds (if any) into the final outbounds array.
 	mergeActiveSubscriptionOutbounds(xrayConfig)
-	s.expandNodeBalancers(xrayConfig)
+	nodeOutbounds := s.expandNodeBalancers(xrayConfig)
 	for _, note := range repairLeftOut(xrayConfig, left) {
 		logger.Warning("panel's own core:", note)
 	}
@@ -526,7 +533,7 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 		injectNodeEgresses(xrayConfig, nodes)
 	}
 
-	return xrayConfig, nil
+	return xrayConfig, nodeOutbounds, nil
 }
 
 // PanelEgressInboundTag is the tag of the loopback SOCKS inbound injected into
@@ -1548,7 +1555,7 @@ func (s *XrayService) RestartXray(isForce bool) error {
 	}
 	isManuallyStopped.Store(false)
 
-	xrayConfig, err := s.GetXrayConfig()
+	xrayConfig, nodeOutbounds, err := s.buildXrayConfig()
 	if err != nil {
 		return err
 	}
@@ -1558,6 +1565,7 @@ func (s *XrayService) RestartXray(isForce bool) error {
 		configUnchanged := process.GetConfig().Equals(xrayConfig)
 		if !isForce && configUnchanged && !isNeedXrayRestart.Load() {
 			logger.Debug("It does not need to restart Xray")
+			givenNodeOutbounds.Store(nodeOutbounds)
 			return nil
 		}
 		// A config the core cannot bind never replaces one that works: its failed
@@ -1574,6 +1582,7 @@ func (s *XrayService) RestartXray(isForce bool) error {
 		}
 		if !isForce && !configUnchanged && xray.ApplyHot(process, xrayConfig, s.restartToDropClients) {
 			logger.Info("Xray config changes applied through the core API, no restart needed")
+			givenNodeOutbounds.Store(nodeOutbounds)
 			return nil
 		}
 		_ = process.Stop()
@@ -1590,6 +1599,7 @@ func (s *XrayService) RestartXray(isForce bool) error {
 	if err != nil {
 		return err
 	}
+	givenNodeOutbounds.Store(nodeOutbounds)
 
 	return nil
 }

@@ -117,6 +117,24 @@ func TestSubJsonServiceVisionFlowDisablesTCPMuxOnly(t *testing.T) {
 	}
 }
 
+// The core refuses a VLESS outbound with an empty encryption, and an inbound made through the API need not name one.
+func TestSubJsonServiceNamesNoneForAVlessInboundWithoutEncryption(t *testing.T) {
+	svc := NewSubJsonService("", "", "", "", nil)
+	const mlkem = "mlkem768x25519plus.native.0rtt.client"
+	for settings, want := range map[string]string{
+		`{}`:                             "none",
+		`{"encryption":""}`:              "none",
+		`{"encryption":"none"}`:          "none",
+		`{"encryption":"` + mlkem + `"}`: mlkem,
+	} {
+		inbound := &model.Inbound{Listen: "1.2.3.4", Port: 443, Protocol: model.VLESS, Settings: settings}
+		got := outboundSettings(t, svc.genVless(&SubService{}, inbound, nil, model.Client{ID: "uuid-1"}, ""))["encryption"]
+		if got != want {
+			t.Errorf("inbound settings %s: encryption = %v, want %q", settings, got, want)
+		}
+	}
+}
+
 func TestSubJsonServiceInjectsGlobalFinalMask(t *testing.T) {
 	finalMask := `{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"100-200","delay":"10-20"}}],"udp":[{"type":"noise","settings":{"noise":[{"type":"base64","packet":"SGVsbG8="}]}}],"quicParams":{"congestion":"bbr"}}`
 	svc := NewSubJsonService("", "", finalMask, "", nil)

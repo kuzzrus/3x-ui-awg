@@ -39,17 +39,14 @@ type NodeOutbound struct {
 	Outbound  map[string]any
 }
 
-// NodeOutboundSource writes the outbounds of the inbounds that the client with this email has on the nodes.
-// internal/sub writes them for the JSON subscription and imports this package, so the web layer hands it over.
-type NodeOutboundSource func(email string, nodeIDs []int) ([]NodeOutbound, error)
-
 var (
-	nodeOutboundSource   atomic.Pointer[NodeOutboundSource]
-	renderedNodeOutbound atomic.Value // the fingerprint of the node outbounds the panel's core was last given
+	nodeOutboundSource atomic.Pointer[func(email string, nodeIDs []int) ([]NodeOutbound, error)]
+	givenNodeOutbounds atomic.Value // the fingerprint of the node outbounds the panel's core was last given
 )
 
-// SetNodeOutboundSource sets where the outbounds of the nodes in a balancer come from.
-func SetNodeOutboundSource(source NodeOutboundSource) {
+// SetNodeOutboundSource sets where the outbounds of the inbounds that a client has on the nodes come from.
+// internal/sub writes them for the JSON subscription and imports this package, so the web layer hands it over.
+func SetNodeOutboundSource(source func(email string, nodeIDs []int) ([]NodeOutbound, error)) {
 	nodeOutboundSource.Store(&source)
 }
 
@@ -120,47 +117,93 @@ func checkBalancerNodeMembers(routerCfg json_util.RawMessage) error {
 	return nil
 }
 
-// scopeNodeBalancers leaves the balancers made of nodes, and the rules that send to them, out of an agent's
-// config: the panel's own core is the only one with an outbound to a node.
+// scopeNodeBalancers leaves the balancers made of nodes out of an agent's config: the panel's own core is the only
+// one with an outbound to a node. The rules that lead to them stay, for blockRulesOfMissingBalancers to deal with.
 func scopeNodeBalancers(routerCfg json_util.RawMessage, scope configScope) json_util.RawMessage {
 	var routing map[string]any
 	if !scope.agent || len(routerCfg) == 0 || json.Unmarshal(routerCfg, &routing) != nil {
 		return routerCfg
 	}
 	balancers, _ := routing["balancers"].([]any)
-	dropped := map[string]bool{}
 	kept := make([]any, 0, len(balancers))
 	for _, raw := range balancers {
 		if balancer, ok := raw.(map[string]any); ok {
 			if _, has := balancer[nodeMembersKey]; has {
-				tag, _ := balancer["tag"].(string)
-				dropped[tag] = true
 				continue
 			}
 		}
 		kept = append(kept, raw)
 	}
-	if len(dropped) == 0 {
+	if len(kept) == len(balancers) {
 		return routerCfg
 	}
 	routing["balancers"] = kept
-	if rules, ok := routing["rules"].([]any); ok {
-		keptRules := make([]any, 0, len(rules))
-		for _, raw := range rules {
-			if rule, isRule := raw.(map[string]any); isRule {
-				if target, _ := rule["balancerTag"].(string); target != "" && dropped[target] {
-					continue
-				}
-			}
-			keptRules = append(keptRules, raw)
-		}
-		routing["rules"] = keptRules
-	}
 	out, err := json.Marshal(routing)
 	if err != nil {
 		return routerCfg
 	}
 	return out
+}
+
+// blockRulesOfMissingBalancers sends the rules that lead to a balancer the config lacks to the blackhole, and lists
+// them. A balancer of nodes is in the panel's own core only, and its traffic must not leave from an agent instead.
+func blockRulesOfMissingBalancers(cfg *xray.Config) []string {
+	var routing map[string]any
+	if len(cfg.RouterConfig) == 0 || json.Unmarshal(cfg.RouterConfig, &routing) != nil {
+		return nil
+	}
+	present := map[string]bool{}
+	balancers, _ := routing["balancers"].([]any)
+	for _, raw := range balancers {
+		if balancer, ok := raw.(map[string]any); ok {
+			tag, _ := balancer["tag"].(string)
+			present[tag] = true
+		}
+	}
+	var notes []string
+	reported := map[string]bool{}
+	rules, _ := routing["rules"].([]any)
+	for _, raw := range rules {
+		rule, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		target, _ := rule["balancerTag"].(string)
+		if target == "" || present[target] {
+			continue
+		}
+		delete(rule, "balancerTag")
+		rule["outboundTag"] = missingOutboundTag
+		if !reported[target] {
+			reported[target] = true
+			notes = append(notes, fmt.Sprintf("a routing rule sends to balancer %q, which this config does not have (a balancer of nodes is in the panel's own core only): its traffic is blocked", target))
+		}
+	}
+	if len(notes) == 0 {
+		return nil
+	}
+	rewritten, err := json.Marshal(routing)
+	if err != nil {
+		return nil
+	}
+	cfg.RouterConfig = rewritten
+	addBlackhole(cfg)
+	return notes
+}
+
+// addBlackhole adds the blackhole outbound that takes the traffic of a rule that leads nowhere, unless the config has it.
+func addBlackhole(cfg *xray.Config) {
+	if outboundTagSet(cfg.OutboundConfigs)[missingOutboundTag] {
+		return
+	}
+	var list []json.RawMessage
+	if len(cfg.OutboundConfigs) > 0 && json.Unmarshal(cfg.OutboundConfigs, &list) != nil {
+		return
+	}
+	list = append(list, json.RawMessage(`{"protocol":"blackhole","tag":"`+missingOutboundTag+`"}`))
+	if raw, err := json.Marshal(list); err == nil {
+		cfg.OutboundConfigs = raw
+	}
 }
 
 // nodeBalancer is a balancer of the template that sends traffic out through nodes.
@@ -318,20 +361,18 @@ func planNodeOutbounds(balancers []nodeBalancer, quiet bool) nodeOutboundPlan {
 }
 
 // expandNodeBalancers writes the outbounds to the nodes of the balancers that carry nodeMembers into the panel's
-// config. A balancer left with no outbound blocks its rules' traffic: it must not leave by the default outbound.
-func (s *XrayService) expandNodeBalancers(cfg *xray.Config) {
+// config, and returns their fingerprint. The core refuses a balancer with no selector, so see leaveOutUnreachable.
+func (s *XrayService) expandNodeBalancers(cfg *xray.Config) string {
 	var routing map[string]any
 	if len(cfg.RouterConfig) == 0 || json.Unmarshal(cfg.RouterConfig, &routing) != nil {
-		renderedNodeOutbound.Store("")
-		return
+		return ""
 	}
 	balancers := nodeBalancersOf(routing)
 	if len(balancers) == 0 {
-		renderedNodeOutbound.Store("")
-		return
+		return ""
 	}
 	plan := planNodeOutbounds(balancers, false)
-	renderedNodeOutbound.Store(plan.fingerprint())
+	fingerprint := plan.fingerprint()
 
 	var outbounds []json.RawMessage
 	if len(cfg.OutboundConfigs) > 0 {
@@ -354,7 +395,7 @@ func (s *XrayService) expandNodeBalancers(cfg *xray.Config) {
 	}
 
 	var probed []string
-	emptied := map[string]bool{}
+	unreachable := map[string]string{} // balancer tag -> its fallback
 	for i, b := range balancers {
 		selector := []any{}
 		if existing, ok := b.balancer["selector"].([]any); ok {
@@ -373,16 +414,16 @@ func (s *XrayService) expandNodeBalancers(cfg *xray.Config) {
 		}
 		b.balancer["selector"] = selector
 		delete(b.balancer, nodeMembersKey)
-		if fallback, _ := b.balancer["fallbackTag"].(string); fallback == "" && !selectsAny(have, selector) {
+		if !selectsAny(have, selector) {
 			tag, _ := b.balancer["tag"].(string)
-			emptied[tag] = true
+			unreachable[tag], _ = b.balancer["fallbackTag"].(string)
 		}
 	}
 
 	if len(appended) > 0 {
 		raw, err := json.Marshal(outbounds)
 		if err != nil {
-			return
+			return fingerprint
 		}
 		cfg.OutboundConfigs = raw
 	}
@@ -390,16 +431,31 @@ func (s *XrayService) expandNodeBalancers(cfg *xray.Config) {
 		cfg.Observatory = extendSubjectSelector(cfg.Observatory, probed)
 		cfg.BurstObservatory = extendSubjectSelector(cfg.BurstObservatory, probed)
 	}
-	if len(emptied) > 0 {
-		blockEmptiedBalancers(cfg, routing, emptied)
+	if len(unreachable) > 0 {
+		leaveOutUnreachable(cfg, routing, unreachable, have)
 	}
 	if raw, err := json.Marshal(routing); err == nil {
 		cfg.RouterConfig = raw
 	}
+	return fingerprint
 }
 
-// blockEmptiedBalancers sends the rules that lead to a balancer without any outbound to the blackhole, adding it if needed.
-func blockEmptiedBalancers(cfg *xray.Config, routing map[string]any, emptied map[string]bool) {
+// leaveOutUnreachable drops the balancers that reach no outbound, which the core would refuse with the whole config.
+// Their rules send to the fallback when the config has it, and block otherwise: the default outbound would let them out.
+func leaveOutUnreachable(cfg *xray.Config, routing map[string]any, unreachable map[string]string, have map[string]bool) {
+	balancers, _ := routing["balancers"].([]any)
+	kept := make([]any, 0, len(balancers))
+	for _, raw := range balancers {
+		if balancer, ok := raw.(map[string]any); ok {
+			tag, _ := balancer["tag"].(string)
+			if _, gone := unreachable[tag]; gone {
+				continue
+			}
+		}
+		kept = append(kept, raw)
+	}
+	routing["balancers"] = kept
+
 	rules, _ := routing["rules"].([]any)
 	blocked := false
 	for _, raw := range rules {
@@ -407,23 +463,23 @@ func blockEmptiedBalancers(cfg *xray.Config, routing map[string]any, emptied map
 		if !ok {
 			continue
 		}
-		if target, _ := rule["balancerTag"].(string); target != "" && emptied[target] {
-			delete(rule, "balancerTag")
-			rule["outboundTag"] = missingOutboundTag
-			blocked = true
-			logger.Warning("node balancers: balancer", target, "has no outbound, so the rules that lead to it block their traffic")
+		target, _ := rule["balancerTag"].(string)
+		fallback, gone := unreachable[target]
+		if target == "" || !gone {
+			continue
 		}
+		delete(rule, "balancerTag")
+		if have[fallback] {
+			rule["outboundTag"] = fallback
+			logger.Warning("node balancers: balancer", target, "reaches no outbound, so the rules that lead to it send to its fallback", fallback)
+			continue
+		}
+		rule["outboundTag"] = missingOutboundTag
+		blocked = true
+		logger.Warning("node balancers: balancer", target, "reaches no outbound, so the rules that lead to it block their traffic")
 	}
-	if !blocked || outboundTagSet(cfg.OutboundConfigs)[missingOutboundTag] {
-		return
-	}
-	var list []json.RawMessage
-	if len(cfg.OutboundConfigs) > 0 && json.Unmarshal(cfg.OutboundConfigs, &list) != nil {
-		return
-	}
-	list = append(list, json.RawMessage(`{"protocol":"blackhole","tag":"`+missingOutboundTag+`"}`))
-	if raw, err := json.Marshal(list); err == nil {
-		cfg.OutboundConfigs = raw
+	if blocked {
+		addBlackhole(cfg)
 	}
 }
 
@@ -472,6 +528,9 @@ func extendSubjectSelector(raw json_util.RawMessage, prefixes []string) json_uti
 // RefreshNodeOutbounds asks for a restart check when the outbounds to the nodes of the balancers are no longer the
 // ones the panel's core was given: a node changed a port, a key, or what the client may log in to.
 func (s *XrayService) RefreshNodeOutbounds() {
+	if isManuallyStopped.Load() {
+		return
+	}
 	template, err := s.settingService.GetXrayConfigTemplate()
 	if err != nil {
 		return
@@ -485,7 +544,7 @@ func (s *XrayService) RefreshNodeOutbounds() {
 	if balancers := nodeBalancersOf(routing); len(balancers) > 0 {
 		fingerprint = planNodeOutbounds(balancers, true).fingerprint()
 	}
-	if last, _ := renderedNodeOutbound.Load().(string); fingerprint != last {
+	if last, _ := givenNodeOutbounds.Load().(string); fingerprint != last {
 		s.SetToNeedRestart()
 	}
 }

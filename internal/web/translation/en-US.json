@@ -2387,7 +2387,7 @@
         "tagPlaceholder": "unique balancer tag",
         "selector": "Selector",
         "nodes": "Nodes",
-        "nodesHint": "The traffic that the rules send to this balancer leaves through one of these nodes. The panel writes an outbound to each node from the inbounds that the client has on it, and keeps it up to date. A node adds nothing while the client has no enabled inbound on it, and when nothing is left the rules that lead here block their traffic. Only the panel's own core runs such a balancer; the agent nodes get neither it nor the rules that lead to it.",
+        "nodesHint": "The traffic that the rules send to this balancer leaves through one of these nodes. The panel writes an outbound to each node from the inbounds that the client has on it, and keeps it up to date. A node adds nothing while the client has no enabled inbound on it, and when nothing is left the rules that lead here block their traffic. Only the panel's own core runs such a balancer; on an agent node the rules that lead to it block their traffic.",
         "nodeClient": "Client for the nodes",
         "nodeClientHint": "The client that logs in to the nodes: create it once and attach it to the inbounds of the nodes that traffic may leave through.",
         "nodeClientRequired": "Pick the client that logs in to the nodes",
