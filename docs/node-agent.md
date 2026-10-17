@@ -530,6 +530,8 @@ says so; a tag or archive given explicitly is never swapped.
 15. **Pull mode**. Done: an agent that dials the master on the port the panel's reverse proxy serves (443 behind
     a REALITY fallback), so a node needs no port of its own besides its core's.
 16. Later: nodes as members of a subscription balancer (its members are picked inbound by inbound today).
+17. Later: Psiphon through several countries at once, as one tunnel per country with a latency balancer and a probe of each
+    (the panel runs one tunnel and one region at a time today, and a node one program that the master names `psiphon`).
 
 ## Open questions
 
