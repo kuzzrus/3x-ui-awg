@@ -55,7 +55,7 @@ export default function AgentConnectionFields({ fixed }: AgentConnectionFieldsPr
       )}
       {!pull && (
         <FormField
-          label={t('pages.nodes.port')}
+          label={t('pages.nodes.agent.port')}
           name="port"
           tooltip={t('pages.nodes.agent.portHint')}
         >

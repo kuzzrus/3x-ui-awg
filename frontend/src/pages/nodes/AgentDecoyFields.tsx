@@ -4,7 +4,7 @@ import { useFormContext, useWatch } from 'react-hook-form';
 
 import { useDecoyTemplates } from '@/api/queries/useDecoyTemplates';
 import { FormField } from '@/components/form/rhf';
-import type { AgentFormValues } from '@/schemas/node';
+import { isDomainName, type AgentFormValues } from '@/schemas/node';
 
 // The decoy of an agent node: what whoever probes the port its REALITY fallback points at is shown. The
 // fields after the mode are the ones that mode and the certificate source need.
@@ -14,6 +14,7 @@ export default function AgentDecoyFields() {
   const mode = useWatch({ control, name: 'decoyMode' });
   const cert = useWatch({ control, name: 'decoyCert' });
   const chosenTemplate = useWatch({ control, name: 'decoyTemplate' });
+  const address = useWatch({ control, name: 'address' }) ?? '';
   const templates = useDecoyTemplates(mode === 'template');
   const templateOptions = (
     templates.includes(chosenTemplate) ? templates : [chosenTemplate, ...templates]
@@ -63,7 +64,7 @@ export default function AgentDecoyFields() {
             name="decoyDomain"
             tooltip={t('pages.nodes.agent.decoyDomainHint')}
           >
-            <Input placeholder="node.example.com" />
+            <Input placeholder={isDomainName(address) ? address.trim() : 'node.example.com'} />
           </FormField>
           <FormField label={t('pages.nodes.agent.decoyCert')} name="decoyCert">
             <Radio.Group

@@ -155,6 +155,13 @@ export function isMasterUrl(value: string): boolean {
   }
 }
 
+// A host name, which a certificate can be issued for, as opposed to an IP address.
+export function isDomainName(value: string): boolean {
+  const host = value.trim();
+  if (host.includes(':') || /^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return false;
+  return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(host);
+}
+
 // A SHA-256 pin as a browser shows it: 64 hex digits, with or without colons.
 export function isCertPin(value: string): boolean {
   return /^[0-9a-f]{64}$/i.test(value.replace(/:/g, ''));
