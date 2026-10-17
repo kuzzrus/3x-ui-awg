@@ -73,6 +73,11 @@ function csv(value: string): string[] {
     .filter(Boolean);
 }
 
+// Xray takes a port as a number or as a string, and the form edits text.
+function text(value: unknown): string {
+  return typeof value === 'number' || typeof value === 'string' ? String(value) : '';
+}
+
 export default function RuleFormModal({
   open,
   rule,
@@ -114,9 +119,9 @@ export default function RuleFormModal({
         comment: rule.comment || '',
         domain: Array.isArray(rule.domain) ? rule.domain.join(',') : rule.domain || '',
         ip: Array.isArray(rule.ip) ? rule.ip.join(',') : rule.ip || '',
-        port: rule.port || '',
-        sourcePort: rule.sourcePort || '',
-        vlessRoute: rule.vlessRoute || '',
+        port: text(rule.port),
+        sourcePort: text(rule.sourcePort),
+        vlessRoute: text(rule.vlessRoute),
         network: rule.network || '',
         sourceIP: Array.isArray(rule.sourceIP) ? rule.sourceIP.join(',') : rule.sourceIP || '',
         user: Array.isArray(rule.user) ? rule.user.join(',') : rule.user || '',

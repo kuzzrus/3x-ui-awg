@@ -212,4 +212,31 @@ describe('RuleFormModal edit preserves unsurfaced fields', () => {
 
     expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ user: ['office-proxy'] }));
   });
+
+  // Xray takes a port as a number and the schema of the form takes text, so a rule stored with numbers could not be saved.
+  it('saves a rule whose ports are stored as numbers, as text', () => {
+    const onConfirm = renderRule({
+      type: 'field',
+      outboundTag: 'direct',
+      port: 443,
+      sourcePort: 53,
+      vlessRoute: 7,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({ port: '443', sourcePort: '53', vlessRoute: '7' }),
+    );
+  });
+
+  it('still saves a rule whose ports are text, or have none', () => {
+    const onConfirm = renderRule({ type: 'field', outboundTag: 'direct', port: '80,443' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ port: '80,443' }));
+    expect(onConfirm.mock.calls[0][0]).not.toHaveProperty('sourcePort');
+  });
 });
