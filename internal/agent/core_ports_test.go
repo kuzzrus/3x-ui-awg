@@ -9,13 +9,30 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
 
-// preparedConfig is a config as the agent holds it after it was pushed: the api inbound on apiPort, and the metrics
-// section on metricsPort unless that is 0.
-func preparedConfig(t *testing.T, apiPort, metricsPort int) *xray.Config {
+// preparedConfig is a config as the agent holds it after it was pushed: the api inbound on apiPort, the metrics
+// section on the loopback at metricsPort unless that is 0, and an inbound on each of the ports that follow.
+func preparedConfig(t *testing.T, apiPort, metricsPort int, inbounds ...int) *xray.Config {
 	t.Helper()
-	value := testConfig{apiPort: apiPort}.value()
+	listen := ""
 	if metricsPort != 0 {
-		value["metrics"] = map[string]any{"listen": net.JoinHostPort("127.0.0.1", strconv.Itoa(metricsPort)), "tag": "metrics_out"}
+		listen = net.JoinHostPort("127.0.0.1", strconv.Itoa(metricsPort))
+	}
+	return preparedConfigListening(t, apiPort, listen, inbounds...)
+}
+
+// preparedConfigListening is preparedConfig with the metrics section listening at listen, whatever address that is.
+func preparedConfigListening(t *testing.T, apiPort int, listen string, inbounds ...int) *xray.Config {
+	t.Helper()
+	base := testConfig{apiPort: apiPort}
+	for _, port := range inbounds {
+		base.inbounds = append(base.inbounds, map[string]any{
+			"tag": "in-" + strconv.Itoa(port), "listen": "0.0.0.0", "port": port, "protocol": "vless",
+			"settings": map[string]any{"clients": []any{}, "decryption": "none"},
+		})
+	}
+	value := base.value()
+	if listen != "" {
+		value["metrics"] = map[string]any{"listen": listen, "tag": "metrics_out"}
 	}
 	body, err := json.Marshal(value)
 	if err != nil {
@@ -119,6 +136,50 @@ func TestLocalizeChoosesOnceAndKeepsItsPorts(t *testing.T) {
 	}
 }
 
+// An inbound is added to the node later, perhaps on the very port that was chosen for the core when the node had none.
+func TestLocalizeChoosesAgainWhenAnInboundComesToUseAPort(t *testing.T) {
+	api, metrics := freePort(t), freePort(t)
+	holdPortOf(t, api)
+	core := &Core{}
+	core.localize(preparedConfig(t, api, metrics))
+	chosen := core.ports
+	if chosen.metrics != metrics {
+		t.Fatalf("the free metrics port %d of the config was not kept: %d", metrics, chosen.metrics)
+	}
+
+	later := preparedConfig(t, api, metrics, chosen.api, chosen.metrics)
+	core.localize(later)
+	for _, in := range later.InboundConfigs {
+		if in.Tag != apiTag && (in.Port == apiPortOf(later) || in.Port == metricsPort(later.Metrics)) {
+			t.Errorf("the core keeps the port %d of the inbound %s (api %d, metrics %d)", in.Port, in.Tag, apiPortOf(later), metricsPort(later.Metrics))
+		}
+	}
+	if apiPortOf(later) == chosen.api || metricsPort(later.Metrics) == chosen.metrics {
+		t.Errorf("api %d and metrics %d, want others than the %d and %d that inbounds use now", apiPortOf(later), metricsPort(later.Metrics), chosen.api, chosen.metrics)
+	}
+}
+
+// Metrics on another address than the loopback is an exposure that the operator asked for.
+func TestLocalizeLeavesAMetricsListenerThatIsNotOnTheLoopback(t *testing.T) {
+	port := freePort(t)
+	holdPortOf(t, port)
+	for _, address := range []string{"0.0.0.0", "", "192.0.2.7", "[::]"} {
+		listen := net.JoinHostPort(address, strconv.Itoa(port))
+		cfg := preparedConfigListening(t, freePort(t), listen)
+		core := &Core{}
+		core.localize(cfg)
+		var section struct{ Listen string }
+		if err := json.Unmarshal(cfg.Metrics, &section); err != nil || section.Listen != listen || core.ports.metrics != 0 {
+			t.Errorf("a metrics listener at %q came out as %s (port %d chosen)", listen, cfg.Metrics, core.ports.metrics)
+		}
+	}
+	cfg := preparedConfigListening(t, freePort(t), net.JoinHostPort("localhost", strconv.Itoa(port)))
+	(&Core{}).localize(cfg)
+	if got := metricsPort(cfg.Metrics); got == port || got == 0 {
+		t.Errorf("a metrics listener on localhost came out on port %d, want another than the held %d", got, port)
+	}
+}
+
 func TestLocalizeLeavesAConfigWithNoMetricsWithNone(t *testing.T) {
 	cfg := preparedConfig(t, freePort(t), 0)
 	core := &Core{}
@@ -171,6 +232,11 @@ func TestMetricsPortAndItsMove(t *testing.T) {
 		`{"tag":"metrics_out"}`:                            0,
 		`{"listen":"11111"}`:                               0,
 		`{"listen":"127.0.0.1:70000"}`:                     0,
+		`{"listen":"localhost:11111"}`:                     11111,
+		`{"listen":"[::1]:11111"}`:                         11111,
+		`{"listen":"0.0.0.0:11111"}`:                       0,
+		`{"listen":":11111"}`:                              0,
+		`{"listen":"192.0.2.7:11111"}`:                     0,
 		`null`:                                             0,
 		``:                                                 0,
 	} {

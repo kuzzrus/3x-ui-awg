@@ -131,7 +131,10 @@ phases add endpoints under the same prefix.
    alone, and the template that every config comes from gives them the same ports on every
    server, so a server that runs another Xray holds them already: the agent keeps the ports
    of the config while they are free, chooses others when something holds them, and chooses
-   again if one is taken before the core starts.
+   again if one is taken before the core starts or an inbound of a later config comes to use
+   it. Its choice stays for as long as the agent runs, whatever the template says of them,
+   and a metrics listener that is not on the loopback is left as it was pushed, since that
+   exposure is the operator's.
 
 On boot the agent opens its port, then loads the last good config and starts Xray without
 waiting for the master, so a reboot with the master down does not take the node offline.

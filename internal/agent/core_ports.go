@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"net/netip"
 	"slices"
 	"strconv"
 
@@ -16,8 +17,8 @@ import (
 // listener. The master renders every config from one template, so a server that runs another Xray holds both already.
 type localPorts struct{ api, metrics int }
 
-// localize points the api inbound and the metrics listener of cfg at the ports this core keeps. They are the ones of
-// the config while those are free, and others once something holds them, which stay the same until that changes.
+// localize points the api inbound and a metrics listener on the loopback at the ports this core keeps. They are the ones
+// of the config while those are free, and others once something holds them, and they stay until that or an inbound changes.
 func (c *Core) localize(cfg *xray.Config) {
 	api := slices.IndexFunc(cfg.InboundConfigs, func(in xray.InboundConfig) bool { return in.Tag == apiTag })
 	if api < 0 {
@@ -26,17 +27,23 @@ func (c *Core) localize(cfg *xray.Config) {
 	pushedMetrics := metricsPort(cfg.Metrics)
 	taken := inboundPorts(cfg)
 
+	// The probes are made outside the lock, which only guards the fields: build and start, the callers, hold applyMu.
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.ports.api == 0 {
-		c.ports.api = chooseCorePort("api", cfg.InboundConfigs[api].Port, taken)
+	ports := c.ports
+	c.mu.Unlock()
+	if ports.api == 0 || slices.Contains(taken, ports.api) {
+		ports.api = chooseCorePort("api", cfg.InboundConfigs[api].Port, taken)
 	}
-	if c.ports.metrics == 0 && pushedMetrics != 0 {
-		c.ports.metrics = chooseCorePort("metrics", pushedMetrics, append(taken, c.ports.api))
+	if pushedMetrics != 0 && (ports.metrics == 0 || ports.metrics == ports.api || slices.Contains(taken, ports.metrics)) {
+		ports.metrics = chooseCorePort("metrics", pushedMetrics, append(slices.Clone(taken), ports.api))
 	}
-	cfg.InboundConfigs[api].Port = c.ports.api
-	if c.ports.metrics != 0 {
-		cfg.Metrics = withMetricsPort(cfg.Metrics, c.ports.metrics)
+	c.mu.Lock()
+	c.ports = ports
+	c.mu.Unlock()
+
+	cfg.InboundConfigs[api].Port = ports.api
+	if pushedMetrics != 0 {
+		cfg.Metrics = withMetricsPort(cfg.Metrics, ports.metrics)
 	}
 }
 
@@ -44,13 +51,17 @@ func (c *Core) localize(cfg *xray.Config) {
 // when it starts, and its own ports are free then.
 func (c *Core) forgetTakenPorts() {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	for _, port := range []*int{&c.ports.api, &c.ports.metrics} {
+	ports := c.ports
+	c.mu.Unlock()
+	for _, port := range []*int{&ports.api, &ports.metrics} {
 		if *port != 0 && !loopbackPortFree(*port) {
 			logger.Warningf("agent: port %d of the core is held by something else, choosing another", *port)
 			*port = 0
 		}
 	}
+	c.mu.Lock()
+	c.ports = ports
+	c.mu.Unlock()
 }
 
 // chooseCorePort is the port asked for when it is free and no inbound of the config uses it, and a port that nothing
@@ -98,7 +109,8 @@ func inboundPorts(cfg *xray.Config) []int {
 	return ports
 }
 
-// metricsPort is the port the metrics section listens on, or 0 when it listens nowhere.
+// metricsPort is the port that the metrics section listens on at the loopback, or 0 when it listens nowhere or at
+// another address, which is an exposure that the operator chose and is none of the agent's to move.
 func metricsPort(raw json_util.RawMessage) int {
 	var section struct {
 		Listen string `json:"listen"`
@@ -106,8 +118,11 @@ func metricsPort(raw json_util.RawMessage) int {
 	if json.Unmarshal(raw, &section) != nil || section.Listen == "" {
 		return 0
 	}
-	_, port, err := net.SplitHostPort(section.Listen)
+	host, port, err := net.SplitHostPort(section.Listen)
 	if err != nil {
+		return 0
+	}
+	if addr, err := netip.ParseAddr(host); host != "localhost" && (err != nil || !addr.IsLoopback()) {
 		return 0
 	}
 	n, err := strconv.Atoi(port)
