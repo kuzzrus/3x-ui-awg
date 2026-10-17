@@ -106,6 +106,7 @@ func run(root, outDir string) error {
 				"NodeMutationRequest",
 				"NodeView",
 				"AgentNodeRequest",
+				"AgentRepairRequest",
 				"NodeDecoyForm",
 				"AgentPairing",
 				"ProbeResultUI",

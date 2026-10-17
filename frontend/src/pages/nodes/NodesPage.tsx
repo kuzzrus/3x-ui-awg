@@ -35,8 +35,9 @@ import NodeList from './NodeList';
 import NodeFormModal from './NodeFormModal';
 import AgentNodeFormModal from './AgentNodeFormModal';
 import AgentBundleModal, { type AgentPairingView } from './AgentBundleModal';
+import AgentRepairModal from './AgentRepairModal';
 import LogModal from '../index/LogModal';
-import type { AgentFormValues } from '@/schemas/node';
+import type { AgentFormValues, AgentRepairValues } from '@/schemas/node';
 import { setMessageInstance } from '@/utils/messageBus';
 import { HttpUtil } from '@/utils';
 import type { PanelUpdateInfo } from '../index/PanelUpdateModal';
@@ -112,6 +113,8 @@ export default function NodesPage() {
   const [agentFormOpen, setAgentFormOpen] = useState(false);
   const [agentFormNode, setAgentFormNode] = useState<NodeRecord | null>(null);
   const [pairing, setPairing] = useState<AgentPairingView | null>(null);
+  // The agent node that is being paired again, which the dialog of that stays open for.
+  const [repairNode, setRepairNode] = useState<NodeRecord | null>(null);
   // The log stays chosen while the dialog fades out, so its title does not flip to the panel's.
   const [logNode, setLogNode] = useState<NodeRecord | null>(null);
   const [logOpen, setLogOpen] = useState(false);
@@ -201,32 +204,46 @@ export default function NodesPage() {
       };
       if (agentFormNode?.id)
         return update(agentFormNode.id, { ...endpoint, enable: values.enable });
-      const msg = await createAgent(endpoint);
+      const msg = await createAgent({
+        ...endpoint,
+        pull: values.pull,
+        masterUrl: values.pull ? values.masterUrl : '',
+        masterPin: values.pull ? values.masterPin : '',
+      });
       if (msg?.success && msg.obj) {
-        setPairing({ name: values.name, port: values.port, bundle: msg.obj.bundle });
+        setPairing({
+          name: values.name,
+          port: values.port,
+          bundle: msg.obj.bundle,
+          masterUrl: values.pull ? values.masterUrl : undefined,
+        });
       }
       return msg;
     },
     [agentFormNode, update, createAgent],
   );
 
-  const onRepair = useCallback(
-    (node: NodeRecord) => {
-      modal.confirm({
-        title: t('pages.nodes.agent.repairConfirmTitle', { name: node.name }),
-        content: t('pages.nodes.agent.repairConfirmContent'),
-        okText: t('pages.nodes.agent.repair'),
-        okType: 'danger',
-        cancelText: t('cancel'),
-        onOk: async () => {
-          const msg = await repairAgent(node.id);
-          if (msg?.success && msg.obj) {
-            setPairing({ name: node.name ?? '', port: node.port ?? 0, bundle: msg.obj.bundle });
-          }
-        },
-      });
+  const onRepair = useCallback((node: NodeRecord) => setRepairNode(node), []);
+
+  const onPairAgain = useCallback(
+    async (node: NodeRecord, values: AgentRepairValues) => {
+      const msg = await repairAgent(
+        node.id,
+        values.pull
+          ? { pull: true, masterUrl: values.masterUrl, masterPin: values.masterPin }
+          : { pull: false, port: values.port },
+      );
+      if (msg?.success && msg.obj) {
+        setPairing({
+          name: node.name ?? '',
+          port: values.port,
+          bundle: msg.obj.bundle,
+          masterUrl: values.pull ? values.masterUrl : undefined,
+        });
+      }
+      return msg;
     },
-    [modal, t, repairAgent],
+    [repairAgent],
   );
 
   const onLogs = useCallback((node: NodeRecord) => {
@@ -499,6 +516,12 @@ export default function NodesPage() {
           node={agentFormNode}
           save={onSaveAgent}
           onOpenChange={setAgentFormOpen}
+        />
+
+        <AgentRepairModal
+          node={repairNode}
+          pair={onPairAgain}
+          onClose={() => setRepairNode(null)}
         />
 
         <AgentBundleModal pairing={pairing} onClose={() => setPairing(null)} />

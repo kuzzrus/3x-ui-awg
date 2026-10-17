@@ -675,6 +675,9 @@ func (s *NodeService) UpdateFromRequest(id int, req *NodeMutationRequest) error 
 	}); err != nil {
 		return err
 	}
+	if !in.Enable {
+		runtime.GetAgentTunnels().Drop(id)
+	}
 	if mgr := runtime.GetManager(); mgr != nil {
 		mgr.InvalidateNode(id)
 	}
@@ -947,6 +950,7 @@ func (s *NodeService) Delete(id int) error {
 	}); err != nil {
 		return err
 	}
+	runtime.GetAgentTunnels().Drop(id)
 	if mgr := runtime.GetManager(); mgr != nil {
 		mgr.InvalidateNode(id)
 	}
@@ -960,6 +964,9 @@ func (s *NodeService) SetEnable(id int, enable bool) error {
 	db := database.GetDB()
 	if err := db.Model(model.Node{}).Where("id = ?", id).Update("enable", enable).Error; err != nil {
 		return err
+	}
+	if !enable {
+		runtime.GetAgentTunnels().Drop(id)
 	}
 	if mgr := runtime.GetManager(); mgr != nil {
 		mgr.InvalidateNode(id)

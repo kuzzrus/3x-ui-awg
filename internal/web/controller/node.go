@@ -192,14 +192,19 @@ func (a *NodeController) addAgent(c *gin.Context) {
 	jsonMsgObj(c, I18nWeb(c, "pages.nodes.toasts.add"), pairing, nil)
 }
 
-// repairAgent mints a new bundle for an agent node and cuts the old agent off.
+// repairAgent mints a new bundle for an agent node and cuts the old agent off. The request may name another
+// way to pair it, which a request with no fields does not.
 func (a *NodeController) repairAgent(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "get"), err)
 		return
 	}
-	pairing, err := a.nodeService.RepairAgent(id)
+	req, ok := middleware.BindOptionalAndValidate[service.AgentRepairRequest](c)
+	if !ok {
+		return
+	}
+	pairing, err := a.nodeService.RepairAgent(id, req)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.nodes.toasts.update"), err)
 		return

@@ -258,8 +258,13 @@ install_agent() {
     systemctl daemon-reload
     systemctl enable --now x-ui-agent > /dev/null
 
-    info "The x-ui agent is running and listens on ${address##*:}/tcp."
-    echo "Open that port in the firewall of this host, then add the node on the master."
+    if [[ "$address" == "pull "* ]]; then
+        info "The x-ui agent is running and connects to ${address#pull }."
+        echo "It dials the master and listens on no port, so there is nothing to open in the firewall."
+    else
+        info "The x-ui agent is running and listens on ${address##*:}/tcp."
+        echo "Open that port in the firewall of this host, then add the node on the master."
+    fi
     echo "Status: systemctl status x-ui-agent    Logs: journalctl -u x-ui-agent -f"
 }
 

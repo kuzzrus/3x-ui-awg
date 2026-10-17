@@ -1,18 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Alert,
-  Checkbox,
-  Col,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Row,
-  Select,
-  Switch,
-  message,
-} from 'antd';
+import { Alert, Checkbox, Col, Form, Input, Modal, Row, Select, Switch, message } from 'antd';
 import { FormProvider, useForm } from 'react-hook-form';
 
 import type { NodeRecord } from '@/api/queries/useNodesQuery';
@@ -27,10 +15,11 @@ import {
 import { FormField, rhfZodValidate } from '@/components/form/rhf';
 import { useNodeTags } from '@/api/queries/useNodeTags';
 import { useNodeOutboundOptions } from './useNodeOutboundOptions';
+import AgentConnectionFields, {
+  DEFAULT_AGENT_PORT,
+  defaultMasterUrl,
+} from './AgentConnectionFields';
 import AgentDecoyFields from './AgentDecoyFields';
-
-// 8443 is what the installer's docs use; any free TCP port works.
-const DEFAULT_AGENT_PORT = 8443;
 
 interface AgentNodeFormModalProps {
   open: boolean;
@@ -46,6 +35,9 @@ function defaultValues(): AgentFormValues {
     remark: '',
     address: '',
     port: DEFAULT_AGENT_PORT,
+    pull: false,
+    masterUrl: defaultMasterUrl(),
+    masterPin: '',
     enable: true,
     allowPrivateAddress: false,
     outboundTag: '',
@@ -187,27 +179,15 @@ export default function AgentNodeFormModal({
               </Col>
             </Row>
 
-            <Row gutter={16}>
-              <Col xs={24} md={16}>
-                <FormField
-                  label={t('pages.nodes.address')}
-                  name="address"
-                  rules={{ validate: rhfZodValidate(AgentFormSchema.shape.address) }}
-                >
-                  <Input placeholder={t('pages.nodes.addressPlaceholder')} />
-                </FormField>
-              </Col>
-              <Col xs={24} md={8}>
-                <FormField
-                  label={t('pages.nodes.port')}
-                  name="port"
-                  rules={{ validate: rhfZodValidate(AgentFormSchema.shape.port) }}
-                  tooltip={t('pages.nodes.agent.portHint')}
-                >
-                  <InputNumber min={1} max={65535} style={{ width: '100%' }} />
-                </FormField>
-              </Col>
-            </Row>
+            <FormField
+              label={t('pages.nodes.address')}
+              name="address"
+              rules={{ validate: rhfZodValidate(AgentFormSchema.shape.address) }}
+            >
+              <Input placeholder={t('pages.nodes.addressPlaceholder')} />
+            </FormField>
+
+            <AgentConnectionFields fixed={editing ? (node.pull ? 'pull' : 'push') : undefined} />
 
             {editing && (
               <FormField label={t('pages.nodes.enable')} name="enable" valueProp="checked">

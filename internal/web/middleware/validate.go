@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"bytes"
 	"errors"
+	"io"
 	"net/http"
 	"reflect"
 	"strings"
@@ -26,6 +28,26 @@ func BindAndValidate[T any](c *gin.Context) (*T, bool) {
 		return nil, false
 	}
 	return &dst, true
+}
+
+// BindOptionalAndValidate is BindAndValidate for an endpoint whose body may be left out, as it was before the endpoint
+// took one: a request with no body is read as one with no fields, and is validated as such.
+func BindOptionalAndValidate[T any](c *gin.Context) (*T, bool) {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		writeBindFailure(c, err)
+		return nil, false
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		var dst T
+		if err := validate.Struct(&dst); err != nil {
+			writeBindFailure(c, err)
+			return nil, false
+		}
+		return &dst, true
+	}
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+	return BindAndValidate[T](c)
 }
 
 func BindAndValidateInto(c *gin.Context, dst any) bool {

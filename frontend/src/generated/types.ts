@@ -19,9 +19,12 @@ export interface AgentNodeRequest {
   decoyPort: number;
   decoyProxyUrl: string;
   decoyTemplate: string;
+  masterPin: string;
+  masterUrl: string;
   name: string;
   outboundTag: string;
   port: number;
+  pull: boolean;
   remark: string;
   sidecars: string[];
   tags: string[];
@@ -30,6 +33,13 @@ export interface AgentNodeRequest {
 export interface AgentPairing {
   bundle: string;
   node?: NodeView | null;
+}
+
+export interface AgentRepairRequest {
+  masterPin: string;
+  masterUrl: string;
+  port: number;
+  pull?: boolean | null;
 }
 
 export interface AllSetting {
@@ -805,6 +815,7 @@ export interface Node {
   parentGuid?: string;
   pinnedCertSha256: string;
   port: number;
+  pull: boolean;
   remark: string;
   scheme: string;
   sidecarStates: NodeSidecar[];
@@ -922,6 +933,7 @@ export interface NodeView {
   parentGuid?: string;
   pinnedCertSha256: string;
   port: number;
+  pull: boolean;
   remark: string;
   scheme: string;
   sidecarStates: NodeSidecar[];

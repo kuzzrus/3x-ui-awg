@@ -194,6 +194,94 @@ func TestBindJSONAndValidate_RejectsFormEncodedBody(t *testing.T) {
 	}
 }
 
+type optionalBody struct {
+	Pull *bool  `json:"pull" form:"pull"`
+	Port int    `json:"port" form:"port" validate:"omitempty,gte=1,lte=65535"`
+	Url  string `json:"url" form:"url"`
+}
+
+func postOptional(t *testing.T, contentType, body string, check func(got *optionalBody, ok bool)) *httptest.ResponseRecorder {
+	t.Helper()
+	r := newRouter(func(c *gin.Context) {
+		got, ok := BindOptionalAndValidate[optionalBody](c)
+		check(got, ok)
+		if ok {
+			c.JSON(http.StatusOK, entity.Msg{Success: true})
+		}
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/submit", strings.NewReader(body))
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	r.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestBindOptionalAndValidate_NoBodyIsARequestWithNoFields(t *testing.T) {
+	for name, tc := range map[string]struct{ contentType, body string }{
+		"json with nothing in it":   {"application/json", ""},
+		"json with only a newline":  {"application/json", " \n"},
+		"a form with nothing in it": {"application/x-www-form-urlencoded", ""},
+		"no content type at all":    {"", ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rec := postOptional(t, tc.contentType, tc.body, func(got *optionalBody, ok bool) {
+				if !ok || got == nil || *got != (optionalBody{}) {
+					t.Fatalf("got %+v, ok=%v, want a request with no fields", got, ok)
+				}
+			})
+			if msg := decodeMsg(t, rec.Body.String()); !msg.Success {
+				t.Fatalf("expected Success=true; got %+v", msg)
+			}
+		})
+	}
+}
+
+func TestBindOptionalAndValidate_ABodyIsBoundAndValidatedAsUsual(t *testing.T) {
+	t.Run("json", func(t *testing.T) {
+		postOptional(t, "application/json", `{"pull":true,"port":9443,"url":"https://panel.example.com/"}`, func(got *optionalBody, ok bool) {
+			if !ok || got.Pull == nil || !*got.Pull || got.Port != 9443 || got.Url != "https://panel.example.com/" {
+				t.Fatalf("got %+v, ok=%v, want the fields of the body", got, ok)
+			}
+		})
+	})
+	t.Run("a form", func(t *testing.T) {
+		postOptional(t, "application/x-www-form-urlencoded", "pull=false&port=9443", func(got *optionalBody, ok bool) {
+			if !ok || got.Pull == nil || *got.Pull || got.Port != 9443 {
+				t.Fatalf("got %+v, ok=%v, want the fields of the form", got, ok)
+			}
+		})
+	})
+	for name, body := range map[string]string{"a field out of range": `{"port":70000}`, "malformed json": `{"port":`} {
+		t.Run(name, func(t *testing.T) {
+			rec := postOptional(t, "application/json", body, func(got *optionalBody, ok bool) {
+				if ok {
+					t.Fatalf("a body that is not valid was taken: %+v", got)
+				}
+			})
+			if msg := decodeMsg(t, rec.Body.String()); msg.Success {
+				t.Fatalf("expected Success=false; got %+v", msg)
+			}
+		})
+	}
+}
+
+func TestBindOptionalAndValidate_NoBodyStillHasToPassValidation(t *testing.T) {
+	r := newRouter(func(c *gin.Context) {
+		if _, ok := BindOptionalAndValidate[sampleBody](c); ok {
+			t.Fatal("a request with no body was taken for a type with required fields")
+		}
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/submit", strings.NewReader(""))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+	if msg := decodeMsg(t, rec.Body.String()); msg.Success {
+		t.Fatalf("expected Success=false; got %+v", msg)
+	}
+}
+
 func payloadFromObj(obj any) (ValidationPayload, error) {
 	raw, err := json.Marshal(obj)
 	if err != nil {

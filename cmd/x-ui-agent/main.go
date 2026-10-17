@@ -38,7 +38,7 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 	binDir := flags.String("bin-dir", "/usr/local/x-ui-agent/bin", "folder with the xray binary and the geo files")
 	logDir := flags.String("log-dir", "/var/log/x-ui-agent", "folder for the logs")
 	showVersion := flags.Bool("version", false, "print the version and exit")
-	checkBundle := flags.Bool("check-bundle", false, "validate the pairing bundle, print the address it names and exit")
+	checkBundle := flags.Bool("check-bundle", false, "validate the pairing bundle, print the address it names (pull and the master's for a bundle that dials it) and exit")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -56,7 +56,7 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 		return err
 	}
 	if *checkBundle {
-		_, err := fmt.Fprintln(stdout, net.JoinHostPort(bundle.Address, strconv.Itoa(bundle.Port)))
+		_, err := fmt.Fprintln(stdout, bundleTarget(bundle))
 		return err
 	}
 	bin, err := filepath.Abs(*binDir)
@@ -82,6 +82,15 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 	defer logger.CloseLogger()
 
 	return agent.Run(ctx, agent.Options{Bundle: bundle, StateDir: *stateDir, LogDir: logs})
+}
+
+// bundleTarget is what -check-bundle prints: the address the agent listens on, or for a pull bundle the
+// word pull and the address of the master it dials, which tells the installer there is no port to open.
+func bundleTarget(b *agentproto.Bundle) string {
+	if b.Pull() {
+		return "pull " + b.Master
+	}
+	return net.JoinHostPort(b.Address, strconv.Itoa(b.Port))
 }
 
 func logLevel() (logging.Level, error) {

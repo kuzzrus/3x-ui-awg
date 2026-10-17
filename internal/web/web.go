@@ -275,6 +275,8 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	s.ws = controller.NewWebSocketController(panel.NewWebSocketService(s.wsHub))
 	// Register WebSocket route with basePath (g already has basePath prefix)
 	g.GET("/ws", s.ws.HandleWebSocket)
+	// The agents of nodes in pull mode dial in here, and prove themselves with their own secret.
+	controller.NewAgentConnectController(g)
 
 	// Chrome DevTools endpoint for debugging web apps
 	engine.GET("/.well-known/appspecific/com.chrome.devtools.json", func(c *gin.Context) {

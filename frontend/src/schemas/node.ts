@@ -4,6 +4,8 @@ export const MAX_NODE_TAGS = 16;
 export const MAX_NODE_TAG_LENGTH = 32;
 const TAGS_INVALID = 'pages.nodes.agent.tagsInvalid';
 const DECOY_INCOMPLETE = 'pages.nodes.agent.decoyIncomplete';
+const MASTER_URL_INVALID = 'pages.nodes.agent.masterUrlInvalid';
+const MASTER_PIN_INVALID = 'pages.nodes.agent.masterPinInvalid';
 
 // The loopback port an agent's decoy listens on when none is chosen, which the REALITY fallback of the node points at.
 export const DEFAULT_DECOY_PORT = 7443;
@@ -18,6 +20,8 @@ export const NodeRecordSchema = z
     remark: z.string().optional(),
     // A thin x-ui-agent node; a response without it is a full panel.
     kind: z.enum(['panel', 'agent']).optional(),
+    // An agent node whose agent dials this panel, which has no port of its own for the panel to reach.
+    pull: z.boolean().optional(),
     scheme: z.string().optional(),
     address: z.string().optional(),
     port: z.number().optional(),
@@ -141,8 +145,23 @@ export const NodeFormSchema = z
     }
   });
 
-// An agent node is added by where it will be reachable: its secret and certificate are minted by
-// the panel and come back once, in the pairing bundle.
+// The address a node that dials this panel is given: https, with no login, query or fragment.
+export function isMasterUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password && !url.search && !url.hash;
+  } catch {
+    return false;
+  }
+}
+
+// A SHA-256 pin as a browser shows it: 64 hex digits, with or without colons.
+export function isCertPin(value: string): boolean {
+  return /^[0-9a-f]{64}$/i.test(value.replace(/:/g, ''));
+}
+
+// An agent node is added by where it will be reachable, or by the panel it dials: its secret (and
+// certificate) are minted by the panel and come back once, in the pairing bundle.
 export const AgentFormSchema = z
   .object({
     id: z.number().optional(),
@@ -150,6 +169,10 @@ export const AgentFormSchema = z
     remark: z.string().optional(),
     address: z.string().trim().min(1, 'pages.nodes.toasts.fillRequired'),
     port: z.number().int().min(1).max(65535),
+    // The agent dials the panel at masterUrl, which has no use for the port above.
+    pull: z.boolean(),
+    masterUrl: z.string().trim(),
+    masterPin: z.string().trim(),
     enable: z.boolean(),
     allowPrivateAddress: z.boolean(),
     outboundTag: z.string().optional(),
@@ -172,6 +195,14 @@ export const AgentFormSchema = z
       .transform((port) => port ?? DEFAULT_DECOY_PORT),
   })
   .superRefine((val, ctx) => {
+    if (val.pull) {
+      if (!isMasterUrl(val.masterUrl)) {
+        ctx.addIssue({ code: 'custom', path: ['masterUrl'], message: MASTER_URL_INVALID });
+      }
+      if (val.masterPin && !isCertPin(val.masterPin)) {
+        ctx.addIssue({ code: 'custom', path: ['masterPin'], message: MASTER_PIN_INVALID });
+      }
+    }
     if (val.decoyMode === '') return;
     const missing =
       !Number.isInteger(val.decoyPort) ||
@@ -181,6 +212,24 @@ export const AgentFormSchema = z
       (val.decoyMode === 'proxy' && !val.decoyProxyUrl) ||
       (val.decoyCert === 'manual' && (!val.decoyCertFile || !val.decoyKeyFile));
     if (missing) ctx.addIssue({ code: 'custom', path: ['decoyMode'], message: DECOY_INCOMPLETE });
+  });
+
+// How an agent node is paired again: the way the agent reaches the panel, and what that way needs.
+export const AgentRepairFormSchema = z
+  .object({
+    pull: z.boolean(),
+    port: z.number().int().min(1).max(65535),
+    masterUrl: z.string().trim(),
+    masterPin: z.string().trim(),
+  })
+  .superRefine((val, ctx) => {
+    if (!val.pull) return;
+    if (!isMasterUrl(val.masterUrl)) {
+      ctx.addIssue({ code: 'custom', path: ['masterUrl'], message: MASTER_URL_INVALID });
+    }
+    if (val.masterPin && !isCertPin(val.masterPin)) {
+      ctx.addIssue({ code: 'custom', path: ['masterPin'], message: MASTER_PIN_INVALID });
+    }
   });
 
 export const AgentPairingSchema = z
@@ -194,4 +243,5 @@ export type NodeRecord = z.infer<typeof NodeRecordSchema>;
 export type ProbeResult = z.infer<typeof ProbeResultSchema>;
 export type NodeFormValues = z.infer<typeof NodeFormSchema>;
 export type AgentFormValues = z.infer<typeof AgentFormSchema>;
+export type AgentRepairValues = z.infer<typeof AgentRepairFormSchema>;
 export type AgentPairing = z.infer<typeof AgentPairingSchema>;

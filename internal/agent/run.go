@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"os"
 	"strconv"
@@ -17,12 +18,17 @@ type Options struct {
 	LogDir   string
 }
 
-// Run serves the master until ctx ends. The core starts from the last good config at
-// once, so a reboot with the master unreachable does not take the node offline.
+// Run serves the master until ctx ends, on a port of its own or, for a pull bundle, over connections it dials. The
+// core starts from the last good config at once, so a reboot with the master unreachable does not take the node offline.
 func Run(ctx context.Context, opts Options) error {
-	tlsConfig, err := opts.Bundle.ServerTLSConfig()
-	if err != nil {
-		return err
+	pull := opts.Bundle.Pull()
+	var tlsConfig *tls.Config
+	if !pull {
+		cfg, err := opts.Bundle.ServerTLSConfig()
+		if err != nil {
+			return err
+		}
+		tlsConfig = cfg
 	}
 	if err := os.MkdirAll(opts.LogDir, 0o750); err != nil {
 		return err
@@ -38,9 +44,11 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 
-	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", net.JoinHostPort("", strconv.Itoa(opts.Bundle.Port)))
-	if err != nil {
-		return err
+	var ln net.Listener
+	if !pull {
+		if ln, err = (&net.ListenConfig{}).Listen(ctx, "tcp", net.JoinHostPort("", strconv.Itoa(opts.Bundle.Port))); err != nil {
+			return err
+		}
 	}
 	// The port is open before the core starts: a stored config that will not start must not
 	// keep the master out for the whole start-up wait. A push made meanwhile waits its turn.
@@ -65,6 +73,11 @@ func Run(ctx context.Context, opts Options) error {
 		<-hosted
 	}()
 
+	if pull {
+		logger.Info("agent: dialing the master at", opts.Bundle.Master)
+		server.ServePull(ctx, opts.Bundle)
+		return nil
+	}
 	logger.Info("agent: serving the master on", ln.Addr())
 	return server.Serve(ctx, ln, tlsConfig)
 }

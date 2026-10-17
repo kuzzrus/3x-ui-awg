@@ -4,6 +4,7 @@ import { QueryClient } from '@tanstack/react-query';
 
 import AgentBundleModal, { AGENT_INSTALL_COMMAND } from '@/pages/nodes/AgentBundleModal';
 import AgentNodeFormModal from '@/pages/nodes/AgentNodeFormModal';
+import AgentRepairModal from '@/pages/nodes/AgentRepairModal';
 import NodeList from '@/pages/nodes/NodeList';
 import { keys } from '@/api/queryKeys';
 import type { NodeRecord } from '@/schemas/node';
@@ -695,8 +696,249 @@ describe('NodeList with an agent node', () => {
     expect(document.body.textContent).toContain('core failed to start');
   });
 
+  it('marks an agent that dials the panel, and shows its address without a port', () => {
+    renderList(noop, noop, noop, noop, {
+      list: [
+        {
+          ...nodes[1],
+          pull: true,
+          scheme: 'https',
+          address: 'node.example.com',
+          port: 443,
+          basePath: '/',
+        },
+      ],
+    });
+
+    expect(screen.getByText('Agent (pull)')).toBeTruthy();
+    expect(screen.queryByText('Agent')).toBeNull();
+    expect(document.body.textContent).toContain('https://node.example.com/');
+    expect(document.body.textContent).not.toContain('node.example.com:443');
+  });
+
   it('has a button to add an agent', () => {
     renderList();
     expect(screen.getByRole('button', { name: /Add agent/ })).toBeTruthy();
+  });
+});
+
+describe('AgentBundleModal for an agent that dials the panel', () => {
+  it('says there is no port to open, and which address the node has to reach', () => {
+    renderWithProviders(
+      <AgentBundleModal
+        pairing={{
+          name: 'edge',
+          port: 443,
+          bundle: 'xab1.secret-material',
+          masterUrl: 'https://panel.example.com/p/',
+        }}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(document.body.textContent).toContain('nothing to open in the firewall');
+    expect(document.body.textContent).toContain('https://panel.example.com/p/');
+    expect(document.body.textContent).not.toContain('Open TCP port');
+  });
+});
+
+describe('AgentNodeFormModal for an agent that dials the panel', () => {
+  function renderForm(node: NodeRecord | null = null) {
+    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
+    renderWithProviders(
+      <AgentNodeFormModal open node={node} save={save} onOpenChange={() => {}} />,
+    );
+    return save;
+  }
+
+  function fillBasics() {
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'edge-1' } });
+    fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'node.example.com' } });
+  }
+
+  it('asks for the address of the panel in place of a port', async () => {
+    const save = renderForm();
+    fillBasics();
+    expect(screen.getByLabelText('Port')).toBeTruthy();
+    expect(screen.queryByLabelText('Panel address')).toBeNull();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'The node connects to the panel' }));
+    expect(screen.queryByLabelText('Port')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Panel address'), {
+      target: { value: ' https://panel.example.com/secret/ ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0][0]).toMatchObject({
+      name: 'edge-1',
+      pull: true,
+      masterUrl: 'https://panel.example.com/secret/',
+      masterPin: '',
+    });
+  });
+
+  it('fills in the address the panel was opened at, which has to be https to be used', async () => {
+    const save = renderForm();
+    fillBasics();
+    fireEvent.click(screen.getByRole('radio', { name: 'The node connects to the panel' }));
+
+    const field = screen.getByLabelText('Panel address') as HTMLInputElement;
+    expect(field.value).toBe(window.location.origin + '/');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(document.body.textContent).toContain('must be an https:// address'));
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('turns down a panel address that carries a login, and a pin that is no hash', async () => {
+    const save = renderForm();
+    fillBasics();
+    fireEvent.click(screen.getByRole('radio', { name: 'The node connects to the panel' }));
+
+    fireEvent.change(screen.getByLabelText('Panel address'), {
+      target: { value: 'https://admin:pw@panel.example.com/' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(document.body.textContent).toContain('must be an https:// address'));
+
+    fireEvent.change(screen.getByLabelText('Panel address'), {
+      target: { value: 'https://panel.example.com/' },
+    });
+    fireEvent.change(screen.getByLabelText('Panel certificate SHA-256 (optional)'), {
+      target: { value: 'not-a-hash' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(document.body.textContent).toContain('must be a SHA-256 hash'));
+    expect(save).not.toHaveBeenCalled();
+
+    const pin = Array(32).fill('AB').join(':');
+    fireEvent.change(screen.getByLabelText('Panel certificate SHA-256 (optional)'), {
+      target: { value: pin },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0][0]).toMatchObject({ pull: true, masterPin: pin });
+  });
+
+  it('leaves the panel address out when the panel dials the node', async () => {
+    const save = renderForm();
+    fillBasics();
+    fireEvent.click(screen.getByRole('radio', { name: 'The node connects to the panel' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'The panel connects to the node' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0][0]).toMatchObject({ pull: false, port: 8443 });
+  });
+
+  it('edits an agent that dials the panel without asking for a port or the panel again', async () => {
+    const save = renderForm({
+      id: 6,
+      name: 'edge-6',
+      kind: 'agent',
+      pull: true,
+      address: 'a.example.com',
+      port: 443,
+      enable: true,
+    });
+
+    expect(document.body.textContent).toContain('there is no port to set');
+    expect(screen.queryByLabelText('Port')).toBeNull();
+    expect(screen.queryByLabelText('Panel address')).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'The node connects to the panel' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'b.example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0][0]).toMatchObject({ id: 6, address: 'b.example.com', port: 443 });
+  });
+});
+
+describe('AgentRepairModal', () => {
+  const pushNode: NodeRecord = {
+    id: 3,
+    name: 'edge-3',
+    kind: 'agent',
+    address: 'a.example.com',
+    port: 9443,
+    enable: true,
+  };
+  const pullNode: NodeRecord = { ...pushNode, id: 5, name: 'edge-5', pull: true, port: 443 };
+
+  function renderRepair(node: NodeRecord | null) {
+    const pair = vi.fn().mockResolvedValue(new Msg(true, '', {}));
+    const onClose = vi.fn();
+    renderWithProviders(<AgentRepairModal node={node} pair={pair} onClose={onClose} />);
+    return { pair, onClose };
+  }
+
+  it('pairs a node the panel dials the way it was, from its own port', async () => {
+    const { pair, onClose } = renderRepair(pushNode);
+
+    expect((screen.getByLabelText('Port') as HTMLInputElement).value).toBe('9443');
+    expect(
+      (screen.getByRole('radio', { name: 'The panel connects to the node' }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Pair again' }));
+
+    await waitFor(() => expect(pair).toHaveBeenCalledTimes(1));
+    expect(pair).toHaveBeenCalledWith(
+      pushNode,
+      expect.objectContaining({ pull: false, port: 9443 }),
+    );
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('pairs it the other way, with the address of the panel', async () => {
+    const { pair } = renderRepair(pushNode);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'The node connects to the panel' }));
+    expect(screen.queryByLabelText('Port')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Pair again' }));
+    await waitFor(() => expect(document.body.textContent).toContain('must be an https:// address'));
+    expect(pair).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Panel address'), {
+      target: { value: 'https://panel.example.com/secret/' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Pair again' }));
+    await waitFor(() => expect(pair).toHaveBeenCalledTimes(1));
+    expect(pair).toHaveBeenCalledWith(
+      pushNode,
+      expect.objectContaining({
+        pull: true,
+        masterUrl: 'https://panel.example.com/secret/',
+        masterPin: '',
+      }),
+    );
+  });
+
+  it('starts a node that dials the panel from that way, and from the usual port when it goes back', async () => {
+    const { pair } = renderRepair(pullNode);
+
+    expect(
+      (screen.getByRole('radio', { name: 'The node connects to the panel' }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(screen.getByLabelText('Panel address')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'The panel connects to the node' }));
+    expect((screen.getByLabelText('Port') as HTMLInputElement).value).toBe('8443');
+    fireEvent.click(screen.getByRole('button', { name: 'Pair again' }));
+    await waitFor(() => expect(pair).toHaveBeenCalledTimes(1));
+    expect(pair).toHaveBeenCalledWith(
+      pullNode,
+      expect.objectContaining({ pull: false, port: 8443 }),
+    );
+  });
+
+  it('warns that the agent of the current bundle is cut off, and shows nothing without a node', () => {
+    renderRepair(pushNode);
+    expect(document.body.textContent).toContain('cut off at once');
+    document.body.innerHTML = '';
+
+    renderRepair(null);
+    expect(document.querySelector('.ant-modal')).toBeNull();
   });
 });

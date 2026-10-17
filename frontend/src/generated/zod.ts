@@ -33,9 +33,12 @@ export const AgentNodeRequestSchema = z.object({
   decoyPort: z.number().int(),
   decoyProxyUrl: z.string(),
   decoyTemplate: z.string(),
+  masterPin: z.string(),
+  masterUrl: z.string(),
   name: z.string(),
   outboundTag: z.string(),
   port: z.number().int().min(1).max(65535),
+  pull: z.boolean(),
   remark: z.string(),
   sidecars: z.array(z.string()),
   tags: z.array(z.string()),
@@ -47,6 +50,14 @@ export const AgentPairingSchema = z.object({
   node: z.lazy(() => NodeViewSchema).nullable().optional(),
 });
 export type AgentPairing = z.infer<typeof AgentPairingSchema>;
+
+export const AgentRepairRequestSchema = z.object({
+  masterPin: z.string(),
+  masterUrl: z.string(),
+  port: z.number().int().min(1).max(65535),
+  pull: z.boolean().nullable().optional(),
+});
+export type AgentRepairRequest = z.infer<typeof AgentRepairRequestSchema>;
 
 export const AllSettingSchema = z.object({
   datepicker: z.string(),
@@ -856,6 +867,7 @@ export const NodeSchema = z.object({
   parentGuid: z.string().optional(),
   pinnedCertSha256: z.string(),
   port: z.number().int().min(1).max(65535),
+  pull: z.boolean(),
   remark: z.string(),
   scheme: z.enum(['http', 'https']),
   sidecarStates: z.array(z.lazy(() => NodeSidecarSchema)),
@@ -979,6 +991,7 @@ export const NodeViewSchema = z.object({
   parentGuid: z.string().optional(),
   pinnedCertSha256: z.string(),
   port: z.number().int(),
+  pull: z.boolean(),
   remark: z.string(),
   scheme: z.string(),
   sidecarStates: z.array(z.lazy(() => NodeSidecarSchema)),

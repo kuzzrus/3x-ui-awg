@@ -12,6 +12,8 @@ export interface AgentPairingView {
   name: string;
   port: number;
   bundle: string;
+  // The address of this panel that an agent in pull mode dials, which has no port to open.
+  masterUrl?: string;
 }
 
 interface AgentBundleModalProps {
@@ -76,7 +78,11 @@ export default function AgentBundleModal({ pairing, onClose }: AgentBundleModalP
         </Button>
 
         <ol className="agent-install-steps">
-          <li>{t('pages.nodes.agent.stepFirewall', { port: pairing?.port ?? '' })}</li>
+          <li>
+            {pairing?.masterUrl
+              ? t('pages.nodes.agent.stepReach', { url: pairing.masterUrl })
+              : t('pages.nodes.agent.stepFirewall', { port: pairing?.port ?? '' })}
+          </li>
           <li>
             <Space orientation="vertical" size={4} style={{ width: '100%' }}>
               <span>{t('pages.nodes.agent.stepRun')}</span>

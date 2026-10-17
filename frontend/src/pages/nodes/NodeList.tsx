@@ -217,7 +217,8 @@ export default function NodeList({
   const dataSource = useMemo<NodeRow[]>(() => {
     const toRow = (n: NodeRecord): NodeRow => ({
       ...n,
-      url: `${n.scheme}://${n.address}:${n.port}${n.basePath || '/'}`,
+      // A node whose agent dials the panel has no port that anything reaches.
+      url: `${n.scheme}://${n.address}${n.pull ? '' : `:${n.port}`}${n.basePath || '/'}`,
       key: n.transitive ? `t-${n.guid || ''}` : n.id,
     });
     const childrenByParent = new Map<string, NodeRecord[]>();
@@ -387,7 +388,7 @@ export default function NodeList({
               {record.name}
               {record.kind === 'agent' && (
                 <Tag className="agent-tag" style={{ marginInlineStart: 8, marginInlineEnd: 0 }}>
-                  {t('pages.nodes.agent.tag')}
+                  {t(record.pull ? 'pages.nodes.agent.tagPull' : 'pages.nodes.agent.tag')}
                 </Tag>
               )}
             </span>
@@ -712,7 +713,7 @@ export default function NodeList({
                       <span className="node-name">{record.name}</span>
                       {record.kind === 'agent' && (
                         <Tag className="agent-tag" style={{ margin: 0 }}>
-                          {t('pages.nodes.agent.tag')}
+                          {t(record.pull ? 'pages.nodes.agent.tagPull' : 'pages.nodes.agent.tag')}
                         </Tag>
                       )}
                       <div className="card-actions">
