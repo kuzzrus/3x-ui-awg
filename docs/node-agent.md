@@ -301,8 +301,9 @@ reaches the panel. A node chooses its way when it is added and changes it only b
 - **One connection per node.** A new connection replaces the old one and closes it, so an agent that dials again after a
   silent loss is not kept out by its own dead connection. The master sends an HTTP/2 PING after 15 s of silence and
   drops the connection when it is not answered in 10 s, and the agent pings every 20 s and drops one that has
-  been silent for more than 70 s, which it checks at each ping. After a loss the agent waits 1 s before it dials, then twice as long after each failure up to
-  30 s with some jitter, and starts again from 1 s after a connection that held for 30 s. A node that is deleted, disabled
+  been silent for more than 70 s, or whose ping it could not write in 20 s, which it checks at each ping. After a loss
+  the agent waits 1 s before it dials, then twice as long after each failure up to 30 s with some jitter, and starts
+  again from 1 s after a connection that held for 30 s. A node that is deleted, disabled
   or paired again loses its connection at once, and its old agent is answered 404.
 - **Master side.** `runtime.AgentTunnels` holds the connection of each node. The client of a node in pull mode is the
   same `AgentClient`, with a transport that picks the connection the node holds at each request, so it keeps working across

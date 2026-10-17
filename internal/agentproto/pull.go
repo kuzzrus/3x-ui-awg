@@ -242,7 +242,9 @@ func (c *Conn) KeepAlive(interval, idle time.Duration) {
 				_ = c.Close()
 				return
 			}
+			// A ping that cannot be sent in the time of one means the way is blocked, and the clock stops with this loop.
 			if err := c.ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(interval)); err != nil {
+				_ = c.Close()
 				return
 			}
 		}

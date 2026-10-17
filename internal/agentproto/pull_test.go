@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -426,6 +427,82 @@ func TestKeepAliveCountsWhatIsReadAsHearingFromThePeer(t *testing.T) {
 	// Then the peer goes quiet, and the silence ends the connection.
 	if _, err := conn.Read(buf); !errors.Is(err, net.ErrClosed) {
 		t.Fatalf("read after the peer fell silent: %v, want the connection to have been closed", err)
+	}
+}
+
+// stallConn is a connection whose writes, once it is stalled, wait for their deadline and fail, as on a path that has
+// gone dead with the send buffer full.
+type stallConn struct {
+	net.Conn
+	stalled  atomic.Bool
+	mu       sync.Mutex
+	deadline time.Time
+}
+
+func (c *stallConn) SetWriteDeadline(t time.Time) error {
+	c.mu.Lock()
+	c.deadline = t
+	c.mu.Unlock()
+	return c.Conn.SetWriteDeadline(t)
+}
+
+func (c *stallConn) Write(p []byte) (int, error) {
+	if !c.stalled.Load() {
+		return c.Conn.Write(p)
+	}
+	c.mu.Lock()
+	deadline := c.deadline
+	c.mu.Unlock()
+	if deadline.IsZero() {
+		select {}
+	}
+	time.Sleep(time.Until(deadline))
+	return 0, os.ErrDeadlineExceeded
+}
+
+// The ping and the idle check are one loop: a ping that cannot be written must end the connection, or nothing is left
+// to notice that the way is dead.
+func TestKeepAliveClosesAConnectionWhosePingCannotBeWritten(t *testing.T) {
+	srv := wsEcho(t, nil)
+	var stall *stallConn
+	dialer := websocket.Dialer{
+		Subprotocols: []string{ConnectProtocol},
+		NetDial: func(network, address string) (net.Conn, error) {
+			conn, err := net.Dial(network, address)
+			stall = &stallConn{Conn: conn}
+			return stall, err
+		},
+	}
+	ws, _, err := dialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var closed atomic.Int32
+	conn := NewConn(ws, func() { closed.Add(1) })
+	t.Cleanup(func() { conn.Close() })
+	conn.KeepAlive(50*time.Millisecond, time.Minute)
+
+	result := make(chan error, 1)
+	go func() {
+		_, err := conn.Read(make([]byte, 1))
+		result <- err
+	}()
+	time.Sleep(200 * time.Millisecond) // pings go out and are answered
+	stall.stalled.Store(true)
+	select {
+	case err := <-result:
+		if !errors.Is(err, net.ErrClosed) {
+			t.Fatalf("the read failed with %v, want the connection to have been closed", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a connection whose ping cannot be written is still held after 5 seconds, with an idle time of a minute")
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for closed.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if n := closed.Load(); n != 1 {
+		t.Fatalf("onClose ran %d times, want 1", n)
 	}
 }
 
