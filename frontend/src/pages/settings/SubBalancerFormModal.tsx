@@ -90,12 +90,15 @@ export default function SubBalancerFormModal({
   );
 
   const { nodes } = useNodesQuery();
+  // A transitive sub-node (id 0) is a read-only projection of a node further down the tree, and no inbound is its own.
   const nodeOptions = useMemo(
     () =>
-      nodes.map((node) => {
-        const label = node.name || node.remark || `#${node.id}`;
-        return { label, value: node.id, title: label };
-      }),
+      nodes
+        .filter((node) => !node.transitive && node.id > 0)
+        .map((node) => {
+          const label = node.name || node.remark || `#${node.id}`;
+          return { label, value: node.id, title: label };
+        }),
     [nodes],
   );
 

@@ -86,6 +86,7 @@ export default function SubscriptionBalancersTab({
   const nodeLabels = useMemo(() => {
     const map = new Map<number, string>();
     for (const node of nodes) {
+      if (node.transitive || node.id <= 0) continue;
       map.set(node.id, node.name || node.remark || `#${node.id}`);
     }
     return map;

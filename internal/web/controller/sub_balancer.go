@@ -28,9 +28,8 @@ func NewSubBalancerController(g *gin.RouterGroup) *SubBalancerController {
 	return a
 }
 
-// parseSubBalancerForm reads the urlencoded form (HttpUtil default): scalars
-// via ShouldBind, inboundIds and nodeIds as repeated keys. enabled is returned as *bool so
-// Update can keep the stored value when the key is absent; a bad value is a 400.
+// parseSubBalancerForm reads the urlencoded form (HttpUtil default): scalars via ShouldBind, inboundIds and
+// nodeIds as repeated keys. enabled is a *bool so Update keeps the stored value when absent; a bad one is a 400.
 func parseSubBalancerForm(c *gin.Context) (*model.SubBalancer, *bool, error) {
 	form := struct {
 		Remark    string `form:"remark"`

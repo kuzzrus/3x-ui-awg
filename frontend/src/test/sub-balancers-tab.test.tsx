@@ -68,6 +68,7 @@ vi.mock('@/api/queries/useNodesQuery', () => ({
     nodes: [
       { id: 10, name: 'berlin' },
       { id: 11, name: 'paris' },
+      { id: 0, name: 'under-berlin', guid: 'g1', parentGuid: 'p1', transitive: true },
     ],
   }),
 }));

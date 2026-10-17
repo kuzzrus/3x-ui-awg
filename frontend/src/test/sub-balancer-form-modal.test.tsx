@@ -21,6 +21,8 @@ vi.mock('@/api/queries/useNodesQuery', () => ({
     nodes: [
       { id: 10, name: 'berlin' },
       { id: 11, name: 'paris' },
+      { id: 0, name: 'under-berlin', guid: 'g1', parentGuid: 'p1', transitive: true },
+      { id: 0, name: 'under-paris', guid: 'g2', parentGuid: 'p2', transitive: true },
     ],
   }),
 }));
@@ -246,7 +248,8 @@ describe('SubBalancerFormModal', () => {
     expect(weightInputs()[0].value).toBe('1.5');
   });
 
-  it('offers every node to pick', () => {
+  // The nodes list of a panel with a tree below it holds the sub-nodes as rows with id 0, which no inbound belongs to.
+  it('offers the nodes of the panel and not the transitive sub-nodes under them', () => {
     renderModal(null);
     expect(optionTitles('Nodes')).toEqual(['berlin', 'paris']);
   });
