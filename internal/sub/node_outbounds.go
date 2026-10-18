@@ -47,6 +47,7 @@ func NodeOutbounds(email string, nodeIDs []int) ([]service.NodeOutbound, error) 
 	}
 
 	js := NewSubJsonService("", "", "", "", NewSubService(""))
+	js.pinReality = true
 	req := js.SubService.ForRequest("")
 	var out []service.NodeOutbound
 	for i := range rows {

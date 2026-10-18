@@ -421,9 +421,10 @@ refuse is left out with a warning. The core refuses a balancer with an empty sel
 a balancer that reaches no outbound at all is left out of the config: the rules that led to it send to its fallback when
 it has one, and to the blackhole `x-ui-missing-outbound` otherwise, since the default outbound would let that traffic
 out of the panel itself. The outbounds follow the nodes: every 30 seconds the panel compares them with what the core was
-last given, and a changed port, key or inbound is applied through the API when it can be, without a restart. Agent
-configs do not get the balancer, for only the panel's own core has an outbound to a node. The rules that lead to it
-block their traffic there, rather than let it out of the agent, and the node reports the adjustment. The template is
+last given, and a changed port, key or inbound is applied through the API when it can be, without a restart. An agent
+has no outbound to a node, so its config gets the balancers without their nodes: one keeps the rest of its selector, and
+one left selecting nothing is dropped, its rules going to its fallback when the agent has that outbound and blocking
+otherwise, rather than letting the traffic out of the agent. The node reports that adjustment. The template is
 refused when `nodeMembers` is not a client and a list of node ids, and a deleted node leaves the lists. A balancer of
 nodes alone is stored with the selector `xui-node-`, which the panel drops from the config of the core: it selects nothing
 in a panel rolled back to a version without `nodeMembers`, whose core would refuse an empty selector.

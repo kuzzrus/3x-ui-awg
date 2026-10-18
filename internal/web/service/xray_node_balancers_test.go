@@ -546,16 +546,24 @@ func TestAConfigWithoutNodeBalancersIsLeftAsItWas(t *testing.T) {
 	}
 }
 
-// Only the panel's own core has an outbound to a node, so an agent loses the balancer. The traffic of the rules
-// that led to it must not leave from the agent instead: they block, and the node says so.
-func TestAgentConfigLeavesOutTheBalancersMadeOfNodesAndBlocksTheirRules(t *testing.T) {
+// An agent has no outbound to a node: it keeps what a balancer selects besides nodes, and treats one that selects
+// nothing else as the panel does, its rules going to the fallback or the blackhole, which the node says.
+func TestAgentConfigTakesTheNodesOutOfItsBalancers(t *testing.T) {
 	setupSettingTestDB(t)
 	agent := seedTaggedAgent(t, "agent-1")
 	berlin := seedTaggedAgent(t, "berlin")
 	useNodeOutbounds(t, map[string][]NodeOutbound{"relay@x": {nodeOut(berlin, 7, 11, "berlin.example.com", 443)}})
+	withFallback := balancerOfNodes("with-fallback", "random", "relay@x", berlin)
+	withFallback["fallbackTag"] = "direct"
+	mixed := balancerOfNodes("mixed", "random", "relay@x", berlin)
+	mixed["selector"] = []any{"direct", nodeSelector}
+	// What the template holds once the last node of a balancer is deleted: the key stays, with no nodes.
+	emptied := balancerOfNodes("emptied", "random", "relay@x")
+	emptied["selector"] = []any{"direct"}
 	plain := map[string]any{"tag": "plain", "selector": []any{"direct"}}
-	useBalancers(t, []any{balancerOfNodes("exits", "random", "relay@x", berlin), plain},
-		ruleToBalancer("geosite:nodes", "exits"), ruleToBalancer("geosite:again", "exits"), ruleToBalancer("geosite:plain", "plain"))
+	useBalancers(t, []any{balancerOfNodes("exits", "random", "relay@x", berlin), withFallback, mixed, emptied, plain},
+		ruleToBalancer("geosite:nodes", "exits"), ruleToBalancer("geosite:again", "exits"), ruleToBalancer("geosite:fallback", "with-fallback"),
+		ruleToBalancer("geosite:mixed", "mixed"), ruleToBalancer("geosite:emptied", "emptied"), ruleToBalancer("geosite:plain", "plain"))
 
 	svc := &XrayService{}
 	agentCfg, err := svc.GetAgentConfig(agent)
@@ -564,32 +572,53 @@ func TestAgentConfigLeavesOutTheBalancersMadeOfNodesAndBlocksTheirRules(t *testi
 	}
 	coreBuildsBalancers(t, agentCfg)
 	coreTakesTheRules(t, agentCfg)
-	if balancerNamed(t, agentCfg, "exits") != nil || balancerNamed(t, agentCfg, "plain") == nil {
-		t.Fatalf("an agent must lose the balancer of nodes and keep the other: %s", agentCfg.RouterConfig)
+	for _, tag := range []string{"exits", "with-fallback"} {
+		if balancerNamed(t, agentCfg, tag) != nil {
+			t.Fatalf("balancer %s selects nothing but nodes, so an agent must lose it: %s", tag, agentCfg.RouterConfig)
+		}
+	}
+	for tag, want := range map[string][]string{"mixed": {"direct"}, "emptied": {"direct"}, "plain": {"direct"}} {
+		balancer := balancerNamed(t, agentCfg, tag)
+		if balancer == nil || !slices.Equal(selectorOf(balancer), want) {
+			t.Fatalf("balancer %s must stay on an agent with the selector %v: %s", tag, want, agentCfg.RouterConfig)
+		}
+		if rule := ruleForDomain(t, agentCfg, "geosite:"+tag); rule["balancerTag"] != tag {
+			t.Fatalf("the rule of balancer %s must stay, got %v", tag, rule)
+		}
 	}
 	for _, domain := range []string{"geosite:nodes", "geosite:again"} {
 		if rule := ruleForDomain(t, agentCfg, domain); rule["outboundTag"] != missingOutboundTag || rule["balancerTag"] != nil {
-			t.Fatalf("a rule that led to the balancer of nodes must block on an agent, got %v", rule)
+			t.Fatalf("a rule that led to a balancer of nodes only must block on an agent, got %v", rule)
 		}
+	}
+	if rule := ruleForDomain(t, agentCfg, "geosite:fallback"); rule["outboundTag"] != "direct" || rule["balancerTag"] != nil {
+		t.Fatalf("a rule that led to a balancer of nodes only with a fallback must send to it on an agent, got %v", rule)
 	}
 	tags := outboundTagList(t, agentCfg)
 	if n := slices.Index(tags, missingOutboundTag); n < 0 || slices.Index(tags[n+1:], missingOutboundTag) >= 0 {
 		t.Fatalf("want one blackhole %s among %v", missingOutboundTag, tags)
 	}
 	problem := agentConfigProblem(agent)
-	if !strings.Contains(problem, `balancer "exits"`) || strings.Count(problem, `balancer "exits"`) != 1 {
-		t.Fatalf("the node must say once that its rules to the balancer of nodes block, got %q", problem)
+	for _, tag := range []string{"exits", "with-fallback"} {
+		if strings.Count(problem, fmt.Sprintf("balancer %q", tag)) != 1 {
+			t.Fatalf("the node must say once what became of its rules to balancer %s, got %q", tag, problem)
+		}
 	}
-	if rule := ruleForDomain(t, agentCfg, "geosite:plain"); rule["balancerTag"] != "plain" {
-		t.Fatalf("the rule of the other balancer must stay, got %v", rule)
+	for _, tag := range []string{"mixed", "emptied", "plain"} {
+		if strings.Contains(problem, fmt.Sprintf("balancer %q", tag)) {
+			t.Fatalf("balancer %s works on an agent and must not be reported, got %q", tag, problem)
+		}
 	}
 	if strings.Contains(string(agentCfg.RouterConfig), nodeMembersKey) || slices.ContainsFunc(outboundTagList(t, agentCfg), func(tag string) bool { return strings.HasPrefix(tag, nodeOutboundPrefix) }) {
 		t.Fatalf("an agent got something of the nodes: %s", agentCfg.RouterConfig)
 	}
 
 	panelCfg := renderPanelConfig(t)
-	if balancerNamed(t, panelCfg, "exits") == nil || ruleForDomain(t, panelCfg, "geosite:nodes")["balancerTag"] != "exits" {
-		t.Fatalf("the panel's own core must keep the balancer of nodes and its rule: %s", panelCfg.RouterConfig)
+	panelRules := map[string]string{"exits": "geosite:nodes", "with-fallback": "geosite:fallback", "mixed": "geosite:mixed", "emptied": "geosite:emptied"}
+	for tag, domain := range panelRules {
+		if balancerNamed(t, panelCfg, tag) == nil || ruleForDomain(t, panelCfg, domain)["balancerTag"] != tag {
+			t.Fatalf("the panel's own core must keep balancer %s and its rule: %s", tag, panelCfg.RouterConfig)
+		}
 	}
 }
 

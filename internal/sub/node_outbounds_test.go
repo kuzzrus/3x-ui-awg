@@ -1,6 +1,7 @@
 package sub
 
 import (
+	"reflect"
 	"slices"
 	"testing"
 
@@ -120,5 +121,32 @@ func TestNodeOutboundsLeaveOutWhatAClientCannotUse(t *testing.T) {
 	}
 	if out, err := NodeOutbounds("relay@e", []int{berlin.Id}); err != nil || len(out) != 0 {
 		t.Fatalf("a client that is off still gave %v, %v", out, err)
+	}
+}
+
+// The panel dials a node with the outbound written for it, and compares it with the one its core was given, so two calls
+// must write the same one. The JSON subscription draws the shortId and the serverName of REALITY at random for a client app.
+func TestNodeOutboundsOfARealityInboundAreTheSameEachTime(t *testing.T) {
+	seedSubDB(t)
+	berlin := seedSubNode(t, "berlin")
+	reality := seedSubInbound(t, "relay", "relay", 4921, 1, `{"network":"tcp","security":"reality","realitySettings":{`+
+		`"serverNames":["a.example.com","b.example.com","c.example.com"],"shortIds":["01","02","03","04","05","06","07","08"],`+
+		`"settings":{"publicKey":"PBKvalue","fingerprint":"chrome","spiderX":"/"}}}`)
+	putOnNode(t, reality, berlin)
+
+	first, err := NodeOutbounds("relay@e", []int{berlin.Id})
+	if err != nil || len(first) != 1 {
+		t.Fatalf("NodeOutbounds = %v, %v, want one outbound", first, err)
+	}
+	stream, _ := first[0].Outbound["streamSettings"].(map[string]any)
+	settings, _ := stream["realitySettings"].(map[string]any)
+	if settings["shortId"] != "01" || settings["serverName"] != "a.example.com" {
+		t.Fatalf("the REALITY settings of the outbound are %v, want the first shortId and serverName of the inbound", settings)
+	}
+	for range 30 {
+		again, err := NodeOutbounds("relay@e", []int{berlin.Id})
+		if err != nil || !reflect.DeepEqual(again, first) {
+			t.Fatalf("a later call wrote %v, %v, not the first outbound %v", again, err, first)
+		}
 	}
 }
