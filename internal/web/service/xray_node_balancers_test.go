@@ -91,13 +91,29 @@ func balancerOfNodes(tag, kind, client string, nodeIDs ...int) map[string]any {
 		ids[i] = id
 	}
 	return map[string]any{
-		"tag": tag, "selector": []any{}, "strategy": map[string]any{"type": kind},
+		"tag": tag, "selector": []any{nodeSelector}, "strategy": map[string]any{"type": kind},
 		nodeMembersKey: map[string]any{"client": client, "nodeIds": ids},
 	}
 }
 
 func ruleToBalancer(domain, balancer string) map[string]any {
 	return map[string]any{"type": "field", "domain": []any{domain}, "balancerTag": balancer}
+}
+
+// coreTakesTheRules checks what the core refuses a config for besides its balancers: two outbounds with one tag, and
+// a rule that names neither an outbound nor a balancer.
+func coreTakesTheRules(t *testing.T, cfg *xray.Config) {
+	t.Helper()
+	outboundTagsOf(t, cfg)
+	rules, _ := routingOf(t, cfg)["rules"].([]any)
+	for _, raw := range rules {
+		rule, _ := raw.(map[string]any)
+		outbound, _ := rule["outboundTag"].(string)
+		balancer, _ := rule["balancerTag"].(string)
+		if outbound == "" && balancer == "" {
+			t.Errorf("the core refuses a rule that names neither an outbound nor a balancer: %v", rule)
+		}
+	}
 }
 
 // renderPanelConfig builds the config of the panel's own core, as the page that shows it does: it is given to nothing.
@@ -107,6 +123,7 @@ func renderPanelConfig(t *testing.T) *xray.Config {
 	if err != nil {
 		t.Fatalf("GetXrayConfig: %v", err)
 	}
+	coreTakesTheRules(t, cfg)
 	return cfg
 }
 
@@ -391,6 +408,79 @@ func TestNodeBalancerKeepsItsOwnOutboundsWhenNoNodeIsReached(t *testing.T) {
 	}
 }
 
+// The blackhole that blocks the rules of a balancer that reaches nothing and the one that blocks the rules of an
+// outbound the panel's core lacks are one outbound: the core refuses two with the same tag.
+func TestTwoReasonsToBlockAddOneBlackhole(t *testing.T) {
+	setupSettingTestDB(t)
+	berlin := seedTaggedAgent(t, "berlin")
+	useNodeOutbounds(t, map[string][]NodeOutbound{})
+	addTemplateOutbounds(t, hop("eu-only", map[string]any{"nodeTags": []any{"eu"}}))
+	addTemplateRules(t, markedRule("geosite:eu", map[string]any{"outboundTag": "eu-only"}))
+	useBalancers(t, []any{balancerOfNodes("exits", "random", "relay@x", berlin)}, ruleToBalancer("geosite:empty", "exits"))
+
+	cfg := renderPanelConfig(t)
+	for _, domain := range []string{"geosite:eu", "geosite:empty"} {
+		if rule := ruleForDomain(t, cfg, domain); rule["outboundTag"] != missingOutboundTag {
+			t.Fatalf("the rule for %s must block, got %v", domain, rule)
+		}
+	}
+	count := 0
+	for _, tag := range outboundTagList(t, cfg) {
+		if tag == missingOutboundTag {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("the blackhole %s is in the config %d times, want once", missingOutboundTag, count)
+	}
+}
+
+// An outbound with no tag is legal config, and its empty tag must not pass for the fallback of a balancer that has none.
+func TestNodeBalancerWithNoFallbackBlocksWhenAnOutboundHasNoTag(t *testing.T) {
+	setupSettingTestDB(t)
+	berlin := seedTaggedAgent(t, "berlin")
+	useNodeOutbounds(t, map[string][]NodeOutbound{})
+	addTemplateOutbounds(t, map[string]any{"protocol": "freedom"})
+	useBalancers(t, []any{balancerOfNodes("exits", "random", "relay@x", berlin)}, ruleToBalancer("geosite:empty", "exits"))
+
+	cfg := renderPanelConfig(t)
+	if rule := ruleForDomain(t, cfg, "geosite:empty"); rule["outboundTag"] != missingOutboundTag {
+		t.Fatalf("a rule that led to a balancer with no fallback must block, got %v", rule)
+	}
+	if !slices.Contains(outboundTagList(t, cfg), missingOutboundTag) {
+		t.Fatalf("the blackhole is missing from %v", outboundTagList(t, cfg))
+	}
+}
+
+// The page stores a balancer of nodes alone with a placeholder as its selector, which a panel rolled back to a version
+// without nodeMembers can load. The core here must never see it: it would select the nodes of every balancer.
+func TestNodeBalancerDropsThePlaceholderOfItsStoredSelector(t *testing.T) {
+	setupSettingTestDB(t)
+	berlin := seedTaggedAgent(t, "berlin")
+	paris := seedTaggedAgent(t, "paris")
+	useNodeOutbounds(t, map[string][]NodeOutbound{
+		"relay@x": {nodeOut(berlin, 7, 11, "berlin.example.com", 443)},
+		"other@x": {nodeOut(paris, 9, 21, "paris.example.com", 443)},
+	})
+	legacy := balancerOfNodes("legacy", "random", "other@x", paris)
+	legacy["selector"] = []any{}
+	mixed := balancerOfNodes("mixed", "random", "relay@x", berlin)
+	mixed["selector"] = []any{"direct", nodeSelector}
+	useBalancers(t, []any{balancerOfNodes("stored", "random", "relay@x", berlin), legacy, mixed},
+		ruleToBalancer("geosite:a", "stored"), ruleToBalancer("geosite:b", "legacy"), ruleToBalancer("geosite:c", "mixed"))
+
+	cfg := renderPanelConfig(t)
+	coreBuildsBalancers(t, cfg)
+	berlinPrefix, parisPrefix := fmt.Sprintf("xui-node-%d-7-", berlin), fmt.Sprintf("xui-node-%d-9-", paris)
+	for tag, want := range map[string][]string{
+		"stored": {berlinPrefix}, "legacy": {parisPrefix}, "mixed": {"direct", berlinPrefix},
+	} {
+		if got := selectorOf(balancerNamed(t, cfg, tag)); !slices.Equal(got, want) {
+			t.Errorf("balancer %s selects %v, want %v", tag, got, want)
+		}
+	}
+}
+
 func TestNodeBalancerKeepsTheTemplateOutboundWithTheSameTag(t *testing.T) {
 	setupSettingTestDB(t)
 	berlin := seedTaggedAgent(t, "berlin")
@@ -473,6 +563,7 @@ func TestAgentConfigLeavesOutTheBalancersMadeOfNodesAndBlocksTheirRules(t *testi
 		t.Fatal(err)
 	}
 	coreBuildsBalancers(t, agentCfg)
+	coreTakesTheRules(t, agentCfg)
 	if balancerNamed(t, agentCfg, "exits") != nil || balancerNamed(t, agentCfg, "plain") == nil {
 		t.Fatalf("an agent must lose the balancer of nodes and keep the other: %s", agentCfg.RouterConfig)
 	}

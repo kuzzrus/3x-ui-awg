@@ -44,7 +44,8 @@ func hop(tag string, extra map[string]any) map[string]any {
 	return outbound
 }
 
-// outboundTagsOf is the tags of the outbounds of a config, which must not carry the panel-only key.
+// outboundTagsOf is the tags of the outbounds of a config, which must not carry the panel-only key, and which the
+// core refuses when two of them have the same tag.
 func outboundTagsOf(t *testing.T, cfg *xray.Config) map[string]bool {
 	t.Helper()
 	var list []map[string]any
@@ -57,6 +58,9 @@ func outboundTagsOf(t *testing.T, cfg *xray.Config) map[string]bool {
 			t.Errorf("a rendered outbound still carries the panel-only nodeTags: %v", outbound)
 		}
 		tag, _ := outbound["tag"].(string)
+		if tag != "" && tags[tag] {
+			t.Errorf("two outbounds of the config have the tag %q, which the core refuses", tag)
+		}
 		tags[tag] = true
 	}
 	return tags

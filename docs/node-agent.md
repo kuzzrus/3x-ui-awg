@@ -424,7 +424,9 @@ out of the panel itself. The outbounds follow the nodes: every 30 seconds the pa
 last given, and a changed port, key or inbound is applied through the API when it can be, without a restart. Agent
 configs do not get the balancer, for only the panel's own core has an outbound to a node. The rules that lead to it
 block their traffic there, rather than let it out of the agent, and the node reports the adjustment. The template is
-refused when `nodeMembers` is not a client and a list of node ids, and a deleted node leaves the lists.
+refused when `nodeMembers` is not a client and a list of node ids, and a deleted node leaves the lists. A balancer of
+nodes alone is stored with the selector `xui-node-`, which the panel drops from the config of the core: it selects nothing
+in a panel rolled back to a version without `nodeMembers`, whose core would refuse an empty selector.
 
 A node can be a member of a subscription balancer (Settings → Sub Balancers), the client-side
 balancer of the JSON subscription, which has nothing to do with the balancers of the template. A

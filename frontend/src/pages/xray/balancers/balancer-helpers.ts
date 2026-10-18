@@ -20,9 +20,13 @@ export const DEFAULT_BURST_OBSERVATORY = Object.freeze({
   },
 });
 
+// What is stored as the selector of a balancer of nodes alone: a panel rolled back to a version without nodeMembers
+// then finds a selector that selects nothing, not an empty one its core refuses. The panel drops it from the config.
+export const NODES_SELECTOR = 'xui-node-';
+
 export function collectSelectors(list: BalancerObject[]): string[] {
   const out = new Set<string>();
-  list.forEach((b) => (b.selector || []).forEach((s) => s && out.add(s)));
+  list.forEach((b) => (b.selector || []).forEach((s) => s && s !== NODES_SELECTOR && out.add(s)));
   return [...out];
 }
 

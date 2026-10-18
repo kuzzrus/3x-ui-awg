@@ -26,6 +26,9 @@ const (
 	nodeMembersKey = "nodeMembers"
 	// nodeOutboundPrefix starts the tag of each outbound the panel writes for an inbound of a node.
 	nodeOutboundPrefix = "xui-node-"
+	// nodeSelector is what the page stores as the selector of a balancer of nodes alone: it selects nothing in a panel
+	// rolled back to a version that lacks nodeMembers, whose core refuses an empty selector. Here it is dropped.
+	nodeSelector = nodeOutboundPrefix
 
 	maxBalancerNodes  = 64
 	maxBalancerClient = 256
@@ -399,7 +402,7 @@ func (s *XrayService) expandNodeBalancers(cfg *xray.Config) string {
 	for i, b := range balancers {
 		selector := []any{}
 		if existing, ok := b.balancer["selector"].([]any); ok {
-			selector = slices.Clone(existing)
+			selector = slices.DeleteFunc(slices.Clone(existing), func(entry any) bool { return entry == nodeSelector })
 		}
 		for _, prefix := range plan.prefixes[i] {
 			if !anyTagHasPrefix(appended, prefix) {
@@ -469,7 +472,7 @@ func leaveOutUnreachable(cfg *xray.Config, routing map[string]any, unreachable m
 			continue
 		}
 		delete(rule, "balancerTag")
-		if have[fallback] {
+		if fallback != "" && have[fallback] {
 			rule["outboundTag"] = fallback
 			logger.Warning("node balancers: balancer", target, "reaches no outbound, so the rules that lead to it send to its fallback", fallback)
 			continue

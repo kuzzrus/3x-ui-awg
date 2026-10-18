@@ -246,6 +246,23 @@ describe('syncObservatories', () => {
     expectObserver(t, expected, selectors);
   });
 
+  it('leaves the placeholder of a balancer of nodes out of the observatory', () => {
+    // The panel adds the prefix of each node itself, and a placeholder here would make it probe the nodes of every balancer.
+    const t = tpl({
+      balancers: [
+        {
+          tag: 'exits',
+          selector: ['xui-node-'],
+          strategy: { type: 'leastPing' },
+          nodeMembers: { client: 'relay@example.com', nodeIds: [10] },
+        },
+        { tag: 'plain', selector: ['out-a'], strategy: { type: 'leastPing' } },
+      ],
+    });
+    syncObservatories(t);
+    expectObserver(t, 'observatory', ['out-a']);
+  });
+
   it('does not create burstObservatory for a fresh random balancer (stays hot-appliable)', () => {
     const t = tpl({ balancers: [{ tag: 'b1', selector: ['direct'] }] });
     syncObservatories(t);

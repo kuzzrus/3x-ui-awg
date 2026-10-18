@@ -27,7 +27,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useNodesQuery } from '@/api/queries/useNodesQuery';
 import BalancerFormModal from './BalancerFormModal';
 import type { BalancerFormValue } from './BalancerFormModal';
-import { syncObservatories } from './balancer-helpers';
+import { NODES_SELECTOR, syncObservatories } from './balancer-helpers';
 import {
   isBalancerLoopbackTag,
   loopbackTagFor,
@@ -119,7 +119,7 @@ export default function BalancersTab({
       key: idx,
       tag: b.tag || '',
       strategy: (b.strategy?.type ?? 'random') as BalancerStrategyType,
-      selector: b.selector || [],
+      selector: (b.selector || []).filter((s) => s !== NODES_SELECTOR),
       fallbackTag: b.fallbackTag || '',
       displayFallbackTag: resolveLoopbackFallback(templateSettings!, b.fallbackTag || ''),
       settings: b.strategy?.settings,
@@ -246,6 +246,7 @@ export default function BalancersTab({
       };
       if (form.nodeIds.length > 0) {
         wire.nodeMembers = { client: form.nodeClient, nodeIds: [...form.nodeIds] };
+        if (wire.selector.length === 0) wire.selector = [NODES_SELECTOR];
       }
       if (form.strategy && form.strategy !== 'random') {
         wire.strategy = { type: form.strategy };

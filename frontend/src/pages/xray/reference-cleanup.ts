@@ -1,6 +1,6 @@
 import type { XraySettingsValue } from '@/hooks/useXraySetting';
 import type { BalancerObject, RuleObject } from '@/schemas/routing';
-import { syncObservatories } from './balancers/balancer-helpers';
+import { NODES_SELECTOR, syncObservatories } from './balancers/balancer-helpers';
 
 /**
  * Reference cleanup for the Xray-config blob: when an outbound or balancer is
@@ -68,13 +68,15 @@ function ruleLabel(rule: RuleObject, index: number): string {
   return tag || `#${index + 1}`;
 }
 
-/** Balancers whose selector is left empty once `removedOutbounds` are gone. */
+const hasNodes = (b: BalancerObject): boolean => (b.nodeMembers?.nodeIds?.length ?? 0) > 0;
+
+/** Balancers whose selector is left empty once `removedOutbounds` are gone, and that have no nodes to go on with. */
 function balancersEmptiedBy(tt: XraySettingsValue, removedOutbounds: Set<string>): string[] {
   if (removedOutbounds.size === 0) return [];
   const emptied: string[] = [];
   for (const b of balancerList(tt)) {
     const tag = typeof b?.tag === 'string' ? b.tag : '';
-    if (tag === '') continue;
+    if (tag === '' || hasNodes(b)) continue;
     const selector = Array.isArray(b?.selector) ? b.selector : [];
     if (selector.length === 0) continue;
     if (selector.every((s) => removedOutbounds.has(s))) emptied.push(tag);
@@ -148,6 +150,9 @@ function applyCleanup(
       if (removedBalancers.has(balancer.tag)) continue;
       if (removedOutbounds.size > 0 && Array.isArray(balancer.selector)) {
         balancer.selector = balancer.selector.filter((s) => !removedOutbounds.has(s));
+        if (balancer.selector.length === 0 && hasNodes(balancer)) {
+          balancer.selector = [NODES_SELECTOR];
+        }
       }
       if (typeof balancer.fallbackTag === 'string' && removedOutbounds.has(balancer.fallbackTag)) {
         balancer.fallbackTag = '';

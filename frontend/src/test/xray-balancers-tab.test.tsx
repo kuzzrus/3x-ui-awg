@@ -25,11 +25,16 @@ const template = {
     balancers: [
       {
         tag: 'exits',
-        selector: [],
+        selector: ['xui-node-'],
         strategy: { type: 'leastPing' },
         nodeMembers: { client: 'relay@example.com', nodeIds: [10, 11] },
       },
       { tag: 'plain', selector: ['direct'] },
+      {
+        tag: 'mixed',
+        selector: ['direct'],
+        nodeMembers: { client: 'relay@example.com', nodeIds: [10] },
+      },
     ],
   },
 } as unknown as XraySettingsValue;
@@ -81,7 +86,14 @@ describe('the balancers of the Xray template', () => {
     expect(rowOf('plain').textContent).not.toContain('berlin');
   });
 
-  // The balancer is rebuilt from the form on a save, so a key the form does not carry back is gone.
+  // The placeholder that stands for the nodes in the stored selector is not an outbound to show or to pick.
+  it('hides the placeholder that a balancer of nodes alone has as its selector', () => {
+    renderTab();
+    expect(rowOf('exits').textContent).not.toContain('xui-node-');
+  });
+
+  // The balancer is rebuilt from the form on a save, so a key the form does not carry back is gone. Nodes alone
+  // are stored with the placeholder, for a panel rolled back to an older version refuses an empty selector.
   it('keeps the nodes and the client of a balancer that is edited and saved', async () => {
     const setTemplateSettings = renderTab();
     editAndSave('exits');
@@ -92,9 +104,24 @@ describe('the balancers of the Xray template', () => {
     >;
     expect(balancers[0]).toMatchObject({
       tag: 'exits',
-      selector: [],
+      selector: ['xui-node-'],
       strategy: { type: 'leastPing' },
       nodeMembers: { client: 'relay@example.com', nodeIds: [10, 11] },
+    });
+  });
+
+  it('stores no placeholder for a balancer that has outbounds beside its nodes', async () => {
+    const setTemplateSettings = renderTab();
+    editAndSave('mixed');
+
+    await waitFor(() => expect(setTemplateSettings).toHaveBeenCalledTimes(1));
+    const balancers = savedTemplate(setTemplateSettings).routing?.balancers as Array<
+      Record<string, unknown>
+    >;
+    expect(balancers[2]).toMatchObject({
+      tag: 'mixed',
+      selector: ['direct'],
+      nodeMembers: { client: 'relay@example.com', nodeIds: [10] },
     });
   });
 
