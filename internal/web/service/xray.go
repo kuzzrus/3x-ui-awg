@@ -633,6 +633,8 @@ func routingTargetExists(routing map[string]any, outbounds json_util.RawMessage,
 	return outboundTagExists(outbounds, tag) || balancerHasOutbounds(routing, outbounds, tag)
 }
 
+// balancerHasOutbounds reports whether the balancer selects an outbound of the config, or has a fallback that the
+// config has: the core sends what the balancer picks nothing for there.
 func balancerHasOutbounds(routing map[string]any, outbounds json_util.RawMessage, tag string) bool {
 	if !routingTagIsBalancer(routing, tag) {
 		return false
@@ -642,6 +644,9 @@ func balancerHasOutbounds(routing map[string]any, outbounds json_util.RawMessage
 		balancer, ok := raw.(map[string]any)
 		if !ok || balancer["tag"] != tag {
 			continue
+		}
+		if fallback, _ := balancer["fallbackTag"].(string); outboundTagExists(outbounds, fallback) {
+			return true
 		}
 		selector, _ := balancer["selector"].([]any)
 		for outbound := range outboundTagSet(outbounds) {

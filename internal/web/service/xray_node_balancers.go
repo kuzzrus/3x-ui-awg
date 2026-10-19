@@ -133,7 +133,7 @@ func storedSelector(balancer map[string]any) []any {
 }
 
 // leaveNodesOutOfBalancers takes the nodes out of the balancers of an agent's config, which has no outbound to a node.
-// A balancer keeps the rest of its selector; one left selecting nothing goes the way it does on the panel, and is listed.
+// A balancer keeps the rest of its selector; one left selecting nothing is held as on the panel, and listed if a rule leads to it.
 func leaveNodesOutOfBalancers(cfg *xray.Config) []string {
 	var routing map[string]any
 	if len(cfg.RouterConfig) == 0 || json.Unmarshal(cfg.RouterConfig, &routing) != nil {
@@ -163,14 +163,21 @@ func leaveNodesOutOfBalancers(cfg *xray.Config) []string {
 	if !changed {
 		return nil
 	}
-	var notes []string
-	for _, moved := range leaveOutUnreachable(cfg, routing, unreachable, have) {
-		fate := fmt.Sprintf("goes to its fallback %q", moved.to)
-		if moved.to == missingOutboundTag {
-			fate = "is blocked"
+	led := map[string]bool{}
+	rules, _ := routing["rules"].([]any)
+	for _, raw := range rules {
+		if rule, ok := raw.(map[string]any); ok {
+			if target, _ := rule["balancerTag"].(string); target != "" {
+				led[target] = true
+			}
 		}
-		notes = append(notes, fmt.Sprintf("a routing rule sends to balancer %q, which sends traffic out through nodes, and an agent has no outbound to a node: its traffic %s",
-			moved.balancer, fate))
+	}
+	var notes []string
+	for _, held := range holdUnreachable(cfg, routing, unreachable, have) {
+		if led[held.balancer] {
+			notes = append(notes, fmt.Sprintf("a routing rule sends to balancer %q, which sends traffic out through nodes, and an agent has no outbound to a node: its traffic %s",
+				held.balancer, held.outcome()))
+		}
 	}
 	if raw, err := json.Marshal(routing); err == nil {
 		cfg.RouterConfig = raw
@@ -198,6 +205,7 @@ type nodeBalancer struct {
 	balancer map[string]any
 	members  nodeMembers
 	probed   bool
+	observes bool // picks by what the observatory saw, and so nothing until it has seen something
 }
 
 // nodeBalancersOf lists the balancers of a routing section that carry nodeMembers. One that cannot be read is
@@ -222,10 +230,12 @@ func nodeBalancersOf(routing map[string]any) []nodeBalancer {
 		strategy, _ := balancer["strategy"].(map[string]any)
 		kind, _ := strategy["type"].(string)
 		fallback, _ := balancer["fallbackTag"].(string)
+		observes := kind == "leastPing" || kind == "leastLoad"
 		found = append(found, nodeBalancer{
 			balancer: balancer,
 			members:  members,
-			probed:   kind == "leastPing" || kind == "leastLoad" || fallback != "",
+			probed:   observes || fallback != "",
+			observes: observes,
 		})
 	}
 	return found
@@ -348,7 +358,7 @@ func planNodeOutbounds(balancers []nodeBalancer, quiet bool) nodeOutboundPlan {
 }
 
 // expandNodeBalancers writes the outbounds to the nodes of the balancers that carry nodeMembers into the panel's
-// config, and returns their fingerprint. The core refuses a balancer with no selector, so see leaveOutUnreachable.
+// config, and returns their fingerprint. The core refuses a balancer with no selector, so see holdUnreachable.
 func (s *XrayService) expandNodeBalancers(cfg *xray.Config) string {
 	var routing map[string]any
 	if len(cfg.RouterConfig) == 0 || json.Unmarshal(cfg.RouterConfig, &routing) != nil {
@@ -383,8 +393,10 @@ func (s *XrayService) expandNodeBalancers(cfg *xray.Config) string {
 
 	var probed []string
 	unreachable := map[string]string{} // balancer tag -> its fallback
+	blocksWhenBlind := false
 	for i, b := range balancers {
 		selector := storedSelector(b.balancer)
+		nodesOnly := len(selector) == 0
 		for _, prefix := range plan.prefixes[i] {
 			if !anyTagHasPrefix(appended, prefix) {
 				continue
@@ -392,15 +404,24 @@ func (s *XrayService) expandNodeBalancers(cfg *xray.Config) string {
 			if !slices.Contains(selector, any(prefix)) {
 				selector = append(selector, prefix)
 			}
-			if b.probed {
-				probed = append(probed, prefix)
+		}
+		if b.probed {
+			// Whatever the nodes that are on, or the observatory would change, and a change of it restarts the core.
+			for _, id := range b.members.nodeIDs {
+				probed = append(probed, fmt.Sprintf("%s%d-", nodeOutboundPrefix, id))
 			}
 		}
 		b.balancer["selector"] = selector
 		delete(b.balancer, nodeMembersKey)
-		if !selectsAny(have, selector) {
+		fallback, _ := b.balancer["fallbackTag"].(string)
+		switch {
+		case !selectsAny(have, selector):
 			tag, _ := b.balancer["tag"].(string)
-			unreachable[tag], _ = b.balancer["fallbackTag"].(string)
+			unreachable[tag] = fallback
+		case b.observes && nodesOnly && fallback == "":
+			// Until the observatory has seen a node, or when it sees none alive, the core would pick nothing for it.
+			b.balancer["fallbackTag"] = missingOutboundTag
+			blocksWhenBlind = true
 		}
 	}
 
@@ -411,12 +432,15 @@ func (s *XrayService) expandNodeBalancers(cfg *xray.Config) string {
 		}
 		cfg.OutboundConfigs = raw
 	}
+	if blocksWhenBlind {
+		addBlackhole(cfg)
+	}
 	if len(probed) > 0 {
 		cfg.Observatory = extendSubjectSelector(cfg.Observatory, probed)
 		cfg.BurstObservatory = extendSubjectSelector(cfg.BurstObservatory, probed)
 	}
-	for _, moved := range leaveOutUnreachable(cfg, routing, unreachable, have) {
-		logger.Warning("node balancers: balancer", moved.balancer, "reaches no outbound, so the rules that lead to it", moved.outcome())
+	for _, held := range holdUnreachable(cfg, routing, unreachable, have) {
+		logger.Warning("node balancers: balancer", held.balancer, "reaches no outbound, so its traffic", held.outcome())
 	}
 	if raw, err := json.Marshal(routing); err == nil {
 		cfg.RouterConfig = raw
@@ -424,65 +448,54 @@ func (s *XrayService) expandNodeBalancers(cfg *xray.Config) string {
 	return fingerprint
 }
 
-// redirect is where the rules of a balancer that was left out send now: its fallback, or the blackhole.
+// noOutbound is a selector entry that no outbound has: a balancer that holds it selects nothing.
+const noOutbound = "x-ui-no-outbound-"
+
+// redirect is where a balancer that reaches no outbound sends its traffic: to its fallback, or into the blackhole.
 type redirect struct{ balancer, to string }
 
 func (r redirect) outcome() string {
 	if r.to == missingOutboundTag {
-		return "block their traffic"
+		return "is blocked"
 	}
-	return "send to its fallback " + r.to
+	return fmt.Sprintf("goes to its fallback %q", r.to)
 }
 
-// leaveOutUnreachable drops the balancers that reach no outbound, which the core would refuse with the whole config.
-// Their rules send to the fallback when the config has it, and block otherwise: the default outbound would let them out.
-func leaveOutUnreachable(cfg *xray.Config, routing map[string]any, unreachable map[string]string, have map[string]bool) []redirect {
+// holdUnreachable keeps the balancers that reach no outbound, for the core refuses an empty selector, and sends them to
+// the fallback when the config has that outbound, and into the blackhole otherwise: not out of the default outbound.
+func holdUnreachable(cfg *xray.Config, routing map[string]any, unreachable map[string]string, have map[string]bool) []redirect {
 	if len(unreachable) == 0 {
 		return nil
 	}
-	balancers, _ := routing["balancers"].([]any)
-	kept := make([]any, 0, len(balancers))
-	for _, raw := range balancers {
-		if balancer, ok := raw.(map[string]any); ok {
-			tag, _ := balancer["tag"].(string)
-			if _, gone := unreachable[tag]; gone {
-				continue
-			}
-		}
-		kept = append(kept, raw)
-	}
-	routing["balancers"] = kept
-
-	var moved []redirect
-	reported := map[string]bool{}
+	var held []redirect
 	blocked := false
-	rules, _ := routing["rules"].([]any)
-	for _, raw := range rules {
-		rule, ok := raw.(map[string]any)
+	balancers, _ := routing["balancers"].([]any)
+	for _, raw := range balancers {
+		balancer, ok := raw.(map[string]any)
 		if !ok {
 			continue
 		}
-		target, _ := rule["balancerTag"].(string)
-		fallback, gone := unreachable[target]
-		if target == "" || !gone {
+		tag, _ := balancer["tag"].(string)
+		fallback, gone := unreachable[tag]
+		if !gone {
 			continue
 		}
-		to := missingOutboundTag
 		if fallback != "" && have[fallback] {
-			to = fallback
+			balancer["selector"] = []any{noOutbound}
+			held = append(held, redirect{balancer: tag, to: fallback})
+			continue
 		}
-		delete(rule, "balancerTag")
-		rule["outboundTag"] = to
-		blocked = blocked || to == missingOutboundTag
-		if !reported[target] {
-			reported[target] = true
-			moved = append(moved, redirect{balancer: target, to: to})
-		}
+		// A strategy that probes would look for the blackhole among the outbounds it observes, and there it is not.
+		balancer["selector"] = []any{missingOutboundTag}
+		balancer["strategy"] = map[string]any{"type": "random"}
+		delete(balancer, "fallbackTag")
+		blocked = true
+		held = append(held, redirect{balancer: tag, to: missingOutboundTag})
 	}
 	if blocked {
 		addBlackhole(cfg)
 	}
-	return moved
+	return held
 }
 
 // anyTagHasPrefix reports whether one of the tags starts with the prefix.

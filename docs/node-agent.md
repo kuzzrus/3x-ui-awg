@@ -415,16 +415,20 @@ A balancer of the template can send traffic out through nodes. Its `nodeMembers`
 gets an outbound to each of those nodes that is on, written as the JSON subscription writes it for a client app,
 from every enabled inbound the client has on the node (its first endpoint; the tag is
 `xui-node-<node>-<client>-<inbound>`). They come after the outbounds of the template and of the subscriptions, so
-none of them is the default outbound. Their prefixes are added to the selector of the balancer and, when the balancer
-probes (leastPing, leastLoad, or a fallback), to the subjectSelector of the observatory. An outbound the core would
-refuse is left out with a warning. The core refuses a balancer with an empty selector, and the whole config with it, so
-a balancer that reaches no outbound at all is left out of the config: the rules that led to it send to its fallback when
-it has one, and to the blackhole `x-ui-missing-outbound` otherwise, since the default outbound would let that traffic
-out of the panel itself. The outbounds follow the nodes: every 30 seconds the panel compares them with what the core was
-last given, and a changed port, key or inbound is applied through the API when it can be, without a restart. An agent
-has no outbound to a node, so its config gets the balancers without their nodes: one keeps the rest of its selector, and
-one left selecting nothing is dropped, its rules going to its fallback when the agent has that outbound and blocking
-otherwise, rather than letting the traffic out of the agent. The node reports that adjustment. The template is
+none of them is the default outbound. The prefix of each node that has one is added to the selector of the balancer and,
+when the balancer probes (leastPing, leastLoad, or a fallback), the prefix of each node it names, on or off, to the
+subjectSelector of the observatory: that section has no reload API, so what it probes must not follow the nodes that are
+on. An outbound the core would refuse is left out with a warning. The core refuses a balancer with an empty selector, and
+the whole config with it, and a balancer that is gone takes the bridges of the panel (its own requests, what it dials a
+node by) out of the config with it, which then leave directly. So a balancer that reaches no outbound at all is held:
+with a fallback that the config has, it selects nothing and the core sends to the fallback; otherwise it selects the
+blackhole `x-ui-missing-outbound` under the random strategy. The default outbound, the panel itself, never gets that
+traffic. A balancer of nodes alone that picks by the observatory (leastPing, leastLoad) and has no fallback is given the
+blackhole as one in the config of the core, for it picks nothing until the observatory has seen a node, and when it sees
+none alive. The outbounds follow the nodes: every 30 seconds the panel compares them with what the core was last given,
+and a changed port, key or inbound is applied through the API when it can be, without a restart. An agent has no
+outbound to a node, so its config gets the balancers without their nodes: one keeps the rest of its selector, and one
+left selecting nothing is held the same way. The node reports it when a rule leads to such a balancer. The template is
 refused when `nodeMembers` is not a client and a list of node ids, and a deleted node leaves the lists. A balancer of
 nodes alone is stored with the selector `xui-node-`, which the panel drops from the config of the core: it selects nothing
 in a panel rolled back to a version without `nodeMembers`, whose core would refuse an empty selector.
