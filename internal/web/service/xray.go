@@ -207,9 +207,6 @@ func (s *XrayService) renderInboundConfig(inbound *model.Inbound) (*xray.Inbound
 	if listErr != nil {
 		return nil, listErr
 	}
-	if xray.KernelTunBlocked() {
-		xrayConfig.OutboundConfigs = forceUserspaceWireGuardTun(xrayConfig.OutboundConfigs)
-	}
 
 	clientStats := inbound.ClientStats
 	enableMap := make(map[string]bool, len(clientStats))
@@ -450,6 +447,9 @@ func (s *XrayService) buildXrayConfig() (*xray.Config, string, error) {
 	// the core has no amneziawg proxy and would reject the raw entry.
 	if err := transformAmneziaWGOutbounds(xrayConfig); err != nil {
 		return nil, "", err
+	}
+	if xray.KernelTunBlocked() {
+		xrayConfig.OutboundConfigs = forceUserspaceWireGuardTun(xrayConfig.OutboundConfigs)
 	}
 
 	_, _, _ = s.inboundService.AddTraffic(nil, nil)
@@ -1590,9 +1590,7 @@ func (s *XrayService) RestartXray(isForce bool) error {
 			xrayState.holdBack(refused)
 			return fmt.Errorf("xray %s", refused)
 		}
-		// A routing reload rebuilds every balancer, and a removed outbound strands an override.
-		restoreOverrides := func(api *xray.XrayAPI) { balancerOverrides.reapply(process, api, xrayConfig) }
-		if !isForce && !configUnchanged && xray.ApplyHotWith(process, xrayConfig, s.restartToDropClients, restoreOverrides) {
+		if !isForce && !configUnchanged && s.tryHotApply(process, xrayConfig) {
 			logger.Info("Xray config changes applied through the core API, no restart needed")
 			givenNodeOutbounds.Store(nodeOutbounds)
 			return nil
@@ -1614,6 +1612,14 @@ func (s *XrayService) RestartXray(isForce bool) error {
 	givenNodeOutbounds.Store(nodeOutbounds)
 
 	return nil
+}
+
+// tryHotApply reconciles the running core with newCfg through its API; false means the caller restarts,
+// which also cleans up a failed apply. A routing reload rebuilds every balancer and a removed outbound
+// strands an override, so the overrides are restored once the changes are in. The package lock must be held.
+func (s *XrayService) tryHotApply(process *xray.Process, newCfg *xray.Config) bool {
+	restoreOverrides := func(api *xray.XrayAPI) { balancerOverrides.reapply(process, api, newCfg) }
+	return xray.ApplyHotWith(process, newCfg, s.restartToDropClients, restoreOverrides)
 }
 
 // restartToDropClients reports whether a diff that strands clients must be

@@ -778,7 +778,6 @@ exports[`protocol capability predicates > naiveproxy-auto :: grpc/none 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -790,7 +789,6 @@ exports[`protocol capability predicates > naiveproxy-auto :: grpc/reality 1`] = 
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -802,7 +800,6 @@ exports[`protocol capability predicates > naiveproxy-auto :: grpc/tls 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -814,7 +811,6 @@ exports[`protocol capability predicates > naiveproxy-auto :: httpupgrade/none 1`
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -826,7 +822,6 @@ exports[`protocol capability predicates > naiveproxy-auto :: httpupgrade/tls 1`]
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -838,7 +833,6 @@ exports[`protocol capability predicates > naiveproxy-auto :: kcp/none 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -850,7 +844,6 @@ exports[`protocol capability predicates > naiveproxy-auto :: tcp/none 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -862,7 +855,6 @@ exports[`protocol capability predicates > naiveproxy-auto :: tcp/reality 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -874,7 +866,6 @@ exports[`protocol capability predicates > naiveproxy-auto :: tcp/tls 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -886,7 +877,6 @@ exports[`protocol capability predicates > naiveproxy-auto :: ws/none 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -898,7 +888,6 @@ exports[`protocol capability predicates > naiveproxy-auto :: ws/tls 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -910,7 +899,6 @@ exports[`protocol capability predicates > naiveproxy-auto :: xhttp/none 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -922,7 +910,6 @@ exports[`protocol capability predicates > naiveproxy-auto :: xhttp/reality 1`] =
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -934,7 +921,6 @@ exports[`protocol capability predicates > naiveproxy-auto :: xhttp/tls 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -946,7 +932,6 @@ exports[`protocol capability predicates > naiveproxy-basic :: grpc/none 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -958,7 +943,6 @@ exports[`protocol capability predicates > naiveproxy-basic :: grpc/reality 1`] =
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -970,7 +954,6 @@ exports[`protocol capability predicates > naiveproxy-basic :: grpc/tls 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -982,7 +965,6 @@ exports[`protocol capability predicates > naiveproxy-basic :: httpupgrade/none 1
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -994,7 +976,6 @@ exports[`protocol capability predicates > naiveproxy-basic :: httpupgrade/tls 1`
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1006,7 +987,6 @@ exports[`protocol capability predicates > naiveproxy-basic :: kcp/none 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1018,7 +998,6 @@ exports[`protocol capability predicates > naiveproxy-basic :: tcp/none 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1030,7 +1009,6 @@ exports[`protocol capability predicates > naiveproxy-basic :: tcp/reality 1`] = 
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1042,7 +1020,6 @@ exports[`protocol capability predicates > naiveproxy-basic :: tcp/tls 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1054,7 +1031,6 @@ exports[`protocol capability predicates > naiveproxy-basic :: ws/none 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1066,7 +1042,6 @@ exports[`protocol capability predicates > naiveproxy-basic :: ws/tls 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1078,7 +1053,6 @@ exports[`protocol capability predicates > naiveproxy-basic :: xhttp/none 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1090,7 +1064,6 @@ exports[`protocol capability predicates > naiveproxy-basic :: xhttp/reality 1`] 
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1102,7 +1075,6 @@ exports[`protocol capability predicates > naiveproxy-basic :: xhttp/tls 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1114,7 +1086,6 @@ exports[`protocol capability predicates > naiveproxy-routed :: grpc/none 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1126,7 +1097,6 @@ exports[`protocol capability predicates > naiveproxy-routed :: grpc/reality 1`] 
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1138,7 +1108,6 @@ exports[`protocol capability predicates > naiveproxy-routed :: grpc/tls 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1150,7 +1119,6 @@ exports[`protocol capability predicates > naiveproxy-routed :: httpupgrade/none 
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1162,7 +1130,6 @@ exports[`protocol capability predicates > naiveproxy-routed :: httpupgrade/tls 1
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1174,7 +1141,6 @@ exports[`protocol capability predicates > naiveproxy-routed :: kcp/none 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1186,7 +1152,6 @@ exports[`protocol capability predicates > naiveproxy-routed :: tcp/none 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1198,7 +1163,6 @@ exports[`protocol capability predicates > naiveproxy-routed :: tcp/reality 1`] =
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1210,7 +1174,6 @@ exports[`protocol capability predicates > naiveproxy-routed :: tcp/tls 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1222,7 +1185,6 @@ exports[`protocol capability predicates > naiveproxy-routed :: ws/none 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1234,7 +1196,6 @@ exports[`protocol capability predicates > naiveproxy-routed :: ws/tls 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1246,7 +1207,6 @@ exports[`protocol capability predicates > naiveproxy-routed :: xhttp/none 1`] = 
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1258,7 +1218,6 @@ exports[`protocol capability predicates > naiveproxy-routed :: xhttp/reality 1`]
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1270,7 +1229,6 @@ exports[`protocol capability predicates > naiveproxy-routed :: xhttp/tls 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1436,7 +1394,6 @@ exports[`protocol capability predicates > tproxy-basic :: grpc/none 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1448,7 +1405,6 @@ exports[`protocol capability predicates > tproxy-basic :: grpc/reality 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1460,7 +1416,6 @@ exports[`protocol capability predicates > tproxy-basic :: grpc/tls 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1472,7 +1427,6 @@ exports[`protocol capability predicates > tproxy-basic :: httpupgrade/none 1`] =
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1484,7 +1438,6 @@ exports[`protocol capability predicates > tproxy-basic :: httpupgrade/tls 1`] = 
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1496,7 +1449,6 @@ exports[`protocol capability predicates > tproxy-basic :: kcp/none 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1508,7 +1460,6 @@ exports[`protocol capability predicates > tproxy-basic :: tcp/none 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1520,7 +1471,6 @@ exports[`protocol capability predicates > tproxy-basic :: tcp/reality 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1532,7 +1482,6 @@ exports[`protocol capability predicates > tproxy-basic :: tcp/tls 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1544,7 +1493,6 @@ exports[`protocol capability predicates > tproxy-basic :: ws/none 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1556,7 +1504,6 @@ exports[`protocol capability predicates > tproxy-basic :: ws/tls 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1568,7 +1515,6 @@ exports[`protocol capability predicates > tproxy-basic :: xhttp/none 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1580,7 +1526,6 @@ exports[`protocol capability predicates > tproxy-basic :: xhttp/reality 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 
@@ -1592,7 +1537,6 @@ exports[`protocol capability predicates > tproxy-basic :: xhttp/tls 1`] = `
   "canEnableTlsFlow": false,
   "canEnableVisionSeed": false,
   "isSS2022": false,
-  "isSSMultiUser": true,
 }
 `;
 

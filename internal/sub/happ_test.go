@@ -372,7 +372,7 @@ func TestApplyHappHeaders_LocalProxyAuth(t *testing.T) {
 			ctx.Request.Header.Set("User-Agent", tc.userAgent)
 
 			controller := &SUBController{happConfig: HappConfig{AutoDetect: tc.autoDetect, LocalProxyAuth: tc.mode}}
-			controller.ApplyCommonHeaders(ctx, "", "", "Title", "", "", "", false, "", false)
+			controller.ApplyCommonHeaders(ctx, "", "", "Title", "", "", "", false, "", "", false)
 
 			for _, h := range []string{"Socks-Auth-Mode", "Http-Auth-Mode"} {
 				if got := recorder.Header().Get(h); got != tc.want {
