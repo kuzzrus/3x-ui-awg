@@ -19,7 +19,11 @@ import { Controller, FormProvider, useForm, useWatch } from 'react-hook-form';
 
 import { HttpUtil, NumberFormatter, RandomUtil, SizeFormatter, Wireguard } from '@/utils';
 import type { QuicCaptureResult, RealityScanResult } from '@/generated/types';
-import { rawInboundToFormValues, formValuesToWirePayload } from '@/lib/xray/inbound-form-adapter';
+import {
+  rawInboundToFormValues,
+  formValuesToWirePayload,
+  withoutClients,
+} from '@/lib/xray/inbound-form-adapter';
 import { createDefaultInboundSettings } from '@/lib/xray/inbound-defaults';
 import { composeInboundTag, isAutoInboundTag, type InboundTagInput } from '@/lib/xray/inbound-tag';
 import {
@@ -40,7 +44,11 @@ import { Protocols, TRAFFIC_RESETS } from '@/schemas/primitives';
 import { AWG_VERSION_3, effectiveAwgVersion } from '@/schemas/protocols/inbound/amneziawg';
 import { SockoptStreamSettingsSchema } from '@/schemas/protocols/stream/sockopt';
 import { HysteriaStreamSettingsSchema } from '@/schemas/protocols/stream/hysteria';
-import { createHysteriaTlsSettingsWithDefaultCert } from '@/lib/xray/inbound-tls-defaults';
+import {
+  createHysteriaTlsSettingsWithDefaultCert,
+  createMasqueTlsSettingsWithDefaultCert,
+} from '@/lib/xray/inbound-tls-defaults';
+import { MASQUE_DEFAULT_PATH } from '@/schemas/protocols/stream/masque';
 import {
   CPS_SLOTS,
   type CpsSlot,
@@ -57,8 +65,10 @@ import { WsStreamSettingsSchema } from '@/schemas/protocols/stream/ws';
 import { GrpcStreamSettingsSchema } from '@/schemas/protocols/stream/grpc';
 import { HttpUpgradeStreamSettingsSchema } from '@/schemas/protocols/stream/httpupgrade';
 import { XHttpStreamSettingsSchema } from '@/schemas/protocols/stream/xhttp';
+import { XDriveStreamSettingsSchema } from '@/schemas/protocols/stream/xdrive';
 import { DateTimePicker } from '@/components/form';
 import { FinalMaskField } from '@/lib/xray/forms/fields';
+import XDriveForm from '@/lib/xray/forms/transport/XDriveForm';
 import './InboundFormModal.css';
 
 import { AdvancedAllEditor, AdvancedSliceEditor } from './advanced-editors';
@@ -67,6 +77,8 @@ import {
   AmneziawgFields,
   HttpFields,
   HysteriaFields,
+  MasqueSettingsFields,
+  MasqueStreamFields,
   MixedFields,
   MtprotoFields,
   NaiveProxyFields,
@@ -228,6 +240,8 @@ function newStreamSlice(n: string): Record<string, unknown> {
       return HttpUpgradeStreamSettingsSchema.parse({});
     case 'xhttp':
       return XHttpStreamSettingsSchema.parse({});
+    case 'xdrive':
+      return XDriveStreamSettingsSchema.parse({});
     default:
       return {};
   }
@@ -295,6 +309,7 @@ export default function InboundFormModal({
    */
   const hasSelectableTransport =
     protocol !== Protocols.HYSTERIA &&
+    protocol !== Protocols.MASQUE &&
     protocol !== Protocols.WIREGUARD &&
     protocol !== Protocols.TUNNEL &&
     protocol !== Protocols.TUIC;
@@ -693,7 +708,9 @@ export default function InboundFormModal({
   useEffect(() => {
     if (!open) return;
     const initial =
-      mode === 'edit' && dbInbound ? rawInboundToFormValues(dbInbound) : buildAddModeValues();
+      mode === 'edit' && dbInbound
+        ? withoutClients(rawInboundToFormValues(dbInbound))
+        : buildAddModeValues();
     if (initial.protocol === Protocols.AMNEZIAWG) {
       // A record saved before awgVersion existed can already have
       // headerProtectionKey/contentPaddingAddition set with no awgVersion at
@@ -820,11 +837,18 @@ export default function InboundFormModal({
             ],
           },
         });
+      } else if (next === Protocols.MASQUE) {
+        setV('streamSettings', {
+          network: 'masque',
+          security: 'tls',
+          masqueSettings: { path: MASQUE_DEFAULT_PATH },
+          tlsSettings: createMasqueTlsSettingsWithDefaultCert(),
+        });
       } else if (next === Protocols.WIREGUARD || next === Protocols.TUNNEL) {
         setV('streamSettings', { security: 'none' });
       } else {
         const current = getV('streamSettings') as { network?: string } | undefined;
-        if (current?.network === 'hysteria' || !current?.network) {
+        if (current?.network === 'hysteria' || current?.network === 'masque' || !current?.network) {
           setV('streamSettings', { network: 'tcp', security: 'none', tcpSettings: {} });
         }
       }
@@ -834,13 +858,8 @@ export default function InboundFormModal({
   }, [mode, methods]);
 
   const saveValues = async () => {
-    /*
-     * getValues() returns the entire form store, including settings.clients and
-     * settings.fallbacks which have no bound field (clients are managed via the
-     * standalone Client modal, not this inbound modal). With shouldUnregister
-     * false those pass-through sub-trees survive from the reset object, so the
-     * update wire payload never silently drops every client on save.
-     */
+    // settings.fallbacks has no bound field; shouldUnregister=false keeps it from
+    // the reset object. An edit sends no clients: the server keeps the stored ones.
     const values = methods.getValues() as InboundFormValues;
     const parsed = InboundFormSchema.safeParse(values);
     if (!parsed.success) {
@@ -855,7 +874,7 @@ export default function InboundFormModal({
     }
     setSaving(true);
     try {
-      const payload = formValuesToWirePayload(parsed.data);
+      const payload = formValuesToWirePayload(parsed.data, { omitClients: mode === 'edit' });
       const url =
         mode === 'edit' && dbInbound
           ? `/panel/api/inbounds/update/${dbInbound.id}`
@@ -893,9 +912,11 @@ export default function InboundFormModal({
 
   const basicTab = (
     <>
-      <FormField name="enable" label={t('enable')} valueProp="checked">
-        <Switch />
-      </FormField>
+      {mode === 'add' && (
+        <FormField name="enable" label={t('enable')} valueProp="checked">
+          <Switch id="inbound-enable" />
+        </FormField>
+      )}
 
       <FormField name="remark" label={t('pages.inbounds.remark')}>
         <Input />
@@ -978,6 +999,17 @@ export default function InboundFormModal({
         )}
       >
         <InputNumber />
+      </FormField>
+
+      <FormField
+        name="excludeFromSub"
+        valueProp="checked"
+        label={labelWithHint(
+          t('pages.inbounds.form.excludeFromSub'),
+          t('pages.inbounds.form.excludeFromSubHelp'),
+        )}
+      >
+        <Switch />
       </FormField>
 
       {protocol === Protocols.VLESS && (
@@ -1096,6 +1128,8 @@ export default function InboundFormModal({
 
       {protocol === Protocols.TUIC && <TuicFields />}
 
+      {protocol === Protocols.MASQUE && <MasqueSettingsFields />}
+
       {protocol === Protocols.TUN && <TunFields />}
 
       {protocol === Protocols.TUNNEL && <TunnelFields />}
@@ -1152,11 +1186,21 @@ export default function InboundFormModal({
       'grpcSettings',
       'httpupgradeSettings',
       'xhttpSettings',
+      'xdriveSettings',
     ];
     const current = (getV('streamSettings') as Record<string, unknown>) ?? {};
     const cleaned: Record<string, unknown> = { ...current, network: next };
     for (const k of ALL) {
       if (k !== `${next}Settings`) delete cleaned[k];
+    }
+    if (next === 'xdrive') {
+      /* The core would read the inbound's TLS as the storage API's client TLS. */
+      cleaned.security = 'none';
+      delete cleaned.tlsSettings;
+      delete cleaned.realitySettings;
+    } else {
+      delete cleaned.address;
+      delete cleaned.port;
     }
     cleaned[`${next}Settings`] = newStreamSlice(next);
     if (next === 'kcp') {
@@ -1181,6 +1225,12 @@ export default function InboundFormModal({
         cleaned.finalmask = { ...fm, udp };
       }
     }
+    /* WebSocket needs HTTP/1.1 for its handshake; the TLS default
+     * ALPN ['h2','http/1.1'] makes the server negotiate h2 (see #6782). */
+    if (next === 'ws' && cleaned.security === 'tls') {
+      const tls = (cleaned.tlsSettings as Record<string, unknown> | undefined) ?? {};
+      cleaned.tlsSettings = { ...tls, alpn: ['http/1.1'] };
+    }
     setV('streamSettings', cleaned);
   };
 
@@ -1199,6 +1249,7 @@ export default function InboundFormModal({
               { value: 'grpc', label: 'gRPC' },
               { value: 'httpupgrade', label: 'HTTPUpgrade' },
               { value: 'xhttp', label: 'XHTTP' },
+              { value: 'xdrive', label: 'XDRIVE' },
             ]}
           />
         </Form.Item>
@@ -1208,6 +1259,8 @@ export default function InboundFormModal({
           isn't user-selectable (always 'hysteria'), so the network
           dropdown is hidden above. */}
       {protocol === Protocols.HYSTERIA && <HysteriaFields />}
+
+      {protocol === Protocols.MASQUE && <MasqueStreamFields />}
 
       {hasSelectableTransport && (
         <>
@@ -1222,6 +1275,8 @@ export default function InboundFormModal({
           {network === 'httpupgrade' && <HttpUpgradeForm />}
 
           {network === 'kcp' && <KcpForm />}
+
+          {network === 'xdrive' && <XDriveForm />}
         </>
       )}
 
@@ -1244,6 +1299,7 @@ export default function InboundFormModal({
               onChange={field.onChange}
               network={network}
               protocol={protocol}
+              side="server"
             />
           )}
         />
@@ -1253,7 +1309,7 @@ export default function InboundFormModal({
 
   const tlsOk = canEnableTls({ protocol, streamSettings: { network, security } });
   const realityOk = canEnableReality({ protocol, streamSettings: { network, security } });
-  const tlsOnly = protocol === Protocols.HYSTERIA;
+  const tlsOnly = protocol === Protocols.HYSTERIA || protocol === Protocols.MASQUE;
 
   const securityTab = (
     <>
@@ -1443,6 +1499,7 @@ export default function InboundFormModal({
                     Protocols.NAIVEPROXY,
                     Protocols.TUIC,
                     Protocols.TPROXY,
+                    Protocols.MASQUE,
                   ] as string[]
                 ).includes(protocol) || isFallbackHost
                   ? [

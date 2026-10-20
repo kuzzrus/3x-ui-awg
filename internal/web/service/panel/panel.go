@@ -20,6 +20,7 @@ import (
 
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
+	"github.com/mhsanaei/3x-ui/v3/internal/util/version"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/global"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/service"
 )
@@ -617,57 +618,11 @@ func resolveUpdateFolders() (string, string) {
 }
 
 func isNewerVersion(latest string, current string) bool {
-	cmp, ok := compareVersionStrings(latest, current)
+	cmp, ok := version.Compare(latest, current)
 	if !ok {
-		return normalizeVersionTag(latest) != normalizeVersionTag(current)
+		return version.Normalize(latest) != version.Normalize(current)
 	}
 	return cmp > 0
-}
-
-func compareVersionStrings(a string, b string) (int, bool) {
-	aParts, okA := parseVersionParts(a)
-	bParts, okB := parseVersionParts(b)
-	if !okA || !okB {
-		return 0, false
-	}
-	for i := range len(aParts) {
-		if aParts[i] > bParts[i] {
-			return 1, true
-		}
-		if aParts[i] < bParts[i] {
-			return -1, true
-		}
-	}
-	return 0, true
-}
-
-// versionPartsPattern matches a plain "X.Y.Z" tag as well as this fork's own
-// "X.Y.Z-awg.N" release tags (see internal/config/version). The awg build
-// number is treated as a 4th, lower-priority component that defaults to 0 for
-// a plain upstream-style tag, so e.g. "3.5.0-awg.2" > "3.5.0-awg.1" > "3.5.0".
-var versionPartsPattern = regexp.MustCompile(`^v?(\d+)\.(\d+)\.(\d+)(?:-awg\.(\d+))?$`)
-
-func parseVersionParts(version string) ([4]int, bool) {
-	var result [4]int
-	matches := versionPartsPattern.FindStringSubmatch(strings.TrimSpace(version))
-	if matches == nil {
-		return result, false
-	}
-	for i, part := range matches[1:] {
-		if part == "" {
-			continue // awg build number omitted -- defaults to 0
-		}
-		n, err := strconv.Atoi(part)
-		if err != nil {
-			return result, false
-		}
-		result[i] = n
-	}
-	return result, true
-}
-
-func normalizeVersionTag(version string) string {
-	return strings.TrimPrefix(strings.TrimSpace(version), "v")
 }
 
 func shellQuote(value string) string {

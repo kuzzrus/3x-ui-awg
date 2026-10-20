@@ -58,8 +58,10 @@ func migrationModels() []any {
 		&model.NodeClientIp{},
 		&model.AgentCounter{},
 		&model.ClientGlobalTraffic{},
+		&model.NodePendingReset{},
 		&model.OutboundSubscription{},
 		&model.SubBalancer{},
+		&model.TuicTrafficReceipt{},
 	}
 }
 

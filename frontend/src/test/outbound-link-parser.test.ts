@@ -9,6 +9,7 @@ import {
   parseHysteria2Link,
   parseWireguardLink,
 } from '@/lib/xray/outbound-link-parser';
+import { formValuesToWirePayload, rawOutboundToFormValues } from '@/lib/xray/outbound-form-adapter';
 import { Base64 } from '@/utils';
 
 // Focused acceptance tests for the share-link parsers — one happy-path
@@ -224,10 +225,36 @@ describe('parseVlessLink — XHTTP advanced fields', () => {
 });
 
 describe('parseVlessLink', () => {
+  // Older panels share xdns as string lists (pre-26.9.30, a load error) or as name/typed
+  // resolver objects (26.9.30) that xray-core 26.10.10 reads as no domain at all.
+  it.each([
+    ['pre-26.9.30 string lists', { resolvers: ['t.example.com+udp://8.8.8.8:53'] }],
+    [
+      '26.9.30 objects',
+      {
+        domains: [{ name: 't.example.com', types: [16], edns0: 1232 }],
+        resolvers: [{ type: 'udp', settings: { addr: '8.8.8.8:53' } }],
+      },
+    ],
+  ])('upgrades a %s xdns fm= mask to names/addrs', (_shape, settings) => {
+    const fm = encodeURIComponent(JSON.stringify({ udp: [{ type: 'xdns', settings }] }));
+    const out = parseVlessLink(
+      `vless://11111111-2222-4333-8444-555555555555@srv:53?type=kcp&security=none&fm=${fm}#dns`,
+    );
+    const finalmask = (out!.streamSettings as Record<string, unknown>).finalmask as {
+      udp: Array<{ settings: unknown }>;
+    };
+    expect(finalmask.udp[0].settings).toEqual({
+      domains: [{ names: ['t.example.com'], types: [16], edns0: 1232 }],
+      resolvers: [{ addrs: ['udp://8.8.8.8:53'] }],
+    });
+  });
+
   it('parses a vless:// link with reality', () => {
     const link =
       'vless://11111111-2222-4333-8444-555555555555@srv.example:443' +
       '?type=tcp&security=reality&pbk=pubkey&sid=abcd&fp=chrome&sni=cloudflare.com&flow=xtls-rprx-vision' +
+      '&support-x25519mlkem768=true' +
       '#imported-vless';
     const out = parseVlessLink(link);
     expect(out?.protocol).toBe('vless');
@@ -243,6 +270,14 @@ describe('parseVlessLink', () => {
     expect(reality.publicKey).toBe('pubkey');
     expect(reality.shortId).toBe('abcd');
     expect(reality.serverName).toBe('cloudflare.com');
+    // The hint is for Mihomo; xray-core's REALITYConfig has no such field.
+    expect(reality).not.toHaveProperty('supportX25519Mlkem768');
+
+    const form = rawOutboundToFormValues(out!);
+    const saved = formValuesToWirePayload(form);
+    const savedReality = (saved.streamSettings as Record<string, unknown>)
+      .realitySettings as Record<string, unknown>;
+    expect(savedReality).not.toHaveProperty('supportX25519Mlkem768');
   });
 
   it('parses encryption + pqv (post-quantum) into settings and mldsa65Verify', () => {
@@ -270,8 +305,25 @@ describe('mKCP share params', () => {
   // The emitter flattens one mkcp-legacy mask per field into headerType/seed; a merged
   // mask drops the seed in xray-core (MkcpLegacy.Build), so import rebuilds them separately.
   type Mask = { type: string; settings: { header: string; value: string } };
+  const vmessKcp = (fields: Record<string, unknown>) =>
+    'vmess://' +
+    Base64.encode(
+      JSON.stringify({
+        v: '2',
+        add: 'h.com',
+        port: 443,
+        id: '11111111-2222-4333-8444-555555555555',
+        net: 'kcp',
+        tls: 'none',
+        ...fields,
+      }),
+    );
   const parse = (link: string) => {
-    const out = link.startsWith('trojan://') ? parseTrojanLink(link) : parseVlessLink(link);
+    const out = link.startsWith('trojan://')
+      ? parseTrojanLink(link)
+      : link.startsWith('vmess://')
+        ? parseVmessLink(link)
+        : parseVlessLink(link);
     expect(out).not.toBeNull();
     const stream = out!.streamSettings as Record<string, unknown>;
     const kcp = stream.kcpSettings as { mtu: number; tti: number };
@@ -322,8 +374,41 @@ describe('mKCP share params', () => {
       { mtu: 1350, tti: 20 },
       [],
     ],
+    [
+      'vmess header and seed from type and path',
+      vmessKcp({ type: 'wechat-video', path: 'secret-seed', mtu: 1400, tti: 50 }),
+      { mtu: 1400, tti: 50 },
+      [
+        ['mkcp-legacy', '', 'secret-seed'],
+        ['mkcp-legacy', 'wechat', ''],
+      ],
+    ],
+    [
+      'vmess fm mkcp-legacy mask wins over path',
+      vmessKcp({
+        type: 'none',
+        path: 's3cr3tSeed',
+        mtu: 1350,
+        tti: 20,
+        fm: JSON.stringify({
+          udp: [{ settings: { header: '', value: 's3cr3tSeed' }, type: 'mkcp-legacy' }],
+        }),
+      }),
+      { mtu: 1350, tti: 20 },
+      [['mkcp-legacy', '', 's3cr3tSeed']],
+    ],
   ])('%s', (_name, link, kcp, masks) => {
     expect(parse(link)).toEqual({ kcp, masks });
+  });
+
+  it('keeps a vmess fm udp mask', () => {
+    const fm = JSON.stringify({
+      udp: [{ type: 'salamander', settings: { password: 'obfspw123' } }],
+    });
+    const out = parseVmessLink(vmessKcp({ type: 'none', fm }));
+    expect((out!.streamSettings as Record<string, unknown>).finalmask).toEqual({
+      udp: [{ type: 'salamander', settings: { password: 'obfspw123' } }],
+    });
   });
 });
 
@@ -453,6 +538,42 @@ describe('parseShadowsocksLink', () => {
 });
 
 describe('parseHysteria2Link', () => {
+  // A panel older than the 26.9.9 core shares its hop range as quicParams.udpHop in fm=,
+  // which the core ignores; the import must hand it the udphop mask instead.
+  it('upgrades a legacy fm= quicParams.udpHop to the udphop mask', () => {
+    const fm = encodeURIComponent(
+      JSON.stringify({ quicParams: { udpHop: { ports: '20000-30000', interval: '5-10' } } }),
+    );
+    const out = parseHysteria2Link(
+      `hysteria2://auth@hy.example.com:443?sni=hy.example.com&fm=${fm}#hy`,
+    );
+    expect((out!.streamSettings as Record<string, unknown>).finalmask).toEqual({
+      udp: [
+        {
+          type: 'udphop',
+          settings: { mode: 'intervalRemote', remotePorts: '20000-30000', interval: '5-10' },
+        },
+      ],
+    });
+  });
+
+  // The core reverses the UDP masks and refuses a udphop anywhere but last ("incorrect index"),
+  // so an import of a link that lists it first must reorder it like the Go importer does.
+  it('moves a udphop mask listed first in fm= to the end', () => {
+    const hop = {
+      type: 'udphop',
+      settings: { mode: 'intervalRemote', remotePorts: '20000-30000' },
+    };
+    const salamander = { type: 'salamander', settings: { password: 's3cr3t' } };
+    const fm = encodeURIComponent(JSON.stringify({ udp: [hop, salamander] }));
+    const out = parseHysteria2Link(
+      `hysteria2://auth@hy.example.com:443?sni=hy.example.com&fm=${fm}#hy`,
+    );
+    expect((out!.streamSettings as Record<string, unknown>).finalmask).toEqual({
+      udp: [salamander, hop],
+    });
+  });
+
   it('parses a hysteria2:// link with sni', () => {
     const link = 'hysteria2://auth-secret@srv.example:443?sni=example.com#imported-hy2';
     const out = parseHysteria2Link(link);
@@ -787,8 +908,14 @@ describe('parseVlessLink — extra / fm / x_padding_bytes (B20)', () => {
     const quicParams = finalmask.quicParams as Record<string, unknown>;
     expect(quicParams.congestion).toBe('bbr');
     expect(quicParams.maxIdleTimeout).toBe(30);
-    expect((quicParams.udpHop as Record<string, unknown>).interval).toBe('5-10');
-    expect((quicParams.udpHop as Record<string, unknown>).ports).toBe('20000-50000');
+    // xray-core 26.9.9 ignores quicParams.udpHop; the import moves it to the udphop mask.
+    expect(quicParams.udpHop).toBeUndefined();
+    expect(finalmask.udp).toEqual([
+      {
+        type: 'udphop',
+        settings: { mode: 'intervalRemote', remotePorts: '20000-50000', interval: '5-10' },
+      },
+    ]);
   });
 
   it('falls back to x_padding_bytes when extra has no xPaddingBytes', () => {

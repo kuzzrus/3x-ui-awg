@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AmneziawgInboundSettingsSchema } from './amneziawg';
 import { HttpInboundSettingsSchema } from './http';
 import { HysteriaInboundSettingsSchema } from './hysteria';
+import { MasqueInboundSettingsSchema } from './masque';
 import { MixedInboundSettingsSchema } from './mixed';
 import { MtprotoInboundSettingsSchema } from './mtproto';
 import { NaiveproxyInboundSettingsSchema } from './naiveproxy';
@@ -19,6 +20,7 @@ import { WireguardInboundSettingsSchema } from './wireguard';
 export * from './amneziawg';
 export * from './http';
 export * from './hysteria';
+export * from './masque';
 export * from './mixed';
 export * from './mtproto';
 export * from './naiveproxy';
@@ -53,5 +55,6 @@ export const InboundSettingsSchema = z.discriminatedUnion('protocol', [
   z.object({ protocol: z.literal('naiveproxy'), settings: NaiveproxyInboundSettingsSchema }),
   z.object({ protocol: z.literal('tuic'), settings: TuicInboundSettingsSchema }),
   z.object({ protocol: z.literal('tproxy'), settings: TproxyInboundSettingsSchema }),
+  z.object({ protocol: z.literal('masque'), settings: MasqueInboundSettingsSchema }),
 ]);
 export type InboundSettings = z.infer<typeof InboundSettingsSchema>;
