@@ -1,20 +1,26 @@
 import { useTranslation } from 'react-i18next';
-import { Col, Input, InputNumber, Radio, Row, Select } from 'antd';
+import { Alert, Col, Input, InputNumber, Radio, Row, Select } from 'antd';
 import { useFormContext, useWatch } from 'react-hook-form';
 
 import { useDecoyTemplates } from '@/api/queries/useDecoyTemplates';
 import { FormField } from '@/components/form/rhf';
-import { isDomainName, type AgentFormValues } from '@/schemas/node';
+import { DEFAULT_DECOY_PORT, isDomainName, type AgentFormValues } from '@/schemas/node';
+
+interface AgentDecoyFieldsProps {
+  // Says in the form what the domain is for and what is left to do by hand, which the add wizard needs.
+  explain?: boolean;
+}
 
 // The decoy of an agent node: what whoever probes the port its REALITY fallback points at is shown. The
 // fields after the mode are the ones that mode and the certificate source need.
-export default function AgentDecoyFields() {
+export default function AgentDecoyFields({ explain }: AgentDecoyFieldsProps) {
   const { t } = useTranslation();
   const { control } = useFormContext<AgentFormValues>();
   const mode = useWatch({ control, name: 'decoyMode' });
   const cert = useWatch({ control, name: 'decoyCert' });
   const chosenTemplate = useWatch({ control, name: 'decoyTemplate' });
   const address = useWatch({ control, name: 'address' }) ?? '';
+  const port = useWatch({ control, name: 'decoyPort' }) ?? DEFAULT_DECOY_PORT;
   const templates = useDecoyTemplates(mode === 'template');
   const templateOptions = (
     templates.includes(chosenTemplate) ? templates : [chosenTemplate, ...templates]
@@ -62,7 +68,8 @@ export default function AgentDecoyFields() {
           <FormField
             label={t('pages.nodes.agent.decoyDomain')}
             name="decoyDomain"
-            tooltip={t('pages.nodes.agent.decoyDomainHint')}
+            tooltip={explain ? undefined : t('pages.nodes.agent.decoyDomainHint')}
+            extra={explain ? t('pages.nodes.agent.decoyDomainHint') : undefined}
           >
             <Input placeholder={isDomainName(address) ? address.trim() : 'node.example.com'} />
           </FormField>
@@ -99,6 +106,13 @@ export default function AgentDecoyFields() {
           >
             <InputNumber min={1024} max={65535} style={{ width: '100%' }} />
           </FormField>
+          {explain && (
+            <Alert
+              type="info"
+              showIcon
+              title={t('pages.nodes.agent.wizard.fallbackNote', { port })}
+            />
+          )}
         </>
       )}
     </>

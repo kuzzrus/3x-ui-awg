@@ -86,13 +86,17 @@ TUIC, tproxy, NaiveProxy) stay on full-panel nodes.
 <Step>
 ### Add the agent on the master
 
-On the Nodes page choose **Add agent** and give a name and the **Node address**, the
-domain or the IP of the server. Then choose who connects: the panel to the node, which
-needs the **Port of the agent** open on the server (a TCP port, 8443 by default, never
-the 443 of the node's own Xray), or the node to the panel, which needs no open port (see
-"A node that connects to the panel" below). The panel creates the node and shows a
-**pairing bundle** once. The bundle holds the agent's private key and secret and is never
-stored, so copy it before you close the window.
+On the Nodes page choose **Add agent**. A window with five steps asks one thing at a time:
+the **Server** (a name and the **Node address**, the domain or the IP of the server), the
+**Link** to the panel, the **Decoy** and **More** options, both optional, and **Install**.
+On the Link step choose who connects: the node to the panel, which needs no open port (see
+"A node that connects to the panel" below), or the panel to the node, which needs the
+**Port of the agent** open on the server (a TCP port, 8443 by default, never the 443 of the
+node's own Xray). The window starts with the node connecting to the panel when the panel is
+opened over https at a domain name. **Create node** on the last of the questions creates the
+node, and the Install step shows a **pairing bundle** once, with the command to run on the
+server. The bundle holds the agent's private key and secret and is never stored, so copy it
+before you close the window, which only its **Done** button does.
 </Step>
 
 <Step>
@@ -116,7 +120,8 @@ remove everything.
 ### Watch it come online
 
 The node shows **online** after the first heartbeat and the master pushes its config
-within seconds. Inbounds you attach to the node reach it on the next sync.
+within seconds. The Install step of the window follows the node and says when it is online.
+Inbounds you attach to the node reach it on the next sync.
 </Step>
 
 </Steps>
@@ -180,7 +185,7 @@ keeps its inbounds: it asks for the address of the panel, or for the port of the
 
 The routing rules and outbounds of the master are one template, and every agent node runs
 it. To run a rule on some agent nodes only, give those nodes the same **Tags** (for example
-`ru`) under **More options** in their settings, then pick the tag in the **Agent nodes** field of the rule on the
+`ru`) under **More options** in their settings (the **More** step when the node is added), then pick the tag in the **Agent nodes** field of the rule on the
 **Routing Rules** tab of the Xray settings. A rule with no node tags is for every core, the
 panel's own and every agent's. A rule with node tags is for the agent nodes that carry one of
 them, and not for the panel's own core. Tags are matched without regard to case, and a node
@@ -200,7 +205,7 @@ and which tags give it.
 
 ### Tor and Psiphon on an agent node
 
-Tick **Tor** or **Psiphon** under **Helper programs**, in **More options** in the settings of an agent node, and the
+Tick **Tor** or **Psiphon** under **Helper programs**, in **More options** in the settings of an agent node (the **More** step when the node is added), and the
 agent runs that client beside Xray: a SOCKS proxy on `127.0.0.1:19050` (Tor) or
 `127.0.0.1:19060` (Psiphon) of that server, started again with the agent even when the master is
 out of reach. If the server lacks the program, the agent installs
@@ -221,12 +226,13 @@ has it.
 
 ### Decoy site on an agent node
 
-Under **Decoy site** in the settings of an agent node, pick what anyone who probes the node is shown: a
+On the **Decoy** step of the window that adds an agent node, or under **Decoy site** in its settings later, pick what anyone who probes the node is shown: a
 page built into the panel, a reverse proxy to a site you already host, or AdGuard Home. It is the decoy of the panel's
 own [reverse proxy](/docs/operations/reverse-proxy), on the node: a TLS listener on `127.0.0.1` and the
 port you choose (7443 by default), which the REALITY fallback of the node reaches. Set the fallback target
 of a REALITY inbound of this node to `127.0.0.1:<port>` yourself, and a probe that has no key is handed the
-decoy; the Nodes page repeats the target in the info of the node.
+decoy; the window says so once a decoy is chosen, and the Nodes page repeats the target in the info of
+the node.
 
 The decoy needs a **domain** that points at the node and a certificate for it. Left empty, the domain is the **Node
 address** when that is a domain, and an IP address needs a domain given here. **Automatic** gets a certificate from
