@@ -232,11 +232,12 @@ describe('RuleFormModal edit preserves unsurfaced fields', () => {
   });
 
   // The shape Xray refuses must not become an empty field: the rule would be saved without its port, and match every one.
-  it('does not save a rule whose port is neither a number nor text', () => {
+  it('does not save a rule whose port is neither a number nor text, and says why', async () => {
     const onConfirm = renderRule({ type: 'field', outboundTag: 'direct', port: [80, 443] });
 
     fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
 
+    await waitFor(() => expect(document.body.textContent).toContain('cannot read'));
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
@@ -271,11 +272,12 @@ describe('RuleFormModal edit preserves unsurfaced fields', () => {
     );
   });
 
-  it('does not save a rule whose inbound tags are of a shape that no list or text is', () => {
+  it('does not save a rule whose inbound tags are of a shape that no list or text is', async () => {
     const onConfirm = renderRule({ type: 'field', outboundTag: 'direct', inboundTag: 5 });
 
     fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
 
+    await waitFor(() => expect(document.body.textContent).toContain('cannot read'));
     expect(onConfirm).not.toHaveBeenCalled();
   });
 });

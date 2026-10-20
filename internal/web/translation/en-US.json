@@ -2164,7 +2164,8 @@
         "dest": "Destination",
         "inbound": "Inbound",
         "balancer": "Balancer",
-        "useComma": "Comma-separated list"
+        "useComma": "Comma-separated list",
+        "unreadable": "The rule holds a value the editor cannot read, so it cannot be saved here. Fix it in the JSON editor of the Xray settings."
       },
       "routing": {
         "dragToReorder": "Drag to reorder"

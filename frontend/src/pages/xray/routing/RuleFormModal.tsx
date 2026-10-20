@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Form, Input, Modal, Select, Space, Switch, Tooltip } from 'antd';
+import { Button, Form, Input, Modal, Select, Space, Switch, Tooltip, message } from 'antd';
 import { PlusOutlined, MinusOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import { FormProvider, useForm, useWatch } from 'react-hook-form';
 import { InputAddon } from '@/components/ui';
@@ -97,6 +97,7 @@ export default function RuleFormModal({
 }: RuleFormModalProps) {
   const { t } = useTranslation();
   const methods = useForm<RuleFormValues>({ defaultValues: initialForm() });
+  const [messageApi, messageContextHolder] = message.useMessage();
   const isEdit = rule != null;
 
   // A tag no node carries yet can be typed in; the nodes are asked for only once the form opens.
@@ -149,7 +150,10 @@ export default function RuleFormModal({
 
   function submit() {
     const validated = RuleFormSchema.safeParse(methods.getValues());
-    if (!validated.success) return;
+    if (!validated.success) {
+      messageApi.error(t('pages.xray.rules.unreadable'));
+      return;
+    }
     const v = validated.data;
     const built: Record<string, unknown> = {
       type: 'field',
@@ -203,6 +207,7 @@ export default function RuleFormModal({
       onOk={submit}
       onCancel={onClose}
     >
+      {messageContextHolder}
       <FormProvider {...methods}>
         <Form colon={false} labelCol={{ md: { span: 8 } }} wrapperCol={{ md: { span: 14 } }}>
           <FormField name="enabled" label={t('enable')} valueProp="checked">
