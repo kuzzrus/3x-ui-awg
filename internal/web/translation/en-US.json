@@ -1305,6 +1305,7 @@
         "connectionPullHint": "Nothing has to be opened on the server for the panel, and it works behind a NAT too. The server has to reach this panel over https.",
         "recommended": "Recommended here",
         "portWhy": "The port the panel reaches the agent on. 443 is taken by the Xray of the node, so 8443 is suggested, and any free port will do. Open it in the firewall of the server.",
+        "portInvalid": "The port of the agent must be a number from 1 to 65535",
         "wizard": {
           "steps": {
             "server": "Server",

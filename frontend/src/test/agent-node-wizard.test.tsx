@@ -171,6 +171,41 @@ describe('AgentNodeWizard: the link to the panel', () => {
     expect(screen.getByLabelText('Port of the agent')).toHaveProperty('value', '8443');
   });
 
+  // The number box clamps what is typed into it to the range, so an emptied box is the one way to a wrong port.
+  it('says in a sentence what is wrong with an emptied port box, and does not go on', async () => {
+    renderWizard();
+    await toLink();
+
+    fireEvent.change(screen.getByLabelText('Port of the agent'), { target: { value: '' } });
+    press('Next');
+    await waitFor(() =>
+      expect(document.body.textContent).toContain(
+        'The port of the agent must be a number from 1 to 65535',
+      ),
+    );
+    expect(screen.queryByText(DECOY_TITLE)).toBeNull();
+  });
+
+  it('says each thing once, under the field, and not again in a tooltip', async () => {
+    renderWizard();
+    const tooltipOf = (label: string) =>
+      screen
+        .getByText(label, { selector: 'label' })
+        .closest('.ant-form-item')
+        ?.querySelector('.ant-form-item-tooltip');
+    await toLink();
+
+    expect(tooltipOf('Connection')).toBeNull();
+    expect(tooltipOf('Port of the agent')).toBeNull();
+    // The panel address keeps its tooltip, which shows that this look finds one where there is one.
+    fireEvent.click(screen.getByRole('radio', { name: /^The node connects to the panel/ }));
+    expect(tooltipOf('Panel address')).not.toBeNull();
+    fireEvent.click(screen.getByRole('radio', { name: /^The panel connects to the node/ }));
+    await goOn(DECOY_TITLE);
+    choose('Decoy site', ADGUARD);
+    expect(tooltipOf('Domain')).toBeNull();
+  });
+
   it('says what each way costs', async () => {
     renderWizard();
     await toLink();

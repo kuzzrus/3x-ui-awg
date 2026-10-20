@@ -68,7 +68,7 @@ export default function AgentDecoyFields({ explain }: AgentDecoyFieldsProps) {
           <FormField
             label={t('pages.nodes.agent.decoyDomain')}
             name="decoyDomain"
-            tooltip={t('pages.nodes.agent.decoyDomainHint')}
+            tooltip={explain ? undefined : t('pages.nodes.agent.decoyDomainHint')}
             extra={explain ? t('pages.nodes.agent.decoyDomainHint') : undefined}
           >
             <Input placeholder={isDomainName(address) ? address.trim() : 'node.example.com'} />

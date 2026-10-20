@@ -60,7 +60,7 @@ export default function AgentConnectionFields({ fixed, explain }: AgentConnectio
         <FormField
           label={t('pages.nodes.agent.connection')}
           name="pull"
-          tooltip={t('pages.nodes.agent.connectionHint')}
+          tooltip={explain ? undefined : t('pages.nodes.agent.connectionHint')}
         >
           <Radio.Group
             orientation={explain ? 'vertical' : undefined}
@@ -101,7 +101,7 @@ export default function AgentConnectionFields({ fixed, explain }: AgentConnectio
         <FormField
           label={t('pages.nodes.agent.port')}
           name="port"
-          tooltip={t('pages.nodes.agent.portHint')}
+          tooltip={explain ? undefined : t('pages.nodes.agent.portHint')}
           extra={explain ? t('pages.nodes.agent.portWhy') : undefined}
         >
           <InputNumber min={1} max={65535} style={{ width: '100%' }} />

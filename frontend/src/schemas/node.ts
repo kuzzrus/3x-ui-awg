@@ -6,6 +6,14 @@ const TAGS_INVALID = 'pages.nodes.agent.tagsInvalid';
 const DECOY_INCOMPLETE = 'pages.nodes.agent.decoyIncomplete';
 const MASTER_URL_INVALID = 'pages.nodes.agent.masterUrlInvalid';
 const MASTER_PIN_INVALID = 'pages.nodes.agent.masterPinInvalid';
+const PORT_INVALID = 'pages.nodes.agent.portInvalid';
+
+// An emptied box hands null to the schema, which takes it for the same wrong port as 0 or 70000 is.
+const AgentPortSchema = z
+  .number(PORT_INVALID)
+  .int(PORT_INVALID)
+  .min(1, PORT_INVALID)
+  .max(65535, PORT_INVALID);
 
 // The loopback port an agent's decoy listens on when none is chosen, which the REALITY fallback of the node points at.
 export const DEFAULT_DECOY_PORT = 7443;
@@ -184,7 +192,7 @@ export const AgentFormSchema = z
     name: z.string().trim().min(1, 'pages.nodes.toasts.fillRequired'),
     remark: z.string().optional(),
     address: z.string().trim().min(1, 'pages.nodes.toasts.fillRequired'),
-    port: z.number().int().min(1).max(65535),
+    port: AgentPortSchema,
     // The agent dials the panel at masterUrl, which has no use for the port above.
     pull: z.boolean(),
     masterUrl: z.string().trim(),
@@ -234,7 +242,7 @@ export const AgentFormSchema = z
 export const AgentRepairFormSchema = z
   .object({
     pull: z.boolean(),
-    port: z.number().int().min(1).max(65535),
+    port: AgentPortSchema,
     masterUrl: z.string().trim(),
     masterPin: z.string().trim(),
   })

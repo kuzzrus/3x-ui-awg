@@ -262,6 +262,23 @@ describe('AgentNodeFormModal', () => {
     enable: true,
   };
 
+  it('says in a sentence what is wrong with an emptied port box, and saves nothing', async () => {
+    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
+    renderWithProviders(
+      <AgentNodeFormModal open node={edge} save={save} onOpenChange={() => {}} />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Port of the agent'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(document.body.textContent).toContain(
+        'The port of the agent must be a number from 1 to 65535',
+      ),
+    );
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it('has no field for a secret, a scheme or a certificate', () => {
     renderWithProviders(
       <AgentNodeFormModal open node={edge} save={vi.fn()} onOpenChange={() => {}} />,
@@ -721,6 +738,20 @@ describe('AgentRepairModal', () => {
       expect.objectContaining({ pull: false, port: 9443 }),
     );
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('says in a sentence what is wrong with an emptied port box, and pairs nothing', async () => {
+    const { pair } = renderRepair(pushNode);
+
+    fireEvent.change(screen.getByLabelText('Port of the agent'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Pair again' }));
+
+    await waitFor(() =>
+      expect(document.body.textContent).toContain(
+        'The port of the agent must be a number from 1 to 65535',
+      ),
+    );
+    expect(pair).not.toHaveBeenCalled();
   });
 
   it('pairs it the other way, with the address of the panel', async () => {
