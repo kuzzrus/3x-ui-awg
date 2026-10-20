@@ -1,6 +1,18 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Checkbox, Col, Form, Input, Modal, Row, Select, Switch, message } from 'antd';
+import {
+  Alert,
+  Checkbox,
+  Col,
+  Collapse,
+  Form,
+  Input,
+  Modal,
+  Row,
+  Select,
+  Switch,
+  message,
+} from 'antd';
 import { FormProvider, useForm } from 'react-hook-form';
 
 import type { NodeRecord } from '@/api/queries/useNodesQuery';
@@ -8,6 +20,8 @@ import type { Msg } from '@/utils';
 import {
   AgentFormSchema,
   DEFAULT_DECOY_PORT,
+  isDomainName,
+  isPublicDomainName,
   MAX_NODE_TAGS,
   NODE_SIDECARS,
   type AgentFormValues,
@@ -35,7 +49,9 @@ function defaultValues(): AgentFormValues {
     remark: '',
     address: '',
     port: DEFAULT_AGENT_PORT,
-    pull: false,
+    // A panel opened over https at a public name is one that a node can dial, which needs no open port on the
+    // node. At an IP address or at localhost it is one that a node may not reach, and the panel dials the node.
+    pull: window.location.protocol === 'https:' && isPublicDomainName(window.location.hostname),
     masterUrl: defaultMasterUrl(),
     masterPin: '',
     enable: true,
@@ -72,6 +88,17 @@ function decoyValues(node: NodeRecord, base: AgentFormValues): Partial<AgentForm
   };
 }
 
+// The options that most nodes leave as they are, which an edited node shows open when it has changed one.
+function usesAdvancedOptions(node: NodeRecord | null): boolean {
+  return (
+    !!node &&
+    (!!node.allowPrivateAddress ||
+      !!node.outboundTag ||
+      !!node.tags?.length ||
+      !!node.sidecars?.length)
+  );
+}
+
 // Adds an agent node (node === null) or edits one. The agent's secret and certificate are not
 // fields: the panel mints them, and the pairing bundle that carries them comes back once.
 export default function AgentNodeFormModal({
@@ -84,6 +111,7 @@ export default function AgentNodeFormModal({
   const methods = useForm<AgentFormValues>({ defaultValues: defaultValues() });
   const [messageApi, messageContextHolder] = message.useMessage();
   const [submitting, setSubmitting] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const outboundOptions = useNodeOutboundOptions();
   const tagOptions = useNodeTags().map((tag) => ({ label: tag, value: tag }));
   const sidecarOptions = NODE_SIDECARS.map((name) => ({
@@ -98,6 +126,7 @@ export default function AgentNodeFormModal({
     if (synced) setSynced(null);
   } else if (!synced || synced.node !== node) {
     setSynced({ node });
+    setAdvancedOpen(usesAdvancedOptions(node));
     const base = defaultValues();
     methods.reset(
       node
@@ -120,7 +149,12 @@ export default function AgentNodeFormModal({
   }
 
   async function onFinish(values: AgentFormValues) {
-    const result = AgentFormSchema.safeParse(values);
+    // The decoy is for the name of the node unless another is given.
+    const named =
+      values.decoyMode !== '' && values.decoyDomain.trim() === '' && isDomainName(values.address)
+        ? { ...values, decoyDomain: values.address.trim() }
+        : values;
+    const result = AgentFormSchema.safeParse(named);
     if (!result.success) {
       messageApi.error(t(result.error.issues[0]?.message ?? 'pages.nodes.toasts.fillRequired'));
       return;
@@ -180,11 +214,12 @@ export default function AgentNodeFormModal({
             </Row>
 
             <FormField
-              label={t('pages.nodes.address')}
+              label={t('pages.nodes.agent.address')}
               name="address"
+              tooltip={t('pages.nodes.agent.addressHint')}
               rules={{ validate: rhfZodValidate(AgentFormSchema.shape.address) }}
             >
-              <Input placeholder={t('pages.nodes.addressPlaceholder')} />
+              <Input placeholder={t('pages.nodes.agent.addressPlaceholder')} />
             </FormField>
 
             <AgentConnectionFields fixed={editing ? (node.pull ? 'pull' : 'push') : undefined} />
@@ -195,52 +230,69 @@ export default function AgentNodeFormModal({
               </FormField>
             )}
 
-            <FormField
-              label={t('pages.nodes.allowPrivateAddress')}
-              name="allowPrivateAddress"
-              valueProp="checked"
-              tooltip={t('pages.nodes.allowPrivateAddressHint')}
-            >
-              <Switch />
-            </FormField>
-
-            <FormField
-              label={t('pages.nodes.outboundTag')}
-              name="outboundTag"
-              tooltip={t('pages.nodes.outboundTagHint')}
-              transform={{ input: (v) => (v as string) || undefined }}
-            >
-              <Select
-                allowClear
-                showSearch
-                placeholder={t('pages.nodes.outboundTagPlaceholder')}
-                options={outboundOptions}
-              />
-            </FormField>
-
-            <FormField
-              label={t('pages.nodes.agent.tags')}
-              name="tags"
-              tooltip={t('pages.nodes.agent.tagsHint')}
-            >
-              <Select
-                mode="tags"
-                maxCount={MAX_NODE_TAGS}
-                tokenSeparators={[',']}
-                placeholder={t('pages.nodes.agent.tagsPlaceholder')}
-                options={tagOptions}
-              />
-            </FormField>
-
-            <FormField
-              label={t('pages.nodes.agent.sidecars')}
-              name="sidecars"
-              tooltip={t('pages.nodes.agent.sidecarsHint')}
-            >
-              <Checkbox.Group options={sidecarOptions} />
-            </FormField>
-
             <AgentDecoyFields />
+
+            <Collapse
+              ghost
+              size="small"
+              activeKey={advancedOpen ? ['more'] : []}
+              onChange={(keys) => setAdvancedOpen(keys.length > 0)}
+              items={[
+                {
+                  key: 'more',
+                  label: t('pages.nodes.agent.advanced'),
+                  forceRender: true,
+                  children: (
+                    <>
+                      <FormField
+                        label={t('pages.nodes.allowPrivateAddress')}
+                        name="allowPrivateAddress"
+                        valueProp="checked"
+                        tooltip={t('pages.nodes.allowPrivateAddressHint')}
+                      >
+                        <Switch />
+                      </FormField>
+
+                      <FormField
+                        label={t('pages.nodes.outboundTag')}
+                        name="outboundTag"
+                        tooltip={t('pages.nodes.outboundTagHint')}
+                        transform={{ input: (v) => (v as string) || undefined }}
+                      >
+                        <Select
+                          allowClear
+                          showSearch
+                          placeholder={t('pages.nodes.outboundTagPlaceholder')}
+                          options={outboundOptions}
+                        />
+                      </FormField>
+
+                      <FormField
+                        label={t('pages.nodes.agent.tags')}
+                        name="tags"
+                        tooltip={t('pages.nodes.agent.tagsHint')}
+                      >
+                        <Select
+                          mode="tags"
+                          maxCount={MAX_NODE_TAGS}
+                          tokenSeparators={[',']}
+                          placeholder={t('pages.nodes.agent.tagsPlaceholder')}
+                          options={tagOptions}
+                        />
+                      </FormField>
+
+                      <FormField
+                        label={t('pages.nodes.agent.sidecars')}
+                        name="sidecars"
+                        tooltip={t('pages.nodes.agent.sidecarsHint')}
+                      >
+                        <Checkbox.Group options={sidecarOptions} />
+                      </FormField>
+                    </>
+                  ),
+                },
+              ]}
+            />
           </Form>
         </FormProvider>
       </Modal>

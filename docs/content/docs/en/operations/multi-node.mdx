@@ -86,16 +86,20 @@ TUIC, tproxy, NaiveProxy) stay on full-panel nodes.
 <Step>
 ### Add the agent on the master
 
-On the Nodes page choose **Add agent** and give a name, the server's address and a TCP
-port (8443 by default). The panel creates the node and shows a **pairing bundle**
-once. The bundle holds the agent's private key and secret and is never stored, so copy
-it before you close the window.
+On the Nodes page choose **Add agent** and give a name and the **Node address**, the
+domain or the IP of the server. Then choose who connects: the panel to the node, which
+needs the **Port of the agent** open on the server (a TCP port, 8443 by default, never
+the 443 of the node's own Xray), or the node to the panel, which needs no open port (see
+"A node that connects to the panel" below). The panel creates the node and shows a
+**pairing bundle** once. The bundle holds the agent's private key and secret and is never
+stored, so copy it before you close the window.
 </Step>
 
 <Step>
 ### Install it on the server
 
-Open the port in the server's firewall, then run this on the server as root:
+If the panel connects to the node, open the port of the agent in the server's firewall.
+Then run this on the server as root:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/kuzzrus/3x-ui-awg/main/install-agent.sh)
@@ -147,13 +151,15 @@ pairing bundle.
 
 ### A node that connects to the panel
 
-By default the panel connects to the agent, so the TCP port of the agent has to be open to the panel. Choose **The
-node connects to the panel** when you add the agent and the agent connects to the panel instead: nothing on the node has
-to be open for it, so it works behind a NAT, and a node whose only public port is the 443 of its own Xray needs no other.
-The form then asks for the **Panel address**, which is the address of this panel as the node reaches it, with its web base
-path (`https://panel.example.com/path/`), and for the SHA-256 of the certificate of the panel only when that is not one
-from a public authority. The pairing bundle holds no certificate or key then, and the installer says that there is no port
-to open.
+When the panel connects to the agent, the TCP port of the agent has to be open to the panel. Choose **The node connects
+to the panel** when you add the agent and the agent connects to the panel instead: nothing on the node has to be open for
+it, so it works behind a NAT, and a node whose only public port is the 443 of its own Xray needs no other. The form starts
+with it when the panel is opened over https at a domain name. At an IP address, at `localhost`, at a name of a private
+network or over http it starts with the panel connecting to the agent, since a node may not reach the address the browser
+is at there, or may not trust its certificate. The form then asks for the **Panel address**, which is the address of this
+panel as the node reaches it, with its web base path (`https://panel.example.com/path/`), filled in with the one the browser
+is at, and for the SHA-256 of the certificate of the panel only when that is not one from a public authority. The pairing
+bundle holds no certificate or key then, and the installer says that there is no port to open.
 
 The agent dials the panel the way a browser reaches it. When the panel sits behind its own
 [reverse proxy](/docs/operations/reverse-proxy), whose REALITY fallback is on 443, the node connects to that 443 and the
@@ -174,7 +180,7 @@ keeps its inbounds: it asks for the address of the panel, or for the port of the
 
 The routing rules and outbounds of the master are one template, and every agent node runs
 it. To run a rule on some agent nodes only, give those nodes the same **Tags** (for example
-`ru`) in their settings, then pick the tag in the **Agent nodes** field of the rule on the
+`ru`) under **More options** in their settings, then pick the tag in the **Agent nodes** field of the rule on the
 **Routing Rules** tab of the Xray settings. A rule with no node tags is for every core, the
 panel's own and every agent's. A rule with node tags is for the agent nodes that carry one of
 them, and not for the panel's own core. Tags are matched without regard to case, and a node
@@ -194,7 +200,7 @@ and which tags give it.
 
 ### Tor and Psiphon on an agent node
 
-Tick **Tor** or **Psiphon** under **Helper programs** in the settings of an agent node and the
+Tick **Tor** or **Psiphon** under **Helper programs**, in **More options** in the settings of an agent node, and the
 agent runs that client beside Xray: a SOCKS proxy on `127.0.0.1:19050` (Tor) or
 `127.0.0.1:19060` (Psiphon) of that server, started again with the agent even when the master is
 out of reach. If the server lacks the program, the agent installs
@@ -222,7 +228,8 @@ port you choose (7443 by default), which the REALITY fallback of the node reache
 of a REALITY inbound of this node to `127.0.0.1:<port>` yourself, and a probe that has no key is handed the
 decoy; the Nodes page repeats the target in the info of the node.
 
-The decoy needs a **domain** that points at the node and a certificate for it. **Automatic** gets one from
+The decoy needs a **domain** that points at the node and a certificate for it. Left empty, the domain is the **Node
+address** when that is a domain, and an IP address needs a domain given here. **Automatic** gets a certificate from
 Let's Encrypt over HTTP-01, so port 80 of the node must be free and reachable; if the name does not point at
 the node, or port 80 is shut, the chip beside the node says **certificate failed** and the tooltip says why.
 **Files on the node** uses a certificate and a key that are on the server already, given by absolute path. A
