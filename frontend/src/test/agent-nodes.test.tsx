@@ -69,31 +69,6 @@ describe('AgentBundleModal', () => {
 });
 
 describe('AgentNodeFormModal', () => {
-  it('adds an agent from where it will be reachable, on port 8443 by default', async () => {
-    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
-    const onOpenChange = vi.fn();
-    renderWithProviders(
-      <AgentNodeFormModal open node={null} save={save} onOpenChange={onOpenChange} />,
-    );
-
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'edge-1' } });
-    fireEvent.change(screen.getByLabelText('Node address'), {
-      target: { value: 'node.example.com' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
-    expect(save.mock.calls[0][0]).toMatchObject({
-      name: 'edge-1',
-      address: 'node.example.com',
-      port: 8443,
-      allowPrivateAddress: false,
-      tags: [],
-      sidecars: [],
-    });
-    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
-  });
-
   it('runs Tor on the agent when asked to, and stops it when unchecked', async () => {
     const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
     const node: NodeRecord = {
@@ -133,202 +108,9 @@ describe('AgentNodeFormModal', () => {
     expect(save.mock.calls[1][0]).toMatchObject({ id: 4, sidecars: [] });
   });
 
-  it('offers Psiphon beside Tor, and sends both in the order they are listed', async () => {
+  it('keeps the options most nodes leave as they are behind a heading', () => {
     const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
-    renderWithProviders(
-      <AgentNodeFormModal open node={null} save={save} onOpenChange={() => {}} />,
-    );
-
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'edge-1' } });
-    fireEvent.change(screen.getByLabelText('Node address'), {
-      target: { value: 'node.example.com' },
-    });
-    openMoreOptions();
-    fireEvent.click(
-      screen.getByRole('checkbox', { name: /Psiphon, a SOCKS proxy on 127.0.0.1:19060/ }),
-    );
-    fireEvent.click(
-      screen.getByRole('checkbox', { name: /Tor, a SOCKS proxy on 127.0.0.1:19050/ }),
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
-    expect(save.mock.calls[0][0].sidecars).toEqual(['tor', 'psiphon']);
-  });
-
-  it('serves a decoy page when asked to, with the defaults of a decoy', async () => {
-    vi.spyOn(HttpUtil, 'post').mockResolvedValue(
-      new Msg(true, '', { templates: ['maintenance', 'parked'] }),
-    );
-    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
-    renderWithProviders(
-      <AgentNodeFormModal open node={null} save={save} onOpenChange={() => {}} />,
-    );
-
-    expect(screen.queryByLabelText('Domain')).toBeNull();
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'edge-1' } });
-    fireEvent.change(screen.getByLabelText('Node address'), {
-      target: { value: 'node.example.com' },
-    });
-    chooseSelectOption(screen.getByLabelText('Decoy site').id, 'A page built into the panel');
-    fireEvent.change(screen.getByLabelText('Domain'), { target: { value: ' decoy.example.com ' } });
-    await waitFor(() => expect(screen.getByLabelText('Page')).toBeTruthy());
-    // The pages come from the panel, a moment after the field is there.
-    await waitFor(() => chooseSelectOption(screen.getByLabelText('Page').id, 'Parked domain'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
-    expect(save.mock.calls[0][0]).toMatchObject({
-      decoyMode: 'template',
-      decoyTemplate: 'parked',
-      decoyDomain: 'decoy.example.com',
-      decoyCert: 'auto',
-      decoyPort: 7443,
-    });
-  });
-
-  it('asks for the files of a certificate on the node, and for the address of a proxy', async () => {
-    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
-    renderWithProviders(
-      <AgentNodeFormModal open node={null} save={save} onOpenChange={() => {}} />,
-    );
-
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'edge-1' } });
-    fireEvent.change(screen.getByLabelText('Node address'), {
-      target: { value: 'node.example.com' },
-    });
-    chooseSelectOption(screen.getByLabelText('Decoy site').id, 'A reverse proxy to a site');
-    expect(screen.getByLabelText('Address of the site')).toBeTruthy();
-    expect(screen.queryByLabelText('Page')).toBeNull();
-    fireEvent.change(screen.getByLabelText('Domain'), { target: { value: 'decoy.example.com' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(document.body.textContent).toContain('A decoy needs a domain'));
-    expect(save).not.toHaveBeenCalled();
-
-    fireEvent.change(screen.getByLabelText('Address of the site'), {
-      target: { value: 'https://site.example' },
-    });
-    fireEvent.click(screen.getByRole('radio', { name: 'Files on the node' }));
-    expect(screen.queryByLabelText('Email for the certificate')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(save).not.toHaveBeenCalled());
-
-    fireEvent.change(screen.getByLabelText('Certificate file'), {
-      target: { value: '/etc/ssl/n.pem' },
-    });
-    fireEvent.change(screen.getByLabelText('Key file'), { target: { value: '/etc/ssl/n.key' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
-    expect(save.mock.calls[0][0]).toMatchObject({
-      decoyMode: 'proxy',
-      decoyProxyUrl: 'https://site.example',
-      decoyCert: 'manual',
-      decoyCertFile: '/etc/ssl/n.pem',
-      decoyKeyFile: '/etc/ssl/n.key',
-    });
-  });
-
-  it('serves AdGuard Home as the decoy, which needs no page and no site', async () => {
-    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
-    renderWithProviders(
-      <AgentNodeFormModal open node={null} save={save} onOpenChange={() => {}} />,
-    );
-
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'edge-1' } });
-    fireEvent.change(screen.getByLabelText('Node address'), {
-      target: { value: 'node.example.com' },
-    });
-    chooseSelectOption(
-      screen.getByLabelText('Decoy site').id,
-      'AdGuard Home, which the node installs and runs',
-    );
-    expect(screen.queryByLabelText('Page')).toBeNull();
-    expect(screen.queryByLabelText('Address of the site')).toBeNull();
-    fireEvent.change(screen.getByLabelText('Domain'), { target: { value: 'decoy.example.com' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
-    expect(save.mock.calls[0][0]).toMatchObject({
-      decoyMode: 'adguard',
-      decoyDomain: 'decoy.example.com',
-      decoyCert: 'auto',
-      decoyPort: 7443,
-    });
-  });
-
-  it('serves the decoy for the name of the node when no other domain is given', async () => {
-    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
-    renderWithProviders(
-      <AgentNodeFormModal open node={null} save={save} onOpenChange={() => {}} />,
-    );
-
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'edge-1' } });
-    fireEvent.change(screen.getByLabelText('Node address'), {
-      target: { value: 'edge.example.org' },
-    });
-    chooseSelectOption(
-      screen.getByLabelText('Decoy site').id,
-      'AdGuard Home, which the node installs and runs',
-    );
-    expect(screen.getByLabelText('Domain')).toHaveProperty('placeholder', 'edge.example.org');
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
-    expect(save.mock.calls[0][0]).toMatchObject({
-      decoyMode: 'adguard',
-      decoyDomain: 'edge.example.org',
-    });
-  });
-
-  it('asks for the domain of the decoy when the node is reached by an IP address', async () => {
-    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
-    renderWithProviders(
-      <AgentNodeFormModal open node={null} save={save} onOpenChange={() => {}} />,
-    );
-
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'edge-1' } });
-    fireEvent.change(screen.getByLabelText('Node address'), { target: { value: '203.0.113.7' } });
-    chooseSelectOption(
-      screen.getByLabelText('Decoy site').id,
-      'AdGuard Home, which the node installs and runs',
-    );
-    expect(screen.getByLabelText('Domain')).toHaveProperty('placeholder', 'node.example.com');
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(document.body.textContent).toContain('A decoy needs a domain'));
-    expect(save).not.toHaveBeenCalled();
-
-    fireEvent.change(screen.getByLabelText('Domain'), { target: { value: 'decoy.example.com' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
-    expect(save.mock.calls[0][0]).toMatchObject({
-      address: '203.0.113.7',
-      decoyDomain: 'decoy.example.com',
-    });
-  });
-
-  it('keeps the options most nodes leave as they are behind a heading', async () => {
-    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
-    const { unmount } = renderWithProviders(
-      <AgentNodeFormModal open node={null} save={save} onOpenChange={() => {}} />,
-    );
     const helpers = () => screen.queryByRole('checkbox', { name: /Tor, a SOCKS proxy/ });
-
-    expect(helpers()).toBeNull();
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'edge-1' } });
-    fireEvent.change(screen.getByLabelText('Node address'), {
-      target: { value: 'node.example.com' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
-    expect(save.mock.calls[0][0]).toMatchObject({
-      allowPrivateAddress: false,
-      tags: [],
-      sidecars: [],
-    });
-
-    openMoreOptions();
-    expect(helpers()).not.toBeNull();
-    unmount();
 
     // A node that has changed one of them shows them open.
     for (const changed of [
@@ -368,6 +150,8 @@ describe('AgentNodeFormModal', () => {
       />,
     );
     expect(helpers()).toBeNull();
+    openMoreOptions();
+    expect(helpers()).not.toBeNull();
     plain.unmount();
   });
 
@@ -436,24 +220,6 @@ describe('AgentNodeFormModal', () => {
     expect(save.mock.calls[0][0]).toMatchObject({ id: 4, decoyMode: '', decoyPort: 7443 });
   });
 
-  it('serves a decoy on the usual port when the port box is cleared', async () => {
-    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
-    renderWithProviders(
-      <AgentNodeFormModal open node={null} save={save} onOpenChange={() => {}} />,
-    );
-
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'edge-1' } });
-    fireEvent.change(screen.getByLabelText('Node address'), {
-      target: { value: 'node.example.com' },
-    });
-    chooseSelectOption(screen.getByLabelText('Decoy site').id, 'A page built into the panel');
-    fireEvent.change(screen.getByLabelText('Domain'), { target: { value: 'decoy.example.com' } });
-    fireEvent.change(screen.getByLabelText('Port on 127.0.0.1'), { target: { value: '' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
-    expect(save.mock.calls[0][0]).toMatchObject({ decoyMode: 'template', decoyPort: 7443 });
-  });
-
   it('labels the agent with tags, suggesting the ones the nodes already carry', async () => {
     vi.spyOn(HttpUtil, 'get').mockImplementation(async (url: string) =>
       url === '/panel/api/nodes/list'
@@ -487,9 +253,18 @@ describe('AgentNodeFormModal', () => {
     expect(save.mock.calls[0][0]).toMatchObject({ id: 4, tags: ['eu', 'us', 'exit'] });
   });
 
+  const edge: NodeRecord = {
+    id: 4,
+    name: 'edge-4',
+    kind: 'agent',
+    address: 'a.example.com',
+    port: 9443,
+    enable: true,
+  };
+
   it('has no field for a secret, a scheme or a certificate', () => {
     renderWithProviders(
-      <AgentNodeFormModal open node={null} save={vi.fn()} onOpenChange={() => {}} />,
+      <AgentNodeFormModal open node={edge} save={vi.fn()} onOpenChange={() => {}} />,
     );
     for (const label of ['API token', 'Scheme', 'TLS verification', 'Base path']) {
       expect(screen.queryByLabelText(label)).toBeNull();
@@ -499,9 +274,11 @@ describe('AgentNodeFormModal', () => {
   it('does not save without a name and an address', async () => {
     const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
     renderWithProviders(
-      <AgentNodeFormModal open node={null} save={save} onOpenChange={() => {}} />,
+      <AgentNodeFormModal open node={edge} save={save} onOpenChange={() => {}} />,
     );
 
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Node address'), { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(document.body.textContent).toContain('required'));
     expect(save).not.toHaveBeenCalled();
@@ -879,95 +656,13 @@ describe('AgentBundleModal for an agent that dials the panel', () => {
 });
 
 describe('AgentNodeFormModal for an agent that dials the panel', () => {
-  function renderForm(node: NodeRecord | null = null) {
+  function renderForm(node: NodeRecord) {
     const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
     renderWithProviders(
       <AgentNodeFormModal open node={node} save={save} onOpenChange={() => {}} />,
     );
     return save;
   }
-
-  function fillBasics() {
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'edge-1' } });
-    fireEvent.change(screen.getByLabelText('Node address'), {
-      target: { value: 'node.example.com' },
-    });
-  }
-
-  it('asks for the address of the panel in place of a port', async () => {
-    const save = renderForm();
-    fillBasics();
-    expect(screen.getByLabelText('Port of the agent')).toBeTruthy();
-    expect(screen.queryByLabelText('Panel address')).toBeNull();
-
-    fireEvent.click(screen.getByRole('radio', { name: /^The node connects to the panel/ }));
-    expect(screen.queryByLabelText('Port of the agent')).toBeNull();
-    fireEvent.change(screen.getByLabelText('Panel address'), {
-      target: { value: ' https://panel.example.com/secret/ ' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
-    expect(save.mock.calls[0][0]).toMatchObject({
-      name: 'edge-1',
-      pull: true,
-      masterUrl: 'https://panel.example.com/secret/',
-      masterPin: '',
-    });
-  });
-
-  it('fills in the address the panel was opened at, which has to be https to be used', async () => {
-    const save = renderForm();
-    fillBasics();
-    fireEvent.click(screen.getByRole('radio', { name: /^The node connects to the panel/ }));
-
-    const field = screen.getByLabelText('Panel address') as HTMLInputElement;
-    expect(field.value).toBe(window.location.origin + '/');
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(document.body.textContent).toContain('must be an https:// address'));
-    expect(save).not.toHaveBeenCalled();
-  });
-
-  it('turns down a panel address that carries a login, and a pin that is no hash', async () => {
-    const save = renderForm();
-    fillBasics();
-    fireEvent.click(screen.getByRole('radio', { name: /^The node connects to the panel/ }));
-
-    fireEvent.change(screen.getByLabelText('Panel address'), {
-      target: { value: 'https://admin:pw@panel.example.com/' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(document.body.textContent).toContain('must be an https:// address'));
-
-    fireEvent.change(screen.getByLabelText('Panel address'), {
-      target: { value: 'https://panel.example.com/' },
-    });
-    fireEvent.change(screen.getByLabelText('Panel certificate SHA-256 (optional)'), {
-      target: { value: 'not-a-hash' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(document.body.textContent).toContain('must be a SHA-256 hash'));
-    expect(save).not.toHaveBeenCalled();
-
-    const pin = Array(32).fill('AB').join(':');
-    fireEvent.change(screen.getByLabelText('Panel certificate SHA-256 (optional)'), {
-      target: { value: pin },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
-    expect(save.mock.calls[0][0]).toMatchObject({ pull: true, masterPin: pin });
-  });
-
-  it('leaves the panel address out when the panel dials the node', async () => {
-    const save = renderForm();
-    fillBasics();
-    fireEvent.click(screen.getByRole('radio', { name: /^The node connects to the panel/ }));
-    fireEvent.click(screen.getByRole('radio', { name: /^The panel connects to the node/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
-    expect(save.mock.calls[0][0]).toMatchObject({ pull: false, port: 8443 });
-  });
 
   it('edits an agent that dials the panel without asking for a port or the panel again', async () => {
     const save = renderForm({
@@ -989,70 +684,6 @@ describe('AgentNodeFormModal for an agent that dials the panel', () => {
 
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     expect(save.mock.calls[0][0]).toMatchObject({ id: 6, address: 'b.example.com', port: 443 });
-  });
-});
-
-describe('AgentNodeFormModal on a panel opened over https', () => {
-  const original = Object.getOwnPropertyDescriptor(window, 'location');
-  afterEach(() => {
-    if (original) Object.defineProperty(window, 'location', original);
-  });
-
-  function openAt(url: string) {
-    Object.defineProperty(window, 'location', { configurable: true, value: new URL(url) });
-    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
-    renderWithProviders(
-      <AgentNodeFormModal open node={null} save={save} onOpenChange={() => {}} />,
-    );
-    return save;
-  }
-
-  function nodeDialsPanel() {
-    const radio = screen.getByRole('radio', { name: /^The node connects to the panel/ });
-    return (radio as HTMLInputElement).checked;
-  }
-
-  it('has the node dial the panel, which needs no open port on the node', async () => {
-    const save = openAt('https://panel.example.com/');
-
-    expect(nodeDialsPanel()).toBe(true);
-    expect(screen.getByLabelText('Panel address')).toHaveProperty(
-      'value',
-      'https://panel.example.com/',
-    );
-    expect(document.body.textContent).toContain('The node dials this address');
-    expect(screen.queryByLabelText('Port of the agent')).toBeNull();
-
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'edge-1' } });
-    fireEvent.change(screen.getByLabelText('Node address'), {
-      target: { value: 'node.example.com' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
-    expect(save.mock.calls[0][0]).toMatchObject({
-      pull: true,
-      masterUrl: 'https://panel.example.com/',
-    });
-  });
-
-  // The address a node is committed to dial is the one the browser is at, so it is the default only where a
-  // node can be expected to reach it, with a certificate it trusts.
-  it.each([
-    [
-      'an IP address, where a certificate is likelier to be self-signed',
-      'https://203.0.113.5:2053/',
-    ],
-    ['an IPv6 address', 'https://[2001:db8::1]:2053/'],
-    ['localhost, as through a tunnel', 'https://localhost:2053/'],
-    ['a name of a private network', 'https://panel.lan/'],
-    ['a name with a private suffix and a port', 'https://nas.home.arpa:2053/'],
-    ['a public name over http, which a node cannot dial', 'http://panel.example.com/'],
-  ])('has the panel dial the node when the panel is opened at %s', (_what, url) => {
-    openAt(url);
-
-    expect(nodeDialsPanel()).toBe(false);
-    expect(screen.getByLabelText('Port of the agent')).toHaveProperty('value', '8443');
-    expect(screen.queryByLabelText('Panel address')).toBeNull();
   });
 });
 

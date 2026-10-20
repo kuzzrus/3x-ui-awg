@@ -19,9 +19,6 @@ import type { NodeRecord } from '@/api/queries/useNodesQuery';
 import type { Msg } from '@/utils';
 import {
   AgentFormSchema,
-  DEFAULT_DECOY_PORT,
-  isDomainName,
-  isPublicDomainName,
   MAX_NODE_TAGS,
   NODE_SIDECARS,
   type AgentFormValues,
@@ -29,46 +26,16 @@ import {
 import { FormField, rhfZodValidate } from '@/components/form/rhf';
 import { useNodeTags } from '@/api/queries/useNodeTags';
 import { useNodeOutboundOptions } from './useNodeOutboundOptions';
-import AgentConnectionFields, {
-  DEFAULT_AGENT_PORT,
-  defaultMasterUrl,
-} from './AgentConnectionFields';
+import AgentConnectionFields from './AgentConnectionFields';
 import AgentDecoyFields from './AgentDecoyFields';
+import { defaultAgentValues, withDecoyDomain } from './agentFormValues';
 
 interface AgentNodeFormModalProps {
   open: boolean;
-  node: NodeRecord | null;
+  // The agent node to edit: adding one is the wizard's.
+  node: NodeRecord;
   save: (values: AgentFormValues) => Promise<Msg<unknown>>;
   onOpenChange: (open: boolean) => void;
-}
-
-function defaultValues(): AgentFormValues {
-  return {
-    id: 0,
-    name: '',
-    remark: '',
-    address: '',
-    port: DEFAULT_AGENT_PORT,
-    // A panel opened over https at a public name is one that a node can dial, which needs no open port on the
-    // node. At an IP address or at localhost it is one that a node may not reach, and the panel dials the node.
-    pull: window.location.protocol === 'https:' && isPublicDomainName(window.location.hostname),
-    masterUrl: defaultMasterUrl(),
-    masterPin: '',
-    enable: true,
-    allowPrivateAddress: false,
-    outboundTag: '',
-    tags: [],
-    sidecars: [],
-    decoyMode: '',
-    decoyTemplate: 'maintenance',
-    decoyProxyUrl: '',
-    decoyDomain: '',
-    decoyCert: 'auto',
-    decoyEmail: '',
-    decoyCertFile: '',
-    decoyKeyFile: '',
-    decoyPort: DEFAULT_DECOY_PORT,
-  };
 }
 
 // The decoy of a node as the form edits it: what the node holds, over the defaults of a new one.
@@ -89,18 +56,17 @@ function decoyValues(node: NodeRecord, base: AgentFormValues): Partial<AgentForm
 }
 
 // The options that most nodes leave as they are, which an edited node shows open when it has changed one.
-function usesAdvancedOptions(node: NodeRecord | null): boolean {
+function usesAdvancedOptions(node: NodeRecord): boolean {
   return (
-    !!node &&
-    (!!node.allowPrivateAddress ||
-      !!node.outboundTag ||
-      !!node.tags?.length ||
-      !!node.sidecars?.length)
+    !!node.allowPrivateAddress ||
+    !!node.outboundTag ||
+    !!node.tags?.length ||
+    !!node.sidecars?.length
   );
 }
 
-// Adds an agent node (node === null) or edits one. The agent's secret and certificate are not
-// fields: the panel mints them, and the pairing bundle that carries them comes back once.
+// Edits an agent node. The agent's secret and certificate are not fields: the panel mints them, and the
+// pairing bundle that carries them comes back once.
 export default function AgentNodeFormModal({
   open,
   node,
@@ -108,7 +74,7 @@ export default function AgentNodeFormModal({
   onOpenChange,
 }: AgentNodeFormModalProps) {
   const { t } = useTranslation();
-  const methods = useForm<AgentFormValues>({ defaultValues: defaultValues() });
+  const methods = useForm<AgentFormValues>({ defaultValues: defaultAgentValues() });
   const [messageApi, messageContextHolder] = message.useMessage();
   const [submitting, setSubmitting] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -118,43 +84,33 @@ export default function AgentNodeFormModal({
     label: t(`pages.nodes.agent.sidecarDescriptions.${name}`),
     value: name,
   }));
-  const editing = node !== null;
 
   // Reset during render, not in an effect, so the first frame is already clean.
-  const [synced, setSynced] = useState<{ node: NodeRecord | null } | null>(null);
+  const [synced, setSynced] = useState<NodeRecord | null>(null);
   if (!open) {
     if (synced) setSynced(null);
-  } else if (!synced || synced.node !== node) {
-    setSynced({ node });
+  } else if (synced !== node) {
+    setSynced(node);
     setAdvancedOpen(usesAdvancedOptions(node));
-    const base = defaultValues();
-    methods.reset(
-      node
-        ? {
-            ...base,
-            id: node.id,
-            name: node.name ?? '',
-            remark: node.remark ?? '',
-            address: node.address ?? '',
-            port: node.port ?? base.port,
-            enable: node.enable ?? true,
-            allowPrivateAddress: node.allowPrivateAddress ?? false,
-            outboundTag: node.outboundTag ?? '',
-            tags: node.tags ?? [],
-            sidecars: node.sidecars ?? [],
-            ...decoyValues(node, base),
-          }
-        : base,
-    );
+    const base = defaultAgentValues();
+    methods.reset({
+      ...base,
+      id: node.id,
+      name: node.name ?? '',
+      remark: node.remark ?? '',
+      address: node.address ?? '',
+      port: node.port ?? base.port,
+      enable: node.enable ?? true,
+      allowPrivateAddress: node.allowPrivateAddress ?? false,
+      outboundTag: node.outboundTag ?? '',
+      tags: node.tags ?? [],
+      sidecars: node.sidecars ?? [],
+      ...decoyValues(node, base),
+    });
   }
 
   async function onFinish(values: AgentFormValues) {
-    // The decoy is for the name of the node unless another is given.
-    const named =
-      values.decoyMode !== '' && values.decoyDomain.trim() === '' && isDomainName(values.address)
-        ? { ...values, decoyDomain: values.address.trim() }
-        : values;
-    const result = AgentFormSchema.safeParse(named);
+    const result = AgentFormSchema.safeParse(withDecoyDomain(values));
     if (!result.success) {
       messageApi.error(t(result.error.issues[0]?.message ?? 'pages.nodes.toasts.fillRequired'));
       return;
@@ -177,7 +133,7 @@ export default function AgentNodeFormModal({
       {messageContextHolder}
       <Modal
         open={open}
-        title={editing ? t('pages.nodes.editNode') : t('pages.nodes.agent.addTitle')}
+        title={t('pages.nodes.editNode')}
         confirmLoading={submitting}
         okText={t('save')}
         cancelText={t('cancel')}
@@ -192,7 +148,7 @@ export default function AgentNodeFormModal({
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          title={editing ? t('pages.nodes.agent.editHint') : t('pages.nodes.agent.addHint')}
+          title={t('pages.nodes.agent.editHint')}
         />
         <FormProvider {...methods}>
           <Form layout="vertical">
@@ -222,13 +178,11 @@ export default function AgentNodeFormModal({
               <Input placeholder={t('pages.nodes.agent.addressPlaceholder')} />
             </FormField>
 
-            <AgentConnectionFields fixed={editing ? (node.pull ? 'pull' : 'push') : undefined} />
+            <AgentConnectionFields fixed={node.pull ? 'pull' : 'push'} />
 
-            {editing && (
-              <FormField label={t('pages.nodes.enable')} name="enable" valueProp="checked">
-                <Switch />
-              </FormField>
-            )}
+            <FormField label={t('pages.nodes.enable')} name="enable" valueProp="checked">
+              <Switch />
+            </FormField>
 
             <AgentDecoyFields />
 

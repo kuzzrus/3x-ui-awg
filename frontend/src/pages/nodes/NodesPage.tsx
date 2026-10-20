@@ -34,12 +34,13 @@ import AppSidebar from '@/layouts/AppSidebar';
 import NodeList from './NodeList';
 import NodeFormModal from './NodeFormModal';
 import AgentNodeFormModal from './AgentNodeFormModal';
+import AgentNodeWizard from './AgentNodeWizard';
 import AgentBundleModal, { type AgentPairingView } from './AgentBundleModal';
 import AgentRepairModal from './AgentRepairModal';
 import LogModal from '../index/LogModal';
 import type { AgentFormValues, AgentRepairValues } from '@/schemas/node';
 import { setMessageInstance } from '@/utils/messageBus';
-import { HttpUtil } from '@/utils';
+import { HttpUtil, Msg } from '@/utils';
 import type { PanelUpdateInfo } from '../index/PanelUpdateModal';
 
 // Confirm-dialog body that lets the operator pick the stable or dev channel for
@@ -70,6 +71,29 @@ function UpdateChannelChoice({ onChange }: { onChange: (dev: boolean) => void })
       )}
     </div>
   );
+}
+
+// What the form of an agent node and the wizard that adds one have in common, as the panel takes it.
+function agentEndpoint(values: AgentFormValues) {
+  return {
+    name: values.name,
+    remark: values.remark,
+    address: values.address,
+    port: values.port,
+    allowPrivateAddress: values.allowPrivateAddress,
+    outboundTag: values.outboundTag,
+    tags: values.tags,
+    sidecars: values.sidecars,
+    decoyMode: values.decoyMode,
+    decoyTemplate: values.decoyTemplate,
+    decoyProxyUrl: values.decoyProxyUrl,
+    decoyDomain: values.decoyDomain,
+    decoyCert: values.decoyCert,
+    decoyEmail: values.decoyEmail,
+    decoyCertFile: values.decoyCertFile,
+    decoyKeyFile: values.decoyKeyFile,
+    decoyPort: values.decoyPort,
+  };
 }
 
 export default function NodesPage() {
@@ -183,44 +207,21 @@ export default function NodesPage() {
 
   const onSaveAgent = useCallback(
     async (values: AgentFormValues) => {
-      const endpoint = {
-        name: values.name,
-        remark: values.remark,
-        address: values.address,
-        port: values.port,
-        allowPrivateAddress: values.allowPrivateAddress,
-        outboundTag: values.outboundTag,
-        tags: values.tags,
-        sidecars: values.sidecars,
-        decoyMode: values.decoyMode,
-        decoyTemplate: values.decoyTemplate,
-        decoyProxyUrl: values.decoyProxyUrl,
-        decoyDomain: values.decoyDomain,
-        decoyCert: values.decoyCert,
-        decoyEmail: values.decoyEmail,
-        decoyCertFile: values.decoyCertFile,
-        decoyKeyFile: values.decoyKeyFile,
-        decoyPort: values.decoyPort,
-      };
-      if (agentFormNode?.id)
-        return update(agentFormNode.id, { ...endpoint, enable: values.enable });
-      const msg = await createAgent({
-        ...endpoint,
+      if (!agentFormNode) return new Msg(false, '', null);
+      return update(agentFormNode.id, { ...agentEndpoint(values), enable: values.enable });
+    },
+    [agentFormNode, update],
+  );
+
+  const onCreateAgent = useCallback(
+    (values: AgentFormValues) =>
+      createAgent({
+        ...agentEndpoint(values),
         pull: values.pull,
         masterUrl: values.pull ? values.masterUrl : '',
         masterPin: values.pull ? values.masterPin : '',
-      });
-      if (msg?.success && msg.obj) {
-        setPairing({
-          name: values.name,
-          port: values.port,
-          bundle: msg.obj.bundle,
-          masterUrl: values.pull ? values.masterUrl : undefined,
-        });
-      }
-      return msg;
-    },
-    [agentFormNode, update, createAgent],
+      }),
+    [createAgent],
   );
 
   const onRepair = useCallback((node: NodeRecord) => setRepairNode(node), []);
@@ -511,12 +512,18 @@ export default function NodesPage() {
           onOpenChange={setFormOpen}
         />
 
-        <AgentNodeFormModal
-          open={agentFormOpen}
-          node={agentFormNode}
-          save={onSaveAgent}
-          onOpenChange={setAgentFormOpen}
-        />
+        {agentFormOpen && !agentFormNode && (
+          <AgentNodeWizard create={onCreateAgent} onClose={() => setAgentFormOpen(false)} />
+        )}
+
+        {agentFormNode && (
+          <AgentNodeFormModal
+            open={agentFormOpen}
+            node={agentFormNode}
+            save={onSaveAgent}
+            onOpenChange={setAgentFormOpen}
+          />
+        )}
 
         <AgentRepairModal
           node={repairNode}
