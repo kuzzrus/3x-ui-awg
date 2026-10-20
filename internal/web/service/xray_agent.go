@@ -38,7 +38,8 @@ func (s *XrayService) GetAgentConfig(nodeID int) (*xray.Config, error) {
 		xrayConfig.InboundConfigs = append(xrayConfig.InboundConfigs, *inboundConfig)
 	}
 	mergeActiveSubscriptionOutbounds(xrayConfig)
-	setAgentConfigProblem(nodeID, adjustedConfigProblem(repairLeftOut(xrayConfig, left)))
+	notes := append(repairLeftOut(xrayConfig, left), leaveNodesOutOfBalancers(xrayConfig)...)
+	setAgentConfigProblem(nodeID, adjustedConfigProblem(notes))
 	return xrayConfig, nil
 }
 

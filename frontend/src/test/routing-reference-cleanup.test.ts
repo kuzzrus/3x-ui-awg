@@ -61,6 +61,47 @@ describe('outbound deletion', () => {
     expect((tt.outbounds || []).map((o) => o?.tag)).toEqual(['proxy-uk']);
   });
 
+  it('keeps a balancer that has nodes when the last outbound of its selector goes', () => {
+    const tt = tpl({
+      outbounds: [{ tag: 'proxy-us' }],
+      routing: {
+        rules: [{ type: 'field', inboundTag: ['in'], balancerTag: 'pool' }],
+        balancers: [
+          {
+            tag: 'pool',
+            selector: ['proxy-us'],
+            nodeMembers: { client: 'relay@example.com', nodeIds: [10] },
+          },
+        ],
+      },
+    });
+    expect(planOutboundDeletion(tt, 0).balancers).toEqual([]);
+    applyOutboundDeletion(tt, 0);
+    // The nodes go on selecting for it, and the placeholder keeps the stored selector from being empty.
+    expect(tt.routing!.balancers![0].selector).toEqual(['xui-node-']);
+    expect(tt.routing!.rules).toHaveLength(1);
+    expect(tt.routing!.rules![0].balancerTag).toBe('pool');
+  });
+
+  it('leaves the placeholder of a balancer of nodes alone when an outbound goes', () => {
+    const tt = tpl({
+      outbounds: [{ tag: 'proxy-us' }],
+      routing: {
+        rules: [{ type: 'field', inboundTag: ['in'], balancerTag: 'exits' }],
+        balancers: [
+          {
+            tag: 'exits',
+            selector: ['xui-node-'],
+            nodeMembers: { client: 'relay@example.com', nodeIds: [10] },
+          },
+        ],
+      },
+    });
+    applyOutboundDeletion(tt, 0);
+    expect(tt.routing!.balancers![0].selector).toEqual(['xui-node-']);
+    expect(tt.routing!.rules).toHaveLength(1);
+  });
+
   it('cascade-removes a balancer whose selector is emptied, repairing its rules', () => {
     const tt = tpl({
       outbounds: [{ tag: 'proxy-us' }],

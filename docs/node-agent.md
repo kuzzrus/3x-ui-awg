@@ -410,6 +410,29 @@ only reported. The template is refused when a rule or an outbound for every core
 only, since the panel's own core would lack it. A rule that names an outbound the template does not hold at all is left as it was, for
 templates in the field are full of them.
 
+A balancer of the template can send traffic out through nodes. Its `nodeMembers`, a panel-only key like
+`nodeTags`, holds `client`, the email of a client of the panel, and `nodeIds`, the nodes. The panel's own core
+gets an outbound to each of those nodes that is on, written as the JSON subscription writes it for a client app,
+from every enabled inbound the client has on the node (its first endpoint; the tag is
+`xui-node-<node>-<client>-<inbound>`). They come after the outbounds of the template and of the subscriptions, so
+none of them is the default outbound. The prefix of each node that has one is added to the selector of the balancer and,
+when the balancer probes (leastPing, leastLoad, or a fallback), the prefix of each node it names, on or off, to the
+subjectSelector of the observatory: that section has no reload API, so what it probes must not follow the nodes that are
+on. An outbound the core would refuse is left out with a warning. The core refuses a balancer with an empty selector, and
+the whole config with it, and a balancer that is gone takes the bridges of the panel (its own requests, what it dials a
+node by) out of the config with it, which then leave directly. So a balancer that reaches no outbound at all is held:
+with a fallback that the config has, it selects nothing and the core sends to the fallback; otherwise it selects the
+blackhole `x-ui-missing-outbound` under the random strategy. The default outbound, the panel itself, never gets that
+traffic. A balancer of nodes alone that picks by the observatory (leastPing, leastLoad) and has no fallback is given the
+blackhole as one in the config of the core, for it picks nothing until the observatory has seen a node, and when it sees
+none alive. The outbounds follow the nodes: every 30 seconds the panel compares them with what the core was last given,
+and a changed port, key or inbound is applied through the API when it can be, without a restart. An agent has no
+outbound to a node, so its config gets the balancers without their nodes: one keeps the rest of its selector, and one
+left selecting nothing is held the same way. The node reports it when a rule leads to such a balancer. The template is
+refused when `nodeMembers` is not a client and a list of node ids, and a deleted node leaves the lists. A balancer of
+nodes alone is stored with the selector `xui-node-`, which the panel drops from the config of the core: it selects nothing
+in a panel rolled back to a version without `nodeMembers`, whose core would refuse an empty selector.
+
 A node can be a member of a subscription balancer (Settings → Sub Balancers), the client-side
 balancer of the JSON subscription, which has nothing to do with the balancers of the template. A
 balancer holds inbounds, nodes or both, and at least one of them. A node stands for the inbounds that
@@ -543,6 +566,8 @@ says so; a tag or archive given explicitly is never swapped.
     the inbounds that a subscriber has on it.
 17. Later: Psiphon through several countries at once, as one tunnel per country with a latency balancer and a probe of each
     (the panel runs one tunnel and one region at a time today, and a node one program that the master names `psiphon`).
+18. **Nodes in the Xray balancer**. Done for the panel's own core: a balancer of the template sends traffic out through
+    nodes. Later: an agent node that forwards to other nodes, which needs the outbounds in its config.
 
 ## Open questions
 

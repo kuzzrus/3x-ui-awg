@@ -70,10 +70,23 @@ export const BalancerStrategySchema = z.object({
 });
 export type BalancerStrategy = z.infer<typeof BalancerStrategySchema>;
 
-export const BalancerObjectSchema = z.looseObject({
-  tag: z.string().trim().min(1),
-  selector: z.array(z.string()).min(1),
-  fallbackTag: z.string().optional(),
-  strategy: BalancerStrategySchema.optional(),
+// The nodes a balancer sends traffic out through, and the client of the panel that logs in to them.
+export const BalancerNodeMembersSchema = z.looseObject({
+  client: z.string().optional(),
+  nodeIds: z.array(z.number().int().positive()).optional(),
 });
+export type BalancerNodeMembers = z.infer<typeof BalancerNodeMembersSchema>;
+
+export const BalancerObjectSchema = z
+  .looseObject({
+    tag: z.string().trim().min(1),
+    selector: z.array(z.string()),
+    fallbackTag: z.string().optional(),
+    strategy: BalancerStrategySchema.optional(),
+    nodeMembers: BalancerNodeMembersSchema.optional(),
+  })
+  .refine(
+    (balancer) => balancer.selector.length > 0 || (balancer.nodeMembers?.nodeIds?.length ?? 0) > 0,
+    { message: 'A balancer selects an outbound or a node', path: ['selector'] },
+  );
 export type BalancerObject = z.infer<typeof BalancerObjectSchema>;

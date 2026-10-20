@@ -218,16 +218,7 @@ func repairRouting(cfg *xray.Config, have map[string]bool, gone map[string][]str
 		return nil
 	}
 	if blocked {
-		var list []json.RawMessage
-		if len(cfg.OutboundConfigs) > 0 && json.Unmarshal(cfg.OutboundConfigs, &list) != nil {
-			return nil
-		}
-		list = append(list, json.RawMessage(`{"protocol":"blackhole","tag":"`+missingOutboundTag+`"}`))
-		outbounds, err := json.Marshal(list)
-		if err != nil {
-			return nil
-		}
-		cfg.OutboundConfigs = outbounds
+		addBlackhole(cfg)
 	}
 	cfg.RouterConfig = rewritten
 	return notes

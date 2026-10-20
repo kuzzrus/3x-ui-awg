@@ -40,6 +40,10 @@ type SubJsonService struct {
 	// dnsBlock is the panel DNS override, fixed for the service's lifetime.
 	dnsBlock map[string]any
 
+	// pinReality takes the first shortId and serverName of a REALITY inbound, where a client app is given random ones:
+	// the panel dials a node with the outbound it gets, and must get the same one every time.
+	pinReality bool
+
 	SubService *SubService
 }
 
@@ -806,15 +810,19 @@ func (s *SubJsonService) realityData(rData map[string]any, clientKey string) map
 
 	seed, _ := rltyClientSettings["spiderX"].(string)
 	rltyData["spiderX"] = deriveSpiderX(seed, clientKey)
+	pick := random.Num
+	if s.pinReality {
+		pick = func(int) int { return 0 }
+	}
 	shortIds, ok := rData["shortIds"].([]any)
 	if ok && len(shortIds) > 0 {
-		rltyData["shortId"], _ = shortIds[random.Num(len(shortIds))].(string)
+		rltyData["shortId"], _ = shortIds[pick(len(shortIds))].(string)
 	} else {
 		rltyData["shortId"] = ""
 	}
 	serverNames, ok := rData["serverNames"].([]any)
 	if ok && len(serverNames) > 0 {
-		rltyData["serverName"], _ = serverNames[random.Num(len(serverNames))].(string)
+		rltyData["serverName"], _ = serverNames[pick(len(serverNames))].(string)
 	} else {
 		rltyData["serverName"] = ""
 	}
@@ -866,6 +874,10 @@ func (s *SubJsonService) genVless(subReq *SubService, inbound *model.Inbound, st
 	// Add encryption for VLESS outbound from inbound settings
 	inboundSettings := subReq.linkSettings(inbound)
 	encryption, _ := inboundSettings["encryption"].(string)
+	if encryption == "" {
+		// The core refuses an empty one, and an inbound made through the API need not name it.
+		encryption = "none"
+	}
 
 	settings := map[string]any{
 		"address":    inbound.Listen,
