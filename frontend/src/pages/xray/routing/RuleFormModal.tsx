@@ -73,9 +73,11 @@ function csv(value: string): string[] {
     .filter(Boolean);
 }
 
-// Xray takes a port as a number or as a string, and the form edits text.
+// Xray takes a port as a number or as a string, and the form edits text. Any other shape stays as it is, which
+// the form refuses to save: an empty field would drop the port, and the rule would then match every port.
 function text(value: unknown): string {
-  return typeof value === 'number' || typeof value === 'string' ? String(value) : '';
+  if (typeof value === 'number') return String(value);
+  return (value as string | undefined) || '';
 }
 
 export default function RuleFormModal({

@@ -231,6 +231,15 @@ describe('RuleFormModal edit preserves unsurfaced fields', () => {
     );
   });
 
+  // The shape Xray refuses must not become an empty field: the rule would be saved without its port, and match every one.
+  it('does not save a rule whose port is neither a number nor text', () => {
+    const onConfirm = renderRule({ type: 'field', outboundTag: 'direct', port: [80, 443] });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
   it('still saves a rule whose ports are text, or have none', () => {
     const onConfirm = renderRule({ type: 'field', outboundTag: 'direct', port: '80,443' });
 
