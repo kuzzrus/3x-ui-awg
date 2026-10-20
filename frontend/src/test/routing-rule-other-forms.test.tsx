@@ -7,9 +7,8 @@ import type { XraySettingsValue } from '@/hooks/useXraySetting';
 
 import { renderWithProviders } from './test-utils';
 
-// Xray takes a network as a list or as text, and the inbound tags as text or as a list. The rules come from the JSON
-// editor or an import, so the list of rules has to be built from either form, or the page is blank and the rule cannot
-// be opened.
+// Xray takes a network as a list or as text, and inbound tags as text or as a list: the list of rules must be built
+// from either form, or the page goes blank and the rule cannot be opened.
 const settings = {
   routing: {
     rules: [
