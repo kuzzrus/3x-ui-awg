@@ -59,6 +59,22 @@ var nodeEligibleProtocols = map[model.Protocol]bool{
 	model.MASQUE:      true,
 }
 
+// agentEligibleProtocols are the ones an agent hosts: it runs Xray alone, with no panel to run a
+// sidecar, and its core is not tied to a panel release, so MASQUE stays off it too.
+var agentEligibleProtocols = map[model.Protocol]bool{
+	model.VLESS:       true,
+	model.VMESS:       true,
+	model.Trojan:      true,
+	model.Shadowsocks: true,
+	model.Hysteria:    true,
+	model.WireGuard:   true,
+}
+
+// isAgentEligibleProtocol reports whether an agent node can serve protocol.
+func isAgentEligibleProtocol(protocol model.Protocol) bool {
+	return agentEligibleProtocols[protocol]
+}
+
 // nodeProtocolFirstRelease is the panel release that introduced each protocol
 // newer than node support itself; an older node would hand it to Xray as-is.
 var nodeProtocolFirstRelease = map[model.Protocol]string{
@@ -69,7 +85,8 @@ var nodeProtocolFirstRelease = map[model.Protocol]string{
 }
 
 // checkNodeCanHostProtocol refuses assigning protocol to nodeID unless the
-// protocol may live on a node and that node's panel is new enough to run it.
+// protocol may live on a node and that node can run it: an agent only the Xray
+// ones, a panel one that is new enough.
 func checkNodeCanHostProtocol(db *gorm.DB, nodeID int, protocol model.Protocol) error {
 	if !nodeEligibleProtocols[protocol] {
 		return common.NewErrorf("%s inbounds cannot be assigned to a node", protocol)
@@ -79,8 +96,11 @@ func checkNodeCanHostProtocol(db *gorm.DB, nodeID int, protocol model.Protocol) 
 		return nil
 	}
 	var node model.Node
-	if err := db.Select("id", "name", "panel_version").First(&node, nodeID).Error; err != nil {
+	if err := db.Select("id", "name", "kind", "panel_version").First(&node, nodeID).Error; err != nil {
 		return err
+	}
+	if node.Kind == model.NodeKindAgent && !isAgentEligibleProtocol(protocol) {
+		return common.NewErrorf("%s inbounds cannot run on agent node %q, which runs Xray alone", protocol, node.Name)
 	}
 	if strings.TrimSpace(node.PanelVersion) == "" {
 		return common.NewErrorf("node %q has not reported its panel version yet; %s inbounds need %s or newer",

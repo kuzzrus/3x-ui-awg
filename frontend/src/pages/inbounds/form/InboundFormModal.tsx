@@ -56,7 +56,7 @@ import {
   isQuicI1Supported,
   type I1ProfileChoice,
 } from '@/lib/xray/i1Generators';
-import { NODE_ELIGIBLE_PROTOCOLS } from '@/lib/xray/node-protocols';
+import { nodeHostsProtocol } from '@/lib/xray/node-protocols';
 import { VLESS_AUTH_LABEL_KEYS, vlessEncryptionAuthKind } from '@/lib/xray/vless-encryption';
 import { SniffingSchema } from '@/schemas/primitives/sniffing';
 import { TcpStreamSettingsSchema } from '@/schemas/protocols/stream/tcp';
@@ -280,15 +280,18 @@ export default function InboundFormModal({
     addAllFallbacks,
   } = useInboundFallbacks(dbInbound, dbInbounds);
 
-  const selectableNodes = (availableNodes || []).filter((n) => n.enable);
   const protocol = (useWatch({ control, name: 'protocol' }) ?? '') as string;
-  const isNodeEligible = !!NODE_ELIGIBLE_PROTOCOLS[protocol];
+  const selectableNodes = (availableNodes || []).filter(
+    (n) => n.enable && nodeHostsProtocol(protocol, n.kind),
+  );
+  const availableNodesRef = useRef(availableNodes);
+  availableNodesRef.current = availableNodes;
   /*
    * The `node` share-address strategy only means something when the inbound can
    * actually live on a node — otherwise the node address it would resolve to is
    * always empty. Offer it only then; `listen`/`custom` work for local inbounds.
    */
-  const nodeShareOptionAvailable = selectableNodes.length > 0 && isNodeEligible;
+  const nodeShareOptionAvailable = selectableNodes.length > 0;
   const vlessEncryption = useWatch({ control, name: 'settings.encryption' }) ?? '';
   const ssMethod = useWatch({ control, name: 'settings.method' });
   const isSSWith2022 = isSS2022({
@@ -815,7 +818,8 @@ export default function InboundFormModal({
       const next = getV('protocol') as string;
       const settings = createDefaultInboundSettings(next) ?? undefined;
       setV('settings', settings);
-      if (!NODE_ELIGIBLE_PROTOCOLS[next]) {
+      const chosen = availableNodesRef.current?.find((n) => n.id === getV('nodeId'));
+      if (!nodeHostsProtocol(next, chosen?.kind)) {
         setV('nodeId', null);
       }
       if (next !== Protocols.VLESS) {
@@ -922,7 +926,7 @@ export default function InboundFormModal({
         <Input />
       </FormField>
 
-      {selectableNodes.length > 0 && isNodeEligible && (
+      {selectableNodes.length > 0 && (
         <FormField name="nodeId" label={t('pages.inbounds.deployTo')}>
           <Select
             showSearch

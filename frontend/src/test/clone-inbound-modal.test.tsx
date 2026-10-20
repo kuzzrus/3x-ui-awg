@@ -138,6 +138,34 @@ describe('CloneInboundModal', () => {
     expect(labels).toEqual(['Local panel', 'arm2', 'arm3 (offline)', 'arm5 (unknown)']);
   });
 
+  it('offers an agent node only the protocols an agent runs', () => {
+    const nodes = [
+      { id: 2, name: 'panel-node', enable: true, status: 'online' },
+      { id: 3, name: 'agent-node', enable: true, status: 'online', kind: 'agent' },
+    ] as unknown as NodeRecord[];
+    const labelsFor = (protocol: string) => {
+      const { unmount } = renderWithProviders(
+        <CloneInboundModal
+          open
+          dbInbound={new DBInbound({ ...sourceInbound(), protocol, nodeId: undefined })}
+          nodes={nodes}
+          portsInUse={new Map()}
+          onClose={() => {}}
+          onCloned={() => {}}
+        />,
+      );
+      openTargetDropdown();
+      const labels = Array.from(document.querySelectorAll('.ant-select-item-option')).map((o) =>
+        (o.textContent ?? '').trim(),
+      );
+      unmount();
+      return labels;
+    };
+
+    expect(labelsFor('vless')).toEqual(['Local panel', 'panel-node', 'agent-node']);
+    expect(labelsFor('mtproto')).toEqual(['Local panel', 'panel-node']);
+  });
+
   it('select-all picks only selectable targets and clear-all blocks submit', () => {
     renderModal();
 
