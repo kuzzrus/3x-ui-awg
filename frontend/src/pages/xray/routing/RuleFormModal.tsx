@@ -80,6 +80,12 @@ function text(value: unknown): string {
   return (value as string | undefined) || '';
 }
 
+// Xray takes a list as an array or as comma-separated text, and the form edits the array. Other shapes stay as they are.
+function list(value: unknown): string[] {
+  if (typeof value === 'string') return csv(value);
+  return (value as string[] | undefined) || [];
+}
+
 export default function RuleFormModal({
   open,
   rule,
@@ -124,12 +130,12 @@ export default function RuleFormModal({
         port: text(rule.port),
         sourcePort: text(rule.sourcePort),
         vlessRoute: text(rule.vlessRoute),
-        network: rule.network || '',
+        network: Array.isArray(rule.network) ? rule.network.join(',') : rule.network || '',
         sourceIP: Array.isArray(rule.sourceIP) ? rule.sourceIP.join(',') : rule.sourceIP || '',
         user: Array.isArray(rule.user) ? rule.user.join(',') : rule.user || '',
-        inboundTag: rule.inboundTag || [],
+        inboundTag: list(rule.inboundTag),
         nodeTags: rule.nodeTags || [],
-        protocol: rule.protocol || [],
+        protocol: list(rule.protocol),
         attrs: rule.attrs ? Object.entries(rule.attrs) : [],
         outboundTag: rule.outboundTag || '',
         balancerTag: rule.balancerTag || '',
