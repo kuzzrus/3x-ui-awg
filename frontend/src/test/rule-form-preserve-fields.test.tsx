@@ -212,4 +212,72 @@ describe('RuleFormModal edit preserves unsurfaced fields', () => {
 
     expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ user: ['office-proxy'] }));
   });
+
+  // Xray takes a port as a number and the schema of the form takes text, so a rule stored with numbers could not be saved.
+  it('saves a rule whose ports are stored as numbers, as text', () => {
+    const onConfirm = renderRule({
+      type: 'field',
+      outboundTag: 'direct',
+      port: 443,
+      sourcePort: 53,
+      vlessRoute: 7,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({ port: '443', sourcePort: '53', vlessRoute: '7' }),
+    );
+  });
+
+  // The shape Xray refuses must not become an empty field: the rule would be saved without its port, and match every one.
+  it('does not save a rule whose port is neither a number nor text, and says why', async () => {
+    const onConfirm = renderRule({ type: 'field', outboundTag: 'direct', port: [80, 443] });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => expect(document.body.textContent).toContain('cannot read'));
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('still saves a rule whose ports are text, or have none', () => {
+    const onConfirm = renderRule({ type: 'field', outboundTag: 'direct', port: '80,443' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ port: '80,443' }));
+    expect(onConfirm.mock.calls[0][0]).not.toHaveProperty('sourcePort');
+  });
+
+  // Xray takes a network as a list or as text, and the inbound tags and the protocols as text or as a list.
+  it('saves a rule whose network is a list, and whose inbound tags and protocols are text', () => {
+    const onConfirm = renderRule({
+      type: 'field',
+      outboundTag: 'direct',
+      network: ['tcp', 'udp'],
+      inboundTag: 'api',
+      protocol: 'http, tls',
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        network: 'tcp,udp',
+        inboundTag: ['api'],
+        protocol: ['http', 'tls'],
+      }),
+    );
+  });
+
+  it('does not save a rule whose inbound tags are of a shape that no list or text is', async () => {
+    const onConfirm = renderRule({ type: 'field', outboundTag: 'direct', inboundTag: 5 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => expect(document.body.textContent).toContain('cannot read'));
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
 });

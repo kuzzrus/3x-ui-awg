@@ -21,7 +21,7 @@ import RuleFormModal from './RuleFormModal';
 import type { RoutingRule } from './RuleFormModal';
 import RuleCardList from './RuleCardList';
 import { useRoutingColumns } from './useRoutingColumns';
-import { arrJoin, originalRuleIndex } from './helpers';
+import { arrJoin, csv, originalRuleIndex } from './helpers';
 import type { RuleRow } from './types';
 import type { XraySettingsValue, SetTemplate } from '@/hooks/useXraySetting';
 import type { RuleObject } from '@/schemas/routing';
@@ -81,7 +81,7 @@ export default function RoutingTab({
           r.port = rule.port;
           r.sourcePort = rule.sourcePort;
           r.vlessRoute = rule.vlessRoute;
-          r.network = rule.network;
+          r.network = arrJoin(rule.network);
           r.sourceIP = arrJoin(rule.sourceIP);
           r.user = arrJoin(rule.user);
           r.inboundTag = arrJoin(rule.inboundTag);
@@ -95,10 +95,7 @@ export default function RoutingTab({
           r.balancerTag = rule.balancerTag;
           return r;
         })
-        .filter((r) => {
-          const inboundTags = (rules[r.key]?.inboundTag || []) as string[];
-          return !inboundTags.some(isBalancerLoopbackTag);
-        }),
+        .filter((r) => !csv(r.inboundTag).some(isBalancerLoopbackTag)),
     [rules],
   );
 

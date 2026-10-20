@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Form, Input, Modal, Select, Space, Switch, Tooltip } from 'antd';
+import { Button, Form, Input, Modal, Select, Space, Switch, Tooltip, message } from 'antd';
 import { PlusOutlined, MinusOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import { FormProvider, useForm, useWatch } from 'react-hook-form';
 import { InputAddon } from '@/components/ui';
@@ -73,6 +73,19 @@ function csv(value: string): string[] {
     .filter(Boolean);
 }
 
+// Xray takes a port as a number or as a string, and the form edits text. Any other shape stays as it is, which
+// the form refuses to save: an empty field would drop the port, and the rule would then match every port.
+function text(value: unknown): string {
+  if (typeof value === 'number') return String(value);
+  return (value as string | undefined) || '';
+}
+
+// Xray takes a list as an array or as comma-separated text, and the form edits the array. Other shapes stay as they are.
+function list(value: unknown): string[] {
+  if (typeof value === 'string') return csv(value);
+  return (value as string[] | undefined) || [];
+}
+
 export default function RuleFormModal({
   open,
   rule,
@@ -84,6 +97,7 @@ export default function RuleFormModal({
 }: RuleFormModalProps) {
   const { t } = useTranslation();
   const methods = useForm<RuleFormValues>({ defaultValues: initialForm() });
+  const [messageApi, messageContextHolder] = message.useMessage();
   const isEdit = rule != null;
 
   // A tag no node carries yet can be typed in; the nodes are asked for only once the form opens.
@@ -114,15 +128,15 @@ export default function RuleFormModal({
         comment: rule.comment || '',
         domain: Array.isArray(rule.domain) ? rule.domain.join(',') : rule.domain || '',
         ip: Array.isArray(rule.ip) ? rule.ip.join(',') : rule.ip || '',
-        port: rule.port || '',
-        sourcePort: rule.sourcePort || '',
-        vlessRoute: rule.vlessRoute || '',
-        network: rule.network || '',
+        port: text(rule.port),
+        sourcePort: text(rule.sourcePort),
+        vlessRoute: text(rule.vlessRoute),
+        network: Array.isArray(rule.network) ? rule.network.join(',') : rule.network || '',
         sourceIP: Array.isArray(rule.sourceIP) ? rule.sourceIP.join(',') : rule.sourceIP || '',
         user: Array.isArray(rule.user) ? rule.user.join(',') : rule.user || '',
-        inboundTag: rule.inboundTag || [],
+        inboundTag: list(rule.inboundTag),
         nodeTags: rule.nodeTags || [],
-        protocol: rule.protocol || [],
+        protocol: list(rule.protocol),
         attrs: rule.attrs ? Object.entries(rule.attrs) : [],
         outboundTag: rule.outboundTag || '',
         balancerTag: rule.balancerTag || '',
@@ -136,7 +150,10 @@ export default function RuleFormModal({
 
   function submit() {
     const validated = RuleFormSchema.safeParse(methods.getValues());
-    if (!validated.success) return;
+    if (!validated.success) {
+      messageApi.error(t('pages.xray.rules.unreadable'));
+      return;
+    }
     const v = validated.data;
     const built: Record<string, unknown> = {
       type: 'field',
@@ -190,6 +207,7 @@ export default function RuleFormModal({
       onOk={submit}
       onCancel={onClose}
     >
+      {messageContextHolder}
       <FormProvider {...methods}>
         <Form colon={false} labelCol={{ md: { span: 8 } }} wrapperCol={{ md: { span: 14 } }}>
           <FormField name="enabled" label={t('enable')} valueProp="checked">
