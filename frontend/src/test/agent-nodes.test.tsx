@@ -998,24 +998,29 @@ describe('AgentNodeFormModal on a panel opened over https', () => {
     if (original) Object.defineProperty(window, 'location', original);
   });
 
-  it('has the node dial the panel, which needs no open port on the node', async () => {
-    Object.defineProperty(window, 'location', {
-      configurable: true,
-      value: new URL('https://panel.example.com/'),
-    });
+  function openAt(url: string) {
+    Object.defineProperty(window, 'location', { configurable: true, value: new URL(url) });
     const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
     renderWithProviders(
       <AgentNodeFormModal open node={null} save={save} onOpenChange={() => {}} />,
     );
+    return save;
+  }
 
-    expect(
-      (screen.getByRole('radio', { name: /^The node connects to the panel/ }) as HTMLInputElement)
-        .checked,
-    ).toBe(true);
+  function nodeDialsPanel() {
+    const radio = screen.getByRole('radio', { name: /^The node connects to the panel/ });
+    return (radio as HTMLInputElement).checked;
+  }
+
+  it('has the node dial the panel, which needs no open port on the node', async () => {
+    const save = openAt('https://panel.example.com/');
+
+    expect(nodeDialsPanel()).toBe(true);
     expect(screen.getByLabelText('Panel address')).toHaveProperty(
       'value',
       'https://panel.example.com/',
     );
+    expect(document.body.textContent).toContain('The node dials this address');
     expect(screen.queryByLabelText('Port of the agent')).toBeNull();
 
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'edge-1' } });
@@ -1030,17 +1035,24 @@ describe('AgentNodeFormModal on a panel opened over https', () => {
     });
   });
 
-  it('has the panel dial the node when the panel is opened over http, which a node cannot dial', () => {
-    renderWithProviders(
-      <AgentNodeFormModal open node={null} save={vi.fn()} onOpenChange={() => {}} />,
-    );
+  // The address a node is committed to dial is the one the browser is at, so it is the default only where a
+  // node can be expected to reach it, with a certificate it trusts.
+  it.each([
+    [
+      'an IP address, where a certificate is likelier to be self-signed',
+      'https://203.0.113.5:2053/',
+    ],
+    ['an IPv6 address', 'https://[2001:db8::1]:2053/'],
+    ['localhost, as through a tunnel', 'https://localhost:2053/'],
+    ['a name of a private network', 'https://panel.lan/'],
+    ['a name with a private suffix and a port', 'https://nas.home.arpa:2053/'],
+    ['a public name over http, which a node cannot dial', 'http://panel.example.com/'],
+  ])('has the panel dial the node when the panel is opened at %s', (_what, url) => {
+    openAt(url);
 
-    expect(window.location.protocol).toBe('http:');
-    expect(
-      (screen.getByRole('radio', { name: /^The panel connects to the node/ }) as HTMLInputElement)
-        .checked,
-    ).toBe(true);
+    expect(nodeDialsPanel()).toBe(false);
     expect(screen.getByLabelText('Port of the agent')).toHaveProperty('value', '8443');
+    expect(screen.queryByLabelText('Panel address')).toBeNull();
   });
 });
 

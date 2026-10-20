@@ -21,6 +21,7 @@ import {
   AgentFormSchema,
   DEFAULT_DECOY_PORT,
   isDomainName,
+  isPublicDomainName,
   MAX_NODE_TAGS,
   NODE_SIDECARS,
   type AgentFormValues,
@@ -48,8 +49,9 @@ function defaultValues(): AgentFormValues {
     remark: '',
     address: '',
     port: DEFAULT_AGENT_PORT,
-    // A panel opened over https is one that a node can dial, which needs no open port on the node.
-    pull: window.location.protocol === 'https:',
+    // A panel opened over https at a public name is one that a node can dial, which needs no open port on the
+    // node. At an IP address or at localhost it is one that a node may not reach, and the panel dials the node.
+    pull: window.location.protocol === 'https:' && isPublicDomainName(window.location.hostname),
     masterUrl: defaultMasterUrl(),
     masterPin: '',
     enable: true,

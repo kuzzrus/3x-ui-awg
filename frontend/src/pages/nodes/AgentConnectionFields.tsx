@@ -68,6 +68,7 @@ export default function AgentConnectionFields({ fixed }: AgentConnectionFieldsPr
             label={t('pages.nodes.agent.masterUrl')}
             name="masterUrl"
             tooltip={t('pages.nodes.agent.masterUrlHint')}
+            extra={t('pages.nodes.agent.masterUrlNote')}
           >
             <Input placeholder="https://panel.example.com/path/" />
           </FormField>

@@ -162,6 +162,15 @@ export function isDomainName(value: string): boolean {
   return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(host);
 }
 
+// The suffixes of a private network, or of none, which a node elsewhere cannot resolve.
+const PRIVATE_SUFFIX =
+  /\.(local|localhost|lan|internal|home|home\.arpa|localdomain|intranet|corp|private|test|example|invalid)$/i;
+
+// A domain that a node elsewhere can be expected to resolve: no IP address, no localhost, no private suffix.
+export function isPublicDomainName(value: string): boolean {
+  return isDomainName(value) && !PRIVATE_SUFFIX.test(value.trim());
+}
+
 // A SHA-256 pin as a browser shows it: 64 hex digits, with or without colons.
 export function isCertPin(value: string): boolean {
   return /^[0-9a-f]{64}$/i.test(value.replace(/:/g, ''));
