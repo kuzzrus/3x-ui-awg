@@ -16,6 +16,7 @@ export const ProtocolSchema = z.enum([
   'naiveproxy',
   'tuic',
   'tproxy',
+  'masque',
 ]);
 export type Protocol = z.infer<typeof ProtocolSchema>;
 
@@ -41,4 +42,5 @@ export const Protocols = Object.freeze({
   NAIVEPROXY: 'naiveproxy',
   TUIC: 'tuic',
   TPROXY: 'tproxy',
+  MASQUE: 'masque',
 });

@@ -2,22 +2,13 @@ name: Release 3X-UI
 
 on:
   workflow_dispatch:
+  # Only main (dev channel) and version tags ship binaries; build any other
+  # branch on demand via workflow_dispatch.
   push:
     branches:
-      - "**"
+      - main
     tags:
       - "v*.*.*"
-    paths:
-      - "**.go"
-      - "go.mod"
-      - "go.sum"
-      - "**.sh"
-      - "frontend/**"
-      - "x-ui.service.debian"
-      - "x-ui.service.arch"
-      - "x-ui.service.rhel"
-      - ".github/workflows/release.yml"
-  pull_request:
     paths:
       - "**.go"
       - "go.mod"
@@ -130,7 +121,7 @@ jobs:
           cd x-ui/bin
 
           # Download dependencies
-          Xray_URL="https://github.com/XTLS/Xray-core/releases/download/v26.9.9/"
+          Xray_URL="https://github.com/XTLS/Xray-core/releases/download/v26.10.10/"
           if [ "${{ matrix.platform }}" == "amd64" ]; then
             fetch ${Xray_URL}Xray-linux-64.zip
             unzip Xray-linux-64.zip
@@ -239,29 +230,6 @@ jobs:
               exit 1
             fi
           fi
-
-          case "${{ matrix.platform }}" in
-            amd64)
-              curl -sfLRO $CURL_RETRY "https://github.com/EAimTY/tuic/releases/download/tuic-server-1.0.0/tuic-server-1.0.0-x86_64-unknown-linux-musl"
-              mv "tuic-server-1.0.0-x86_64-unknown-linux-musl" "tuic-server"
-              chmod +x "tuic-server"
-              ;;
-            arm64)
-              curl -sfLRO $CURL_RETRY "https://github.com/EAimTY/tuic/releases/download/tuic-server-1.0.0/tuic-server-1.0.0-aarch64-unknown-linux-musl"
-              mv "tuic-server-1.0.0-aarch64-unknown-linux-musl" "tuic-server"
-              chmod +x "tuic-server"
-              ;;
-            armv7)
-              curl -sfLRO $CURL_RETRY "https://github.com/EAimTY/tuic/releases/download/tuic-server-1.0.0/tuic-server-1.0.0-armv7-unknown-linux-musleabihf"
-              mv "tuic-server-1.0.0-armv7-unknown-linux-musleabihf" "tuic-server"
-              chmod +x "tuic-server"
-              ;;
-            386)
-              curl -sfLRO $CURL_RETRY "https://github.com/EAimTY/tuic/releases/download/tuic-server-1.0.0/tuic-server-1.0.0-i686-unknown-linux-musl"
-              mv "tuic-server-1.0.0-i686-unknown-linux-musl" "tuic-server"
-              chmod +x "tuic-server"
-              ;;
-          esac
           cd ../..
 
       - name: Package
@@ -352,6 +320,11 @@ jobs:
           go version
           gcc --version
 
+          # Version info + manifest resource: a bare stripped Go exe scores high on AV heuristics.
+          PANEL_VERSION=$(tr -d '[:space:]' < internal/config/version)
+          go run github.com/tc-hib/go-winres@v0.3.3 make --arch amd64 \
+            --product-version "$PANEL_VERSION" --file-version "$PANEL_VERSION"
+
           # Stamp the commit into per-commit (dev channel) builds only.
           LDFLAGS="-w -s"
           if [[ "$GITHUB_REF" != refs/tags/* ]]; then
@@ -364,12 +337,12 @@ jobs:
         run: |
           $retry = @{ MaximumRetryCount = 5; RetryIntervalSec = 10 }
           mkdir x-ui
-          Copy-Item xui-release.exe x-ui\x-ui.exe
+          Copy-Item xui-release.exe x-ui\3x-ui.exe
           mkdir x-ui\bin
           cd x-ui\bin
 
           # Download Xray for Windows
-          $Xray_URL = "https://github.com/XTLS/Xray-core/releases/download/v26.9.9/"
+          $Xray_URL = "https://github.com/XTLS/Xray-core/releases/download/v26.10.10/"
           Invoke-WebRequest @retry -Uri "${Xray_URL}Xray-windows-64.zip" -OutFile "Xray-windows-64.zip"
           Expand-Archive -Path "Xray-windows-64.zip" -DestinationPath .
           Remove-Item "Xray-windows-64.zip"
@@ -393,9 +366,6 @@ jobs:
           Expand-Archive -Path "$MTG_PKG.zip" -DestinationPath "mtg-tmp" -Force
           Move-Item "mtg-tmp/$MTG_PKG/mtg-multi.exe" "mtg-windows-amd64.exe"
           Remove-Item -Recurse -Force "mtg-tmp", "$MTG_PKG.zip"
-
-          # TUIC sidecar for Windows
-          curl.exe -sfLRo "tuic-server-windows-amd64.exe" --retry 5 --retry-all-errors --retry-delay 3 "https://github.com/EAimTY/tuic/releases/download/tuic-server-1.0.0/tuic-server-1.0.0-x86_64-pc-windows-msvc.exe"
 
           cd ..
           Copy-Item -Path ..\windows_files\* -Destination . -Recurse

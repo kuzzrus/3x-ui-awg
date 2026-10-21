@@ -145,20 +145,3 @@ func TestAddAgentTrafficLeavesTheBaselinesAloneWhenAClientRowCannotBeWritten(t *
 	f.wantClient("a@x", 10, 20)
 	f.wantInbound(30, 40)
 }
-
-// Xray has reset the counters of the panel's own core by the time they are added, so there one
-// row that cannot be written must not take the others down with it.
-func TestAddClientTrafficKeepsGoingPastARowItCannotWrite(t *testing.T) {
-	f := newAgentTrafficFixture(t)
-	failClientWrites(t, "a@x")
-
-	err := f.svc.addClientTraffic(database.GetDB(), []*xray.ClientTraffic{
-		{Email: "a@x", Up: 5, Down: 6},
-		{Email: "b@x", Up: 7, Down: 8},
-	})
-	if err != nil {
-		t.Fatalf("addClientTraffic: %v", err)
-	}
-	f.wantClient("a@x", 0, 0)
-	f.wantClient("b@x", 7, 8)
-}

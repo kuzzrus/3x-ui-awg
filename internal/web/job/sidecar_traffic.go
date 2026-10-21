@@ -58,11 +58,10 @@ func sidecarTrafficPayload(protocol string, traffics []*xray.Traffic, clientTraf
 // that just went idle clears to no-speed on the frontend instead of sticking
 // at its last nonzero reading; only the AddTraffic/RefreshLocalOnlineClients
 // calls around it are conditioned on non-empty data, since cumulative-totals
-// accounting doesn't need this signal. Uses BroadcastSidecarTraffic (not
-// BroadcastTraffic) -- see its doc comment for why.
+// accounting doesn't need this signal.
 func broadcastSidecarTraffic(protocol string, traffics []*xray.Traffic, clientTraffics []*xray.ClientTraffic) {
 	if !websocket.HasClients() {
 		return
 	}
-	websocket.BroadcastSidecarTraffic(sidecarTrafficPayload(protocol, traffics, clientTraffics))
+	websocket.BroadcastTraffic(sidecarTrafficPayload(protocol, traffics, clientTraffics))
 }

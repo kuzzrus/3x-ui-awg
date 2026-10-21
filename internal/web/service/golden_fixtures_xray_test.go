@@ -31,12 +31,12 @@ import (
 // section. A fixture xray-core refuses is a config the panel would let an
 // admin save and then fail to start the core with, taking every inbound down.
 //
-// mtproto, tproxy and naiveproxy are excluded (see servedOutsideXray): a sidecar
+// mtproto, tproxy and naiveproxy are excluded (see servedBySidecar): a sidecar
 // serves each of them, so xray-core has no config id for any.
 
-// servedOutsideXray is true for the protocols a sidecar serves: mtg-multi,
+// servedBySidecar is true for the protocols a sidecar serves: mtg-multi,
 // tproxy-server with a stock MTProxy engine, and Caddy.
-func servedOutsideXray(protocol string) bool {
+func servedBySidecar(protocol string) bool {
 	switch model.Protocol(protocol) {
 	case model.MTProto, model.Tproxy, model.NaiveProxy:
 		return true
@@ -190,7 +190,7 @@ func buildGoldenInbound(t *testing.T, inbound map[string]any) error {
 // inbound and builds it.
 func TestGoldenInboundFixturesBuildInXray(t *testing.T) {
 	for name, fixture := range goldenFixtures(t, "inbound") {
-		if protocol, _ := fixture["protocol"].(string); servedOutsideXray(protocol) {
+		if protocol, _ := fixture["protocol"].(string); servedBySidecar(protocol) {
 			continue
 		}
 		t.Run(name, func(t *testing.T) {
@@ -212,7 +212,7 @@ func TestGoldenInboundFixturesBuildInXray(t *testing.T) {
 func TestGoldenInboundFullFixturesBuildInXray(t *testing.T) {
 	for name, fixture := range goldenFixtures(t, "inbound-full") {
 		protocol, _ := fixture["protocol"].(string)
-		if servedOutsideXray(protocol) {
+		if servedBySidecar(protocol) {
 			continue
 		}
 		t.Run(name, func(t *testing.T) {
