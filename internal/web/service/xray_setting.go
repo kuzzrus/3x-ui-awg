@@ -70,11 +70,17 @@ func (s *XraySettingService) CheckXrayConfig(XrayTemplateConfig string) error {
 	if err := checkPanelUsesKeepTheirOutbounds(s, xrayConfig, shared); err != nil {
 		return err
 	}
+	if err := checkTemplateLuaScripts(xrayConfig); err != nil {
+		return err
+	}
 	for _, inbound := range xrayConfig.InboundConfigs {
 		if err := validateFinalMaskSalamander(string(inbound.StreamSettings)); err != nil {
 			return common.NewError("xray template inbound \""+inbound.Tag+"\":", err)
 		}
 		if err := validateXDriveStorage(string(inbound.StreamSettings)); err != nil {
+			return common.NewError("xray template inbound \""+inbound.Tag+"\":", err)
+		}
+		if err := validateXDriveInbound(inbound.Protocol, string(inbound.Settings), string(inbound.StreamSettings)); err != nil {
 			return common.NewError("xray template inbound \""+inbound.Tag+"\":", err)
 		}
 	}
@@ -147,6 +153,22 @@ func checkRuleNodeTags(routerCfg json_util.RawMessage) error {
 		if _, ok := ruleNodeTags(raw); !ok {
 			return common.NewErrorf("xray template config invalid: routing rule %d: nodeTags must be a list of tags of up to %d characters", i+1, maxNodeTagLen)
 		}
+	}
+	return nil
+}
+
+// checkTemplateLuaScripts refuses the Lua scripts xray-core 26.10.17 refuses (#7136): any routing
+// "script", since SaveXraySetting always keeps the api rule, and a dns "script" beside refused settings.
+func checkTemplateLuaScripts(cfg *xray.Config) error {
+	var routing map[string]any
+	if json.Unmarshal(cfg.RouterConfig, &routing) == nil {
+		if script, _ := routing["script"].(string); script != "" {
+			return common.NewError(`xray template routing: "script" cannot be used, xray-core refuses it beside routing rules and the panel always keeps its api rule.`)
+		}
+	}
+	var dns map[string]any
+	if json.Unmarshal(cfg.DNSConfig, &dns) == nil && dnsScriptRefused(dns) {
+		return common.NewError(`xray template dns: "script" cannot be used with disableFallback, disableFallbackIfMatch, enableParallelQuery, or a server's domains, skipFallback or finalQuery.`)
 	}
 	return nil
 }
