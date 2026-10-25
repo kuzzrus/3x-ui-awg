@@ -84,6 +84,10 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 # DAC_READ_SEARCH is deliberately absent: directory search is already covered by
 # DAC_OVERRIDE, so it would only widen the set without adding anything.
 CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+# The tproxy MTProxy engine runs as "nobody" (internal/tproxy): CHOWN hands it its two
+# files, SETUID and SETGID start it as that account and KILL lets the panel stop it.
+# A second CapabilityBoundingSet= line adds to the first, so the line above stays as it is.
+CapabilityBoundingSet=CAP_CHOWN CAP_SETUID CAP_SETGID CAP_KILL
 SystemCallArchitectures=native
 # No seccomp whitelist here on purpose. @system-service needs systemd >= 239
 # (other @-named groups exist since 231), and older systemd does not ignore an
