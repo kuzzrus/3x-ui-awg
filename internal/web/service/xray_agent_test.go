@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xtls/xray-core/infra/conf"
+
 	"github.com/mhsanaei/3x-ui/v3/internal/amneziawgnet"
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
@@ -108,6 +110,47 @@ func TestGetAgentConfigLeavesOutWhatOnlyTheMasterCanServe(t *testing.T) {
 	}
 	if got := inboundTags(agent); slices.Contains(got, PanelEgressInboundTag) {
 		t.Fatalf("the agent's config carries the master's panel egress: %v", got)
+	}
+}
+
+// An agent's core refuses what the panel's does since xray-core 26.10.17, and a config it refuses stops
+// every inbound of the node, so the agent's config leaves out the same: an XDRIVE inbound without encryption and the Lua scripts.
+func TestGetAgentConfigLeavesOutWhatTheNewCoreRefuses(t *testing.T) {
+	setupSettingTestDB(t)
+	node := seedAgentRow(t, "agent")
+	seedInboundOn(t, &node, "n1-vless", model.VLESS, true, nil)
+	seedInboundOn(t, &node, "n1-drive", model.VLESS, true, nil)
+	if err := database.GetDB().Model(&model.Inbound{}).Where("tag = ?", "n1-drive").
+		Update("stream_settings", `{"network":"xdrive","security":"none","xdriveSettings":{"service":"local","remoteFolder":"/tmp/shared"}}`).Error; err != nil {
+		t.Fatalf("set stream: %v", err)
+	}
+	template := `{"outbounds":[{"protocol":"freedom","tag":"direct"}],
+		"routing":{"domainStrategy":"AsIs","script":"route.lua","rules":[{"type":"field","inboundTag":["api"],"outboundTag":"api"}]},
+		"dns":{"script":"dns.lua","servers":[{"address":"1.1.1.1","domains":["example.com"]}]}}`
+	if err := (&SettingService{}).saveSetting("xrayTemplateConfig", template); err != nil {
+		t.Fatalf("seed template: %v", err)
+	}
+
+	cfg, err := (&XrayService{}).GetAgentConfig(node)
+	if err != nil {
+		t.Fatalf("GetAgentConfig: %v", err)
+	}
+	if got := inboundTags(cfg); !slices.Contains(got, "n1-vless") || slices.Contains(got, "n1-drive") {
+		t.Fatalf("inbounds = %v, want the plain one and not the XDRIVE inbound without encryption", got)
+	}
+	router := new(conf.RouterConfig)
+	if err := json.Unmarshal(cfg.RouterConfig, router); err != nil {
+		t.Fatalf("decode routing: %v", err)
+	}
+	if _, err := router.Build(); err != nil {
+		t.Fatalf("xray-core refuses the agent's routing: %v", err)
+	}
+	dns := new(conf.DNSConfig)
+	if err := json.Unmarshal(cfg.DNSConfig, dns); err != nil {
+		t.Fatalf("decode dns: %v", err)
+	}
+	if _, err := dns.Build(); err != nil {
+		t.Fatalf("xray-core refuses the agent's dns: %v", err)
 	}
 }
 

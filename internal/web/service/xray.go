@@ -418,6 +418,15 @@ func (s *XrayService) newConfigFromTemplate(scope configScope) (*xray.Config, ma
 	// pre-26.9.9 quicParams.udpHop, which the core ignores, or a udphop not last, which it cannot dial.
 	xrayConfig.OutboundConfigs = healOutboundStreams(xrayConfig.OutboundConfigs,
 		liftXhttpSessionIDKeys, upgradeStreamLegacyXdns, upgradeStreamLegacyUDPHop, normalizeStreamUDPHop)
+	var refused []string
+	xrayConfig.OutboundConfigs, refused = dropXDriveOutboundsRefusedByCore(xrayConfig.OutboundConfigs)
+	// What reached an outbound left out for the core is repaired like what reached one the scope left out.
+	for _, tag := range refused {
+		if left == nil {
+			left = map[string][]string{}
+		}
+		left[tag] = nil
+	}
 	return xrayConfig, left, nil
 }
 
@@ -476,6 +485,7 @@ func (s *XrayService) buildXrayConfig() (*xray.Config, string, error) {
 		}
 		xrayConfig.InboundConfigs = append(xrayConfig.InboundConfigs, *inboundConfig)
 	}
+	xrayConfig.InboundConfigs = dropInboundsRefusedByXDrive(xrayConfig.InboundConfigs)
 
 	// Merge subscription-derived outbounds (if any) into the final outbounds array.
 	mergeActiveSubscriptionOutbounds(xrayConfig)
@@ -555,6 +565,8 @@ func (s *XrayService) buildXrayConfig() (*xray.Config, string, error) {
 		injectNodeEgresses(xrayConfig, nodes)
 	}
 
+	xrayConfig.RouterConfig = dropRefusedScript(xrayConfig.RouterConfig, "routing", routingScriptRefused)
+	xrayConfig.DNSConfig = dropRefusedScript(xrayConfig.DNSConfig, "dns", dnsScriptRefused)
 	return xrayConfig, nodeOutbounds, nil
 }
 
@@ -1764,6 +1776,113 @@ func healOutboundStreams(raw json_util.RawMessage, heals ...func(stream map[stri
 		return raw
 	}
 	if rewritten, err := json.Marshal(outbounds); err == nil {
+		return rewritten
+	}
+	return raw
+}
+
+// dropInboundsRefusedByXDrive keeps out an XDRIVE inbound stored before xray-core 26.10.17 made it
+// VLESS-encryption only (#7182); the core would refuse the whole config and stop every inbound.
+func dropInboundsRefusedByXDrive(inbounds []xray.InboundConfig) []xray.InboundConfig {
+	return slices.DeleteFunc(inbounds, func(ib xray.InboundConfig) bool {
+		err := validateXDriveInbound(ib.Protocol, string(ib.Settings), string(ib.StreamSettings))
+		if err != nil {
+			logger.Warningf("Inbound %q: not started, %v", ib.Tag, err)
+		}
+		return err != nil
+	})
+}
+
+// dropXDriveOutboundsRefusedByCore leaves out the XDRIVE outbounds that stop 26.10.17 at startup (#7182) and returns
+// their tags; a refused first outbound leaves a blackhole, so the default route does not move to the next.
+func dropXDriveOutboundsRefusedByCore(raw json_util.RawMessage) (json_util.RawMessage, []string) {
+	var outbounds []json.RawMessage
+	if len(raw) == 0 || json.Unmarshal(raw, &outbounds) != nil {
+		return raw, nil
+	}
+	kept := make([]json.RawMessage, 0, len(outbounds))
+	var refused []string
+	dropped := false
+	for i, ob := range outbounds {
+		var probe struct {
+			Tag            string `json:"tag"`
+			StreamSettings struct {
+				Network string `json:"network"`
+			} `json:"streamSettings"`
+		}
+		if json.Unmarshal(ob, &probe) == nil && probe.StreamSettings.Network == "xdrive" {
+			if err := xray.ValidateOutboundConfig(ob); err != nil {
+				logger.Warningf("Outbound %q: not started, xray-core refuses it: %v", probe.Tag, err)
+				dropped = true
+				if probe.Tag != "" {
+					refused = append(refused, probe.Tag)
+				}
+				if i == 0 {
+					kept = append(kept, json.RawMessage(`{"protocol":"blackhole","tag":"`+missingOutboundTag+`"}`))
+				}
+				continue
+			}
+		}
+		kept = append(kept, ob)
+	}
+	if !dropped {
+		return raw, nil
+	}
+	rewritten, err := json.Marshal(kept)
+	if err != nil {
+		return raw, nil
+	}
+	return rewritten, refused
+}
+
+// routingScriptRefused mirrors xray-core 26.10.17's RouterConfig.Build (#7136): a routing
+// "script" replaces rules and domainStrategy, so the core refuses a config holding both.
+func routingScriptRefused(routing map[string]any) bool {
+	script, _ := routing["script"].(string)
+	rules, _ := routing["rules"].([]any)
+	return script != "" && (routing["domainStrategy"] != nil || len(rules) > 0)
+}
+
+// dnsScriptRefused mirrors xray-core 26.10.17's DNSConfig.Build (#7136): a dns "script" refuses the
+// fallback and parallel switches, and any server scoped by domains, skipFallback or finalQuery.
+func dnsScriptRefused(dns map[string]any) bool {
+	if script, _ := dns["script"].(string); script == "" {
+		return false
+	}
+	for _, key := range []string{"disableFallback", "disableFallbackIfMatch", "enableParallelQuery"} {
+		if on, _ := dns[key].(bool); on {
+			return true
+		}
+	}
+	servers, _ := dns["servers"].([]any)
+	return slices.ContainsFunc(servers, func(entry any) bool {
+		server, _ := entry.(map[string]any)
+		skipFallback, _ := server["skipFallback"].(bool)
+		finalQuery, _ := server["finalQuery"].(bool)
+		return hasDNSDomains(server["domains"]) || skipFallback || finalQuery
+	})
+}
+
+func hasDNSDomains(domains any) bool {
+	switch v := domains.(type) {
+	case []any:
+		return len(v) > 0
+	case string:
+		return v != ""
+	}
+	return false
+}
+
+// dropRefusedScript drops a section's Lua "script" the core would refuse, logging why: the
+// panel's own rules and DNS settings stay, since its stats path depends on the api rule.
+func dropRefusedScript(raw json_util.RawMessage, section string, refused func(map[string]any) bool) json_util.RawMessage {
+	var parsed map[string]any
+	if len(raw) == 0 || json.Unmarshal(raw, &parsed) != nil || !refused(parsed) {
+		return raw
+	}
+	logger.Warningf("%s: ignoring \"script\" %v, xray-core refuses it beside this %s section's other settings", section, parsed["script"], section)
+	delete(parsed, "script")
+	if rewritten, err := json.Marshal(parsed); err == nil {
 		return rewritten
 	}
 	return raw
