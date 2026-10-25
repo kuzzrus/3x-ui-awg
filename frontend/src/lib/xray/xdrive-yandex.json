@@ -1,0 +1,31 @@
+{
+  "flatten": true,
+  "auth": {
+    "type": "basic",
+    "username": "{secret0}",
+    "password": "{secret1}"
+  },
+  "put": {
+    "method": "PUT",
+    "url": "https://webdav.yandex.ru/{folder}/{name}"
+  },
+  "get": {
+    "method": "GET",
+    "url": "https://webdav.yandex.ru/{folder}/{name}"
+  },
+  "delete": {
+    "method": "DELETE",
+    "url": "https://webdav.yandex.ru/{folder}/{name}"
+  },
+  "list": {
+    "method": "PROPFIND",
+    "url": "https://webdav.yandex.ru/{folder}/",
+    "headers": {
+      "Depth": "1"
+    },
+    "namesRegex": "<d:href>[^<]*/([^/<]+)</d:href>"
+  },
+  "retry": {
+    "status": [429, 500, 502, 503]
+  }
+}

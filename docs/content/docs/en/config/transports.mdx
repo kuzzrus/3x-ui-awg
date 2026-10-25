@@ -144,6 +144,23 @@ no TLS/REALITY layer of its own — its traffic is the storage API's HTTPS. On a
 outbound, **TLS** security shapes that HTTPS connection: its SNI, uTLS fingerprint
 and ALPN are what the storage API sees.
 
+#### Yandex Disk (WebDAV)
+
+With the **Custom template** service the form has a **Use Yandex Disk WebDAV template**
+button. It fills the template and the tuning of Xray-core's own Yandex Disk live test
+(256 KiB segments, 100 ms flush, 300–1500 ms polling, concurrency 8, 120 s TTL) and keeps
+the folder, the secrets and every other field you set.
+
+1. Create a folder at the root of Yandex Disk, for example `xdrive-test`, and put its name
+   into **Remote folder**.
+2. In Yandex ID create an app password of the type **Files WebDAV**.
+3. In **Secrets** enter the Yandex login first and the app password second.
+4. Give clients the Xray JSON subscription: the template and the secrets travel with it.
+
+An XDRIVE session polls the folder from both ends, and Yandex may answer `429` to fast
+polling. If the log shows it, raise the poll intervals and lower the concurrency; the
+preset's numbers are the live test's, not a promise of throughput.
+
 ## FinalMask — late-layer obfuscation
 
 **FinalMask** wraps traffic **after** the transport and security layers, so it can

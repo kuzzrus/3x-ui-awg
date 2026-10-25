@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Input, InputNumber, Select, Typography } from 'antd';
+import { Button, Form, Input, InputNumber, Select, Typography } from 'antd';
 import { useFormContext, useWatch } from 'react-hook-form';
 
 import { JsonEditor } from '@/components/form';
 import { FormField } from '@/components/form/rhf';
+import { yandexDiskPreset } from '@/lib/xray/xdrive-presets';
 import { XDriveServiceSchema } from '@/schemas/protocols/stream/xdrive';
 
 const BASE = ['streamSettings', 'xdriveSettings'] as const;
+const BASE_PATH = BASE.join('.');
 
 const SERVICE_LABEL_KEYS: Partial<Record<string, string>> = {
   local: 'pages.inbounds.form.xdrive.serviceLocal',
@@ -73,8 +75,19 @@ function TemplateEditor({
 
 export default function XDriveForm() {
   const { t } = useTranslation();
-  const { control } = useFormContext();
-  const service = useWatch({ control, name: `${BASE.join('.')}.service` }) as string | undefined;
+  const { control, getValues, setValue } = useFormContext();
+  const [presetCount, setPresetCount] = useState(0);
+  const service = useWatch({ control, name: `${BASE_PATH}.service` }) as string | undefined;
+  // The folder, the secrets and any other knob stay; the editor remounts to show the new template.
+  const applyYandexPreset = () => {
+    const current = (getValues(BASE_PATH) ?? {}) as Record<string, unknown>;
+    setValue(
+      BASE_PATH,
+      { ...current, service: 'template', ...yandexDiskPreset() },
+      { shouldDirty: true },
+    );
+    setPresetCount((count) => count + 1);
+  };
   const serviceOptions = XDriveServiceSchema.options.map((value) => {
     const labelKey = SERVICE_LABEL_KEYS[value];
     return { value, label: labelKey ? t(labelKey) : (SERVICE_NAMES[value] ?? value) };
@@ -105,6 +118,14 @@ export default function XDriveForm() {
         ))}
       {service === 'template' && (
         <>
+          <Form.Item label=" " colon={false}>
+            <Button onClick={applyYandexPreset}>
+              {t('pages.inbounds.form.xdrive.useYandexTemplate')}
+            </Button>
+            <Typography.Paragraph type="secondary" style={{ margin: '4px 0 0' }}>
+              {t('pages.inbounds.form.xdrive.yandexTemplateDesc')}
+            </Typography.Paragraph>
+          </Form.Item>
           <FormField
             label={t('pages.inbounds.form.xdrive.secrets')}
             tooltip={t('pages.inbounds.form.xdrive.secretsDesc')}
@@ -117,7 +138,7 @@ export default function XDriveForm() {
             name={[...BASE, 'template']}
             required
           >
-            <TemplateEditor />
+            <TemplateEditor key={presetCount} />
           </FormField>
         </>
       )}
