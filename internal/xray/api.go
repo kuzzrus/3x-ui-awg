@@ -475,10 +475,6 @@ func IsUserExistsErr(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "already exists")
 }
 
-// ensureXrayAssetLocation makes geoip.dat/geosite.dat resolvable when xray-core
-// config builders run inside the panel process. The xray binary resolves assets
-// relative to its own executable, but the panel binary lives one level above
-// the bin folder, so an explicit location is required.
 // localizeNoiseScripts points each noise mask's relative "script" at the file the xray child loads:
 // xray-core 26.10.17 (#7124) compiles it inside Build, where the panel would look beside its own binary.
 func localizeNoiseScripts(stream *conf.StreamConfig) {
@@ -527,6 +523,10 @@ func childLuaScriptPath(script string) string {
 	return inBin
 }
 
+// ensureXrayAssetLocation makes geoip.dat/geosite.dat resolvable when xray-core
+// config builders run inside the panel process. The xray binary resolves assets
+// relative to its own executable, but the panel binary lives one level above
+// the bin folder, so an explicit location is required.
 func ensureXrayAssetLocation() {
 	if os.Getenv("XRAY_LOCATION_ASSET") != "" || os.Getenv("xray.location.asset") != "" {
 		return
