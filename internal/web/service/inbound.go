@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1046,7 +1047,7 @@ func validateXDriveStorage(streamSettings string) error {
 		if len(xd.Template) == 0 || string(xd.Template) == "null" {
 			return common.NewError(`XDRIVE service "template" needs a "template" object describing the storage API.`)
 		}
-		return validateXDriveTemplate(xd.Template)
+		return validateXDriveTemplate(xd.Template, xd.Secrets)
 	default:
 		return common.NewError(fmt.Sprintf("unsupported XDRIVE service %q: use local, google-drive or template.", xd.Service))
 	}
@@ -1094,14 +1095,22 @@ func canonicalizeXDriveService(streamSettings string) string {
 	return string(out)
 }
 
+// xdriveSecretRef is a template field that is nothing but one secret, like "{secret0}".
+var xdriveSecretRef = regexp.MustCompile(`^\{secret(\d+)\}$`)
+
 // validateXDriveTemplate applies the checks of xray-core's newTemplateStorage
 // (transport/internet/xdrive/template.go), which only run once the listener starts.
-func validateXDriveTemplate(raw json.RawMessage) error {
+func validateXDriveTemplate(raw json.RawMessage, secrets []string) error {
 	type op struct {
 		URL        string `json:"url"`
 		NamesRegex string `json:"namesRegex"`
 	}
 	var tmpl struct {
+		Auth struct {
+			Type     string `json:"type"`
+			Username string `json:"username"`
+			Password string `json:"password"`
+		} `json:"auth"`
 		Put    op `json:"put"`
 		Get    op `json:"get"`
 		Delete op `json:"delete"`
@@ -1122,6 +1131,25 @@ func validateXDriveTemplate(raw json.RawMessage) error {
 	}
 	if names.NumSubexp() < 1 {
 		return common.NewError("XDRIVE template namesRegex needs one capture group for the object name.")
+	}
+	return validateXDriveBasicAuth(tmpl.Auth.Type, tmpl.Auth.Username, tmpl.Auth.Password, secrets)
+}
+
+// validateXDriveBasicAuth refuses a basic login whose username or password is a secret left blank:
+// the storage answers it 401 on every request, and xray-core only finds out at runtime.
+func validateXDriveBasicAuth(authType, username, password string, secrets []string) error {
+	if !strings.EqualFold(authType, "basic") {
+		return nil
+	}
+	for _, field := range []struct{ what, value string }{{"username", username}, {"password", password}} {
+		match := xdriveSecretRef.FindStringSubmatch(field.value)
+		if match == nil {
+			continue
+		}
+		index, _ := strconv.Atoi(match[1])
+		if index >= len(secrets) || strings.TrimSpace(secrets[index]) == "" {
+			return common.NewErrorf("XDRIVE template sends %s as its basic-auth %s, but that secret is empty.", field.value, field.what)
+		}
 	}
 	return nil
 }

@@ -2,6 +2,8 @@ package service
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -175,6 +177,10 @@ func TestAddInboundStoresTheGoogleDriveServiceUnderItsNewName(t *testing.T) {
 	}
 }
 
+// A complete template whose basic login is the first two secrets, as the Yandex Disk one is.
+const basicLoginXDriveTemplate = `{"auth":{"type":"basic","username":"{secret0}","password":"{secret1}"},` +
+	`"put":{"url":"u"},"get":{"url":"u"},"delete":{"url":"u"},"list":{"url":"u","namesRegex":"(.+)"}}`
+
 // xray-core opens XDRIVE storage when the listener starts; a storage it refuses there stops every inbound.
 func TestAddInboundRefusesXDriveStorageTheCoreCannotOpen(t *testing.T) {
 	tests := []struct {
@@ -192,6 +198,8 @@ func TestAddInboundRefusesXDriveStorageTheCoreCannotOpen(t *testing.T) {
 		{"template without a delete op", `{"service":"template","template":{"put":{"url":"u"},"get":{"url":"u"},"list":{"url":"u","namesRegex":"(.+)"}}}`, "XDRIVE template needs put, get, list and delete operations"},
 		{"template without namesRegex", `{"service":"template","template":{"put":{"url":"u"},"get":{"url":"u"},"list":{"url":"u"},"delete":{"url":"u"}}}`, "XDRIVE template list needs a namesRegex"},
 		{"template namesRegex without a group", `{"service":"template","template":{"put":{"url":"u"},"get":{"url":"u"},"list":{"url":"u","namesRegex":"name"},"delete":{"url":"u"}}}`, "XDRIVE template namesRegex needs one capture group"},
+		{"basic login with a blank username secret", `{"service":"template","remoteFolder":"f","secrets":["","pw"],"template":` + basicLoginXDriveTemplate + `}`, "basic-auth username"},
+		{"basic login with a missing password secret", `{"service":"template","remoteFolder":"f","secrets":["login"],"template":` + basicLoginXDriveTemplate + `}`, "basic-auth password"},
 		{"unknown service", `{"service":"Dropbox","remoteFolder":"f"}`, `unsupported XDRIVE service "Dropbox"`},
 	}
 	for i, tc := range tests {
@@ -210,6 +218,39 @@ func TestAddInboundAcceptsACompleteXDriveTemplate(t *testing.T) {
 	tmpl := `{"service":"template","template":{"put":{"url":"u"},"get":{"url":"u"},"list":{"url":"u","namesRegex":"\"name\":\"([^\"]+)\""},"delete":{"url":"u"}}}`
 	if _, _, err := (&InboundService{}).AddInbound(xdriveInbound(18480, tmpl)); err != nil {
 		t.Fatalf("AddInbound of a template xray-core can open: %v", err)
+	}
+}
+
+// Only a login that is nothing but a secret is judged: text around one, or another auth type, is the
+// template author's business.
+func TestAddInboundJudgesOnlyBasicLoginsThatAreNothingButASecret(t *testing.T) {
+	setupBulkDB(t)
+	const operations = `"put":{"url":"u"},"get":{"url":"u"},"delete":{"url":"u"},"list":{"url":"u","namesRegex":"(.+)"}`
+	tests := []struct{ name, secrets, auth string }{
+		{"text around the secrets", `[]`, `{"type":"basic","username":"bot-{secret0}","password":"pw-{secret1}"}`},
+		{"another auth type", `[]`, `{"type":"oauth2","username":"{secret0}","password":"{secret1}"}`},
+		{"a basic login with its secrets", `["login","pw"]`, `{"type":"basic","username":"{secret0}","password":"{secret1}"}`},
+	}
+	for i, tc := range tests {
+		settings := `{"service":"template","remoteFolder":"f","secrets":` + tc.secrets +
+			`,"template":{"auth":` + tc.auth + `,` + operations + `}}`
+		if _, _, err := (&InboundService{}).AddInbound(xdriveInbound(18497+i, settings)); err != nil {
+			t.Errorf("%s: AddInbound = %v, want it accepted", tc.name, err)
+		}
+	}
+}
+
+// The XDRIVE form offers Yandex Disk from a file the frontend imports; the save path must
+// accept the stream the form makes from it, folder and credentials filled in.
+func TestAddInboundAcceptsTheYandexDiskTemplateOfTheForm(t *testing.T) {
+	setupBulkDB(t)
+	template, err := os.ReadFile(filepath.Join("..", "..", "..", "frontend", "src", "lib", "xray", "xdrive-yandex.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings := `{"service":"template","remoteFolder":"xdrive-test","secrets":["login","app-password"],"template":` + string(template) + `}`
+	if _, _, err := (&InboundService{}).AddInbound(xdriveInbound(18496, settings)); err != nil {
+		t.Fatalf("AddInbound with the Yandex Disk template: %v", err)
 	}
 }
 

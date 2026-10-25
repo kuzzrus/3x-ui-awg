@@ -1,8 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
-import { yandexDiskPreset } from '@/lib/xray/xdrive-presets';
+import { isYandexDiskTemplate, yandexDiskPreset } from '@/lib/xray/xdrive-presets';
 
 describe('Yandex Disk XDRIVE preset', () => {
+  it('recognises its template however the keys are ordered, and nothing that differs', () => {
+    const { template } = yandexDiskPreset();
+    expect(isYandexDiskTemplate(template)).toBe(true);
+    expect(isYandexDiskTemplate(Object.fromEntries(Object.entries(template).reverse()))).toBe(true);
+
+    expect(isYandexDiskTemplate({ ...template, retry: { status: [500] } })).toBe(false);
+    expect(isYandexDiskTemplate({ ...template, flatten: false })).toBe(false);
+    expect(isYandexDiskTemplate(undefined)).toBe(false);
+    expect(isYandexDiskTemplate('template')).toBe(false);
+  });
+
   it('takes the object names out of a multistatus answer and not the folder itself', () => {
     const { list } = yandexDiskPreset().template as { list: { namesRegex: string } };
     const body =

@@ -1,21 +1,33 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Form, Input, InputNumber, Select, Typography } from 'antd';
+import { Input, InputNumber, Select, Typography } from 'antd';
 import { useFormContext, useWatch } from 'react-hook-form';
 
 import { JsonEditor } from '@/components/form';
 import { FormField } from '@/components/form/rhf';
-import { yandexDiskPreset } from '@/lib/xray/xdrive-presets';
+import { isYandexDiskTemplate, yandexDiskPreset } from '@/lib/xray/xdrive-presets';
 import { XDriveServiceSchema } from '@/schemas/protocols/stream/xdrive';
 
 const BASE = ['streamSettings', 'xdriveSettings'] as const;
 const BASE_PATH = BASE.join('.');
 
+// A choice of this dropdown only: it is stored as the template service with Yandex Disk's template.
+const YANDEX_DISK = 'yandex-disk';
+
 const SERVICE_LABEL_KEYS: Partial<Record<string, string>> = {
   local: 'pages.inbounds.form.xdrive.serviceLocal',
   template: 'pages.inbounds.form.xdrive.serviceTemplate',
+  [YANDEX_DISK]: 'pages.inbounds.form.xdrive.serviceYandex',
 };
 const SERVICE_NAMES: Partial<Record<string, string>> = { 'google-drive': 'Google Drive' };
+
+// Google Drive reads three named secrets and the template services a list: a switch between
+// kinds starts the secrets over, so one service's credentials never show up in another's fields.
+const SECRETS_KIND: Partial<Record<string, string>> = {
+  'google-drive': 'named',
+  template: 'list',
+  [YANDEX_DISK]: 'list',
+};
 
 // Core defaults (transport/internet/xdrive/params.go), shown as placeholders so an
 // empty field keeps meaning "use the core's value".
@@ -31,6 +43,20 @@ const TUNING_FIELDS = [
 ] as const;
 
 const GOOGLE_DRIVE_SECRETS = ['clientId', 'clientSecret', 'refreshToken'] as const;
+
+function ServiceSelect({
+  id,
+  mode,
+  options,
+  onPick,
+}: {
+  id?: string;
+  mode: string;
+  options: { value: string; label: string }[];
+  onPick: (next: string) => void;
+}) {
+  return <Select id={id} value={mode} options={options} onChange={onPick} />;
+}
 
 function TemplateEditor({
   value,
@@ -76,36 +102,59 @@ function TemplateEditor({
 export default function XDriveForm() {
   const { t } = useTranslation();
   const { control, getValues, setValue } = useFormContext();
-  const [presetCount, setPresetCount] = useState(0);
   const service = useWatch({ control, name: `${BASE_PATH}.service` }) as string | undefined;
-  // The folder, the secrets and any other knob stay; the editor remounts to show the new template.
-  const applyYandexPreset = () => {
+  const template = useWatch({ control, name: `${BASE_PATH}.template` });
+  // A Yandex Disk template opened as a custom one stays in the custom editor.
+  const [customPinned, setCustomPinned] = useState(false);
+  const stored = service ?? 'google-drive';
+  const mode =
+    stored === 'template' && !customPinned && isYandexDiskTemplate(template) ? YANDEX_DISK : stored;
+
+  const chooseService = (next: string) => {
     const current = (getValues(BASE_PATH) ?? {}) as Record<string, unknown>;
-    setValue(
-      BASE_PATH,
-      { ...current, service: 'template', ...yandexDiskPreset() },
-      { shouldDirty: true },
-    );
-    setPresetCount((count) => count + 1);
+    const sameKind = SECRETS_KIND[mode] === SECRETS_KIND[next];
+    // Blank strings, not an empty list: a field with no value falls back to the form's loaded one.
+    const blank = next === 'google-drive' ? ['', '', ''] : [];
+    const secrets =
+      sameKind && Array.isArray(current.secrets) ? (current.secrets as string[]) : blank;
+    if (next === YANDEX_DISK) {
+      setCustomPinned(false);
+      const credentials = [secrets[0] ?? '', secrets[1] ?? ''];
+      setValue(
+        BASE_PATH,
+        { ...current, ...yandexDiskPreset(), service: 'template', secrets: credentials },
+        { shouldDirty: true },
+      );
+      return;
+    }
+    setCustomPinned(next === 'template');
+    setValue(BASE_PATH, { ...current, service: next, secrets }, { shouldDirty: true });
   };
-  const serviceOptions = XDriveServiceSchema.options.map((value) => {
-    const labelKey = SERVICE_LABEL_KEYS[value];
-    return { value, label: labelKey ? t(labelKey) : (SERVICE_NAMES[value] ?? value) };
-  });
+
+  const serviceOptions = XDriveServiceSchema.options
+    .flatMap((value) => (value === 'local' ? [YANDEX_DISK, value] : [value]))
+    .map((value) => {
+      const labelKey = SERVICE_LABEL_KEYS[value];
+      return { value, label: labelKey ? t(labelKey) : (SERVICE_NAMES[value] ?? value) };
+    });
 
   return (
     <>
-      <FormField label={t('pages.inbounds.form.xdrive.service')} name={[...BASE, 'service']}>
-        <Select options={serviceOptions} />
+      <FormField
+        label={t('pages.inbounds.form.xdrive.service')}
+        name={[...BASE, 'service']}
+        extra={mode === YANDEX_DISK ? t('pages.inbounds.form.xdrive.yandexDesc') : undefined}
+      >
+        <ServiceSelect mode={mode} options={serviceOptions} onPick={chooseService} />
       </FormField>
       <FormField
         label={t('pages.inbounds.form.xdrive.remoteFolder')}
         name={[...BASE, 'remoteFolder']}
         required
       >
-        <Input placeholder={service === 'local' ? '/var/lib/xdrive' : 'xray-tunnel'} />
+        <Input placeholder={mode === 'local' ? '/var/lib/xdrive' : 'xray-tunnel'} />
       </FormField>
-      {service === 'google-drive' &&
+      {mode === 'google-drive' &&
         GOOGLE_DRIVE_SECRETS.map((key, index) => (
           <FormField
             key={key}
@@ -116,16 +165,26 @@ export default function XDriveForm() {
             {key === 'clientId' ? <Input /> : <Input.Password />}
           </FormField>
         ))}
-      {service === 'template' && (
+      {mode === YANDEX_DISK && (
         <>
-          <Form.Item label=" " colon={false}>
-            <Button onClick={applyYandexPreset}>
-              {t('pages.inbounds.form.xdrive.useYandexTemplate')}
-            </Button>
-            <Typography.Paragraph type="secondary" style={{ margin: '4px 0 0' }}>
-              {t('pages.inbounds.form.xdrive.yandexTemplateDesc')}
-            </Typography.Paragraph>
-          </Form.Item>
+          <FormField
+            label={t('pages.inbounds.form.xdrive.yandexLogin')}
+            name={[...BASE, 'secrets', 0]}
+            required
+          >
+            <Input autoComplete="off" />
+          </FormField>
+          <FormField
+            label={t('pages.inbounds.form.xdrive.yandexPassword')}
+            name={[...BASE, 'secrets', 1]}
+            required
+          >
+            <Input.Password autoComplete="off" />
+          </FormField>
+        </>
+      )}
+      {mode === 'template' && (
+        <>
           <FormField
             label={t('pages.inbounds.form.xdrive.secrets')}
             tooltip={t('pages.inbounds.form.xdrive.secretsDesc')}
@@ -138,7 +197,7 @@ export default function XDriveForm() {
             name={[...BASE, 'template']}
             required
           >
-            <TemplateEditor key={presetCount} />
+            <TemplateEditor />
           </FormField>
         </>
       )}
