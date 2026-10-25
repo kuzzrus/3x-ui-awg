@@ -128,6 +128,7 @@ export default function LogModal({ open, onClose, source }: LogModalProps) {
         <Form.Item>
           <Space.Compact>
             <Select
+              aria-label={t('pages.index.logLines')}
               value={rows}
               size="small"
               style={{ width: 100 }}
@@ -141,6 +142,7 @@ export default function LogModal({ open, onClose, source }: LogModalProps) {
               ]}
             />
             <Select
+              aria-label={t('pages.xray.logLevel')}
               value={level}
               size="small"
               style={{ minWidth: 95 }}
@@ -169,7 +171,7 @@ export default function LogModal({ open, onClose, source }: LogModalProps) {
           <Button
             type="primary"
             onClick={download}
-            icon={<DownloadOutlined />}
+            icon={<DownloadOutlined aria-hidden />}
             aria-label={t('download')}
           />
         </Form.Item>

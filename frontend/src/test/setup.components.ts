@@ -95,11 +95,18 @@ afterEach(async () => {
   for (let i = 0; i < 3; i += 1) {
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
+  /*
+   * AntD Form debounces clearing its error list by 10ms (useDebounce via
+   * rc-util useDelayState), and that timer survives unmount. Wait past it so
+   * it fires while `window` still exists.
+   */
+  await new Promise((resolve) => setTimeout(resolve, 20));
 });
 
 import { HttpUtil, Msg } from '@/utils';
 
-const LIST_URLS = ['/panel/api/inbounds/options', '/panel/api/nodes/list'];
+// Array-returning endpoints must resolve to [] so Zod list schemas validate.
+const LIST_URLS = ['/panel/api/inbounds/options', '/panel/api/nodes/list', '/panel/api/hosts/'];
 
 function stubRequests() {
   if (!vi.isMockFunction(HttpUtil.post)) {

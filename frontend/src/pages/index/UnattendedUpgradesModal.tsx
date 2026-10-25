@@ -159,7 +159,7 @@ export default function UnattendedUpgradesModal({ open, onClose }: UnattendedUpg
               cancelText={t('cancel')}
               onConfirm={install}
             >
-              <Button type="primary" icon={<DownloadOutlined />} loading={loading}>
+              <Button type="primary" icon={<DownloadOutlined aria-hidden />} loading={loading}>
                 {t('pages.index.unattendedUpgradesInstallButton')}
               </Button>
             </Popconfirm>
@@ -190,7 +190,11 @@ export default function UnattendedUpgradesModal({ open, onClose }: UnattendedUpg
             </Typography.Paragraph>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
-              <Switch checked={autoReboot} onChange={setAutoReboot} />
+              <Switch
+                checked={autoReboot}
+                onChange={setAutoReboot}
+                aria-label={t('pages.index.unattendedUpgradesAutoReboot')}
+              />
               <span>{t('pages.index.unattendedUpgradesAutoReboot')}</span>
             </div>
             <Typography.Paragraph type="secondary" style={{ marginTop: 4, fontSize: 12 }}>
@@ -209,7 +213,7 @@ export default function UnattendedUpgradesModal({ open, onClose }: UnattendedUpg
                   cancelText={t('cancel')}
                   onConfirm={disable}
                 >
-                  <Button danger icon={<StopOutlined />} loading={loading}>
+                  <Button danger icon={<StopOutlined aria-hidden />} loading={loading}>
                     {t('pages.index.unattendedUpgradesDisableButton')}
                   </Button>
                 </Popconfirm>
@@ -220,7 +224,7 @@ export default function UnattendedUpgradesModal({ open, onClose }: UnattendedUpg
                 cancelText={t('cancel')}
                 onConfirm={runNow}
               >
-                <Button icon={<PlayCircleOutlined />} loading={runLoading || running}>
+                <Button icon={<PlayCircleOutlined aria-hidden />} loading={runLoading || running}>
                   {t('pages.index.unattendedUpgradesRunButton')}
                 </Button>
               </Popconfirm>

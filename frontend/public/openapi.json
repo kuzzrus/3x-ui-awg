@@ -3,7 +3,7 @@
   "info": {
     "title": "3X-UI Panel API",
     "version": "3.x",
-    "description": "Programmatic interface to a 3X-UI panel. Authenticate either by logging in (cookie) or with an API token from Settings → Security → API Token (Bearer). All endpoints under /panel/api/* honour both modes — an API token is a full-admin credential, so treat it like the panel password."
+    "description": "Programmatic interface to a 3X-UI panel. Authenticate either by logging in (cookie) or with a scoped API token from Settings → Security → API Token (Bearer). Token access is limited by its admin, monitor, node-sync, or node-admin scope; treat admin tokens like the panel password."
   },
   "servers": [
     {
@@ -16,7 +16,7 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "API token from Settings → Security → API Token. Send as `Authorization: Bearer <token>`."
+        "description": "Scoped API token from Settings → Security → API Token. Send as `Authorization: Bearer <token>`."
       },
       "cookieAuth": {
         "type": "apiKey",
@@ -332,6 +332,11 @@
           "ldapVlessField": {
             "type": "string"
           },
+          "nodeDownThreshold": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
           "outboundDownThreshold": {
             "maximum": 100,
             "minimum": 1,
@@ -421,6 +426,9 @@
           },
           "subClashPath": {
             "type": "string"
+          },
+          "subClashRemoteDNS": {
+            "type": "boolean"
           },
           "subClashRules": {
             "type": "string"
@@ -521,6 +529,10 @@
           },
           "subHideSettings": {
             "type": "boolean"
+          },
+          "subHostSortMode": {
+            "example": "inbound-first",
+            "type": "string"
           },
           "subIncyAnnounceUrl": {
             "type": "string"
@@ -831,6 +843,7 @@
           "ldapUserAttr",
           "ldapUserFilter",
           "ldapVlessField",
+          "nodeDownThreshold",
           "outboundDownThreshold",
           "pageSize",
           "panelOutbound",
@@ -857,6 +870,7 @@
           "subClashEnable",
           "subClashEnableRouting",
           "subClashPath",
+          "subClashRemoteDNS",
           "subClashRules",
           "subClashURI",
           "subClashUserAgentRegex",
@@ -890,6 +904,7 @@
           "subHappTunMode",
           "subHappTunType",
           "subHideSettings",
+          "subHostSortMode",
           "subIncyAnnounceUrl",
           "subIncyAppAutoDetect",
           "subIncyBannerBgColor",
@@ -1154,6 +1169,11 @@
           "ldapVlessField": {
             "type": "string"
           },
+          "nodeDownThreshold": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
           "outboundDownThreshold": {
             "maximum": 100,
             "minimum": 1,
@@ -1243,6 +1263,9 @@
           },
           "subClashPath": {
             "type": "string"
+          },
+          "subClashRemoteDNS": {
+            "type": "boolean"
           },
           "subClashRules": {
             "type": "string"
@@ -1343,6 +1366,10 @@
           },
           "subHideSettings": {
             "type": "boolean"
+          },
+          "subHostSortMode": {
+            "example": "inbound-first",
+            "type": "string"
           },
           "subIncyAnnounceUrl": {
             "type": "string"
@@ -1661,6 +1688,7 @@
           "ldapUserAttr",
           "ldapUserFilter",
           "ldapVlessField",
+          "nodeDownThreshold",
           "outboundDownThreshold",
           "pageSize",
           "panelOutbound",
@@ -1687,6 +1715,7 @@
           "subClashEnable",
           "subClashEnableRouting",
           "subClashPath",
+          "subClashRemoteDNS",
           "subClashRules",
           "subClashURI",
           "subClashUserAgentRegex",
@@ -1720,6 +1749,7 @@
           "subHappTunMode",
           "subHappTunType",
           "subHideSettings",
+          "subHostSortMode",
           "subIncyAnnounceUrl",
           "subIncyAppAutoDetect",
           "subIncyBannerBgColor",
@@ -1916,6 +1946,23 @@
         ],
         "type": "object"
       },
+      "Blocker": {
+        "description": "Blocker is one unmet requirement.",
+        "properties": {
+          "code": {
+            "example": "tools",
+            "type": "string"
+          },
+          "detail": {
+            "example": "awg",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "type": "object"
+      },
       "Client": {
         "description": "Client represents a client configuration for Xray inbounds with traffic limits and settings.",
         "properties": {
@@ -1942,6 +1989,17 @@
           "auth": {
             "description": "Auth password (Hysteria)",
             "type": "string"
+          },
+          "clientHostRuleIds": {
+            "description": "ClientHostRuleIds binds the client to these host rules, one link each; nil preserves, empty\nclears, and bindings with no usable host leave that inbound out of the subscription.",
+            "example": [
+              1,
+              2
+            ],
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
           },
           "comment": {
             "description": "Client comment",
@@ -1982,9 +2040,15 @@
             "type": "string"
           },
           "keepAlive": {
-            "description": "seconds between PersistentKeepalive packets; 0 sends none, omit to keep the stored value",
-            "nullable": true,
-            "type": "integer"
+            "description": "Numeric values or AmneziaWG ranges; 0 disables, omission preserves.",
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ]
           },
           "limitIp": {
             "description": "IP limit for this client",
@@ -2182,6 +2246,16 @@
           "auth": {
             "type": "string"
           },
+          "clientHostRuleIds": {
+            "example": [
+              1,
+              2
+            ],
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
           "comment": {
             "type": "string"
           },
@@ -2212,7 +2286,15 @@
             "type": "integer"
           },
           "keepAlive": {
-            "type": "integer"
+            "description": "Numeric values or AmneziaWG ranges.",
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ]
           },
           "limitHwid": {
             "type": "integer"
@@ -2997,6 +3079,10 @@
             "minimum": 0,
             "type": "integer"
           },
+          "randomCount": {
+            "example": 1,
+            "type": "integer"
+          },
           "remark": {
             "example": "cdn-front",
             "maxLength": 256,
@@ -3021,6 +3107,15 @@
           },
           "sni": {
             "type": "string"
+          },
+          "sniSharedRandom": {
+            "type": "boolean"
+          },
+          "snis": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "sockoptParams": {},
           "sortOrder": {
@@ -3069,11 +3164,13 @@
           "path",
           "pinnedPeerCertSha256",
           "port",
+          "randomCount",
           "remark",
           "security",
           "serverDescription",
           "shuffleHost",
           "sni",
+          "sniSharedRandom",
           "sockoptParams",
           "sortOrder",
           "tags",
@@ -3178,6 +3275,11 @@
             "minimum": 0,
             "type": "integer"
           },
+          "randomCount": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
           "remark": {
             "maxLength": 256,
             "type": "string"
@@ -3200,6 +3302,15 @@
           },
           "sni": {
             "type": "string"
+          },
+          "sniSharedRandom": {
+            "type": "boolean"
+          },
+          "snis": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "sockoptParams": {
             "type": "string"
@@ -3243,11 +3354,14 @@
           "path",
           "pinnedPeerCertSha256",
           "port",
+          "randomCount",
           "remark",
           "security",
           "serverDescription",
           "shuffleHost",
           "sni",
+          "sniSharedRandom",
+          "snis",
           "sockoptParams",
           "sortOrder",
           "tags",
@@ -3970,6 +4084,13 @@
           "transitive": {
             "type": "boolean"
           },
+          "unavailableMetrics": {
+            "description": "Nil on legacy rows and responses: zero remains a valid measured value.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "updatedAt": {
             "example": 1700000000,
             "format": "int64",
@@ -4531,6 +4652,12 @@
             "example": false,
             "type": "boolean"
           },
+          "unavailableMetrics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "updatedAt": {
             "example": 1700003600,
             "format": "int64",
@@ -4750,6 +4877,12 @@
             "example": "online",
             "type": "string"
           },
+          "unavailableMetrics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "uptimeSecs": {
             "example": 86400,
             "format": "int64",
@@ -4796,6 +4929,37 @@
         "required": [
           "chain",
           "label"
+        ],
+        "type": "object"
+      },
+      "Readiness": {
+        "description": "Readiness is the host's ability to run any kernel-mode inbound at all.",
+        "properties": {
+          "blockers": {
+            "example": [
+              {
+                "code": "tools",
+                "detail": "awg"
+              }
+            ],
+            "items": {
+              "$ref": "#/components/schemas/Blocker"
+            },
+            "type": "array"
+          },
+          "installCommand": {
+            "example": "sudo /usr/local/x-ui/x-ui install-awg-kernel",
+            "type": "string"
+          },
+          "ready": {
+            "example": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "blockers",
+          "installCommand",
+          "ready"
         ],
         "type": "object"
       },
@@ -5007,6 +5171,10 @@
           "keepaliveTimeout": {
             "type": "string"
           },
+          "kernelMode": {
+            "description": "KernelMode runs this inbound on the AmneziaWG kernel module (internal/amneziawgkern)\ninstead of the embedded amneziawg-go + gVisor stack.",
+            "type": "boolean"
+          },
           "maxHandshakeAttempts": {
             "type": "string"
           },
@@ -5014,7 +5182,7 @@
             "type": "integer"
           },
           "primaryDns": {
-            "description": "PrimaryDNS/SecondaryDNS seed the DNS line of downloadable client\nconfigs; the server's own interface never sets one (see BuildClientConfig).",
+            "description": "PrimaryDNS/SecondaryDNS seed the DNS line of downloadable client\nconfigs; the server's own interface never sets one (see BuildClientConfig).\nBlank is meaningful, so no omitempty: a dropped key resurrects frontend defaults.",
             "type": "string"
           },
           "privateKey": {
@@ -5071,6 +5239,7 @@
           "jc",
           "jmax",
           "jmin",
+          "primaryDns",
           "privateKey",
           "publicKey",
           "randomTrailers",
@@ -5078,6 +5247,7 @@
           "s2",
           "s3",
           "s4",
+          "secondaryDns",
           "subnetCidr",
           "subnetIp"
         ],
@@ -5182,6 +5352,35 @@
           "sortOrder",
           "strategy",
           "updatedAt"
+        ],
+        "type": "object"
+      },
+      "TgBotCapabilities": {
+        "description": "TgBotCapabilities is the browser-safe shape of the bot's own capabilities.",
+        "properties": {
+          "groupPrivacy": {
+            "description": "GroupPrivacy off means the bot reads every group message; when it is on,\na bare /start in a group is invisible to the bot.",
+            "example": false,
+            "type": "boolean"
+          },
+          "inlineEnabled": {
+            "example": true,
+            "type": "boolean"
+          },
+          "running": {
+            "example": true,
+            "type": "boolean"
+          },
+          "username": {
+            "example": "xui_bot",
+            "type": "string"
+          }
+        },
+        "required": [
+          "groupPrivacy",
+          "inlineEnabled",
+          "running",
+          "username"
         ],
         "type": "object"
       },
@@ -5389,7 +5588,7 @@
     },
     {
       "name": "API Tokens",
-      "description": "Manage scoped Bearer tokens for programmatic auth. Tokens grant admin, monitor, or node-sync access, may expire, and are stored as SHA-256 hashes. The plaintext is returned only once at creation."
+      "description": "Manage scoped Bearer tokens for programmatic auth. admin grants the full panel API; monitor is read-only for status and metrics; node-sync manages node configuration without panel updates; node-admin adds panel self-update to node-sync. Tokens may expire and are stored as SHA-256 hashes. The plaintext is returned only once at creation."
     },
     {
       "name": "Xray Settings",
@@ -5792,6 +5991,51 @@
                       "wgPublicKey": ""
                     }
                   ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/inbounds/amneziawgKernelReadiness": {
+      "get": {
+        "tags": [
+          "Inbounds"
+        ],
+        "summary": "Whether this host can run an AmneziaWG inbound on the kernel module. Returns ready, host blocker codes (root/tools/module/nft), and the command that fixes them. Saving an inbound also checks its features and rejects IPv6, port forwarding, routeThroughXray, or a pinned listen address that the kernel backend cannot honor.",
+        "operationId": "get_panel_api_inbounds_amneziawgKernelReadiness",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {
+                      "$ref": "#/components/schemas/Readiness"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "blockers": [
+                      {
+                        "code": "tools",
+                        "detail": "awg"
+                      }
+                    ],
+                    "installCommand": "sudo /usr/local/x-ui/x-ui install-awg-kernel",
+                    "ready": false
+                  }
                 }
               }
             }
@@ -7819,7 +8063,7 @@
         "tags": [
           "Server"
         ],
-        "summary": "Self-update the panel to the latest version. The server restarts on success.",
+        "summary": "Self-update the panel to the latest version. The server restarts on success. Bearer-token callers need admin or node-admin scope.",
         "operationId": "post_panel_api_server_updatePanel",
         "requestBody": {
           "required": false,
@@ -9360,6 +9604,81 @@
                       "type": "string"
                     },
                     "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/clients/get/subId/{subId}": {
+      "get": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Fetch clients by subscription ID.",
+        "operationId": "get_panel_api_clients_get_subId_subId",
+        "description": "Matches the exact subscription ID and orders results by client ID. Returns an array of the same payloads as GET /clients/get/:email, since multiple clients can share a subscription ID. Includes disabled, expired and unattached clients. An unknown ID returns HTTP 200 with success:false, obj:null and a record-not-found message, matching the email lookup. Requires an admin token or a panel login session.",
+        "parameters": [
+          {
+            "name": "subId",
+            "in": "path",
+            "required": true,
+            "description": "Exact subscription ID (URL-encoded).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {
+                      "type": "array",
+                      "nullable": true,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "client": {
+                            "$ref": "#/components/schemas/ClientRecord"
+                          },
+                          "inboundIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer"
+                            }
+                          },
+                          "externalLinks": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "usedTraffic": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "tunnelAllowedIPs": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -11901,6 +12220,9 @@
                       ],
                       "tlsVerifyMode": "verify",
                       "transitive": false,
+                      "unavailableMetrics": [
+                        ""
+                      ],
                       "updatedAt": 1700003600,
                       "uptimeSecs": 86400,
                       "xrayError": "",
@@ -12134,6 +12456,9 @@
                     ],
                     "tlsVerifyMode": "verify",
                     "transitive": false,
+                    "unavailableMetrics": [
+                      ""
+                    ],
                     "updatedAt": 1700003600,
                     "uptimeSecs": 86400,
                     "xrayError": "",
@@ -12316,6 +12641,9 @@
                     ],
                     "tlsVerifyMode": "verify",
                     "transitive": false,
+                    "unavailableMetrics": [
+                      ""
+                    ],
                     "updatedAt": 1700003600,
                     "uptimeSecs": 86400,
                     "xrayError": "",
@@ -12667,6 +12995,9 @@
                     "memPct": 45.2,
                     "panelVersion": "v3.x.x",
                     "status": "online",
+                    "unavailableMetrics": [
+                      ""
+                    ],
                     "uptimeSecs": 86400,
                     "xrayError": "",
                     "xrayState": "",
@@ -13139,11 +13470,16 @@
                         ""
                       ],
                       "port": 0,
+                      "randomCount": 1,
                       "remark": "",
                       "security": "same",
                       "serverDescription": "",
                       "shuffleHost": false,
                       "sni": "",
+                      "sniSharedRandom": false,
+                      "snis": [
+                        ""
+                      ],
                       "sockoptParams": "",
                       "sortOrder": 0,
                       "tags": [
@@ -13151,6 +13487,98 @@
                       ],
                       "verifyPeerCertByName": "",
                       "vlessRoute": ""
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/hosts/raw": {
+      "get": {
+        "tags": [
+          "Hosts"
+        ],
+        "summary": "List every host row with its numeric id, for id-based pickers such as the per-client host rule override.",
+        "operationId": "get_panel_api_hosts_raw",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Host"
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": [
+                    {
+                      "address": "cdn.example.com",
+                      "allowInsecure": false,
+                      "alpn": [
+                        ""
+                      ],
+                      "cipherSuites": "",
+                      "createdAt": 0,
+                      "echConfigList": "",
+                      "excludeFromSubTypes": [
+                        ""
+                      ],
+                      "finalMask": "",
+                      "fingerprint": "",
+                      "groupId": "",
+                      "hostHeader": "",
+                      "id": 1,
+                      "inboundId": 1,
+                      "isDisabled": false,
+                      "isHidden": false,
+                      "keepSniBlank": false,
+                      "mihomoIpVersion": "dual",
+                      "mihomoX25519": false,
+                      "muxParams": null,
+                      "nodeGuids": [
+                        ""
+                      ],
+                      "overrideSniFromAddress": false,
+                      "path": "",
+                      "pinnedPeerCertSha256": [
+                        ""
+                      ],
+                      "port": 8443,
+                      "randomCount": 1,
+                      "remark": "cdn-front",
+                      "security": "same",
+                      "serverDescription": "",
+                      "shuffleHost": false,
+                      "sni": "",
+                      "sniSharedRandom": false,
+                      "snis": [
+                        ""
+                      ],
+                      "sockoptParams": null,
+                      "sortOrder": 0,
+                      "tags": [
+                        ""
+                      ],
+                      "updatedAt": 0,
+                      "verifyPeerCertByName": "",
+                      "vlessRoute": "443"
                     }
                   ]
                 }
@@ -13234,11 +13662,16 @@
                       ""
                     ],
                     "port": 0,
+                    "randomCount": 1,
                     "remark": "",
                     "security": "same",
                     "serverDescription": "",
                     "shuffleHost": false,
                     "sni": "",
+                    "sniSharedRandom": false,
+                    "snis": [
+                      ""
+                    ],
                     "sockoptParams": "",
                     "sortOrder": 0,
                     "tags": [
@@ -13332,11 +13765,16 @@
                         ""
                       ],
                       "port": 0,
+                      "randomCount": 1,
                       "remark": "",
                       "security": "same",
                       "serverDescription": "",
                       "shuffleHost": false,
                       "sni": "",
+                      "sniSharedRandom": false,
+                      "snis": [
+                        ""
+                      ],
                       "sockoptParams": "",
                       "sortOrder": 0,
                       "tags": [
@@ -13480,11 +13918,16 @@
                         ""
                       ],
                       "port": 8443,
+                      "randomCount": 1,
                       "remark": "cdn-front",
                       "security": "same",
                       "serverDescription": "",
                       "shuffleHost": false,
                       "sni": "",
+                      "sniSharedRandom": false,
+                      "snis": [
+                        ""
+                      ],
                       "sockoptParams": null,
                       "sortOrder": 0,
                       "tags": [
@@ -13602,11 +14045,16 @@
                         ""
                       ],
                       "port": 8443,
+                      "randomCount": 1,
                       "remark": "cdn-front",
                       "security": "same",
                       "serverDescription": "",
                       "shuffleHost": false,
                       "sni": "",
+                      "sniSharedRandom": false,
+                      "snis": [
+                        ""
+                      ],
                       "sockoptParams": null,
                       "sortOrder": 0,
                       "tags": [
@@ -13724,7 +14172,7 @@
         "tags": [
           "Hosts"
         ],
-        "summary": "Set host group sort order by the position of each groupId in the array.",
+        "summary": "Set host group sort order by the position of each groupId in the array. IDs must be unique and refer to existing groups; omitted groups follow in their previous order.",
         "operationId": "post_panel_api_hosts_reorder",
         "requestBody": {
           "required": true,
@@ -13854,11 +14302,16 @@
                         ""
                       ],
                       "port": 8443,
+                      "randomCount": 1,
                       "remark": "cdn-front",
                       "security": "same",
                       "serverDescription": "",
                       "shuffleHost": false,
                       "sni": "",
+                      "sniSharedRandom": false,
+                      "snis": [
+                        ""
+                      ],
                       "sockoptParams": null,
                       "sortOrder": 0,
                       "tags": [
@@ -14345,6 +14798,47 @@
         }
       }
     },
+    "/panel/api/setting/tgBotCapabilities": {
+      "post": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Report what the configured bot can do. Inline mode is a BotFather switch, so the panel warns when it is off.",
+        "operationId": "post_panel_api_setting_tgBotCapabilities",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {
+                      "$ref": "#/components/schemas/TgBotCapabilities"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "groupPrivacy": false,
+                    "inlineEnabled": true,
+                    "running": true,
+                    "username": "xui_bot"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/panel/api/setting/testDiscord": {
       "post": {
         "tags": [
@@ -14438,9 +14932,11 @@
                   "obj": [
                     {
                       "id": 1,
-                      "name": "default",
+                      "name": "central-panel-a",
                       "enabled": true,
-                      "createdAt": 1736000000
+                      "createdAt": 1736000000,
+                      "scope": "node-admin",
+                      "expiresAt": 0
                     }
                   ]
                 }
@@ -14470,7 +14966,13 @@
                   },
                   "scope": {
                     "type": "string",
-                    "description": "admin (default), monitor, or node-sync."
+                    "enum": [
+                      "admin",
+                      "monitor",
+                      "node-sync",
+                      "node-admin"
+                    ],
+                    "description": "admin (default), monitor, node-sync, or node-admin. node-admin inherits node-sync and may also start a panel update."
                   },
                   "expiresAt": {
                     "type": "integer",
@@ -14483,7 +14985,7 @@
               },
               "example": {
                 "name": "central-panel-a",
-                "scope": "node-sync",
+                "scope": "node-admin",
                 "expiresAt": 1798761600000
               }
             }
@@ -18271,6 +18773,9 @@
                   ],
                   "tlsVerifyMode": "verify",
                   "transitive": false,
+                  "unavailableMetrics": [
+                    ""
+                  ],
                   "updatedAt": 1700003600,
                   "uptimeSecs": 86400,
                   "xrayError": "",

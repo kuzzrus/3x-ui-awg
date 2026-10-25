@@ -126,8 +126,8 @@ _openapi:
       url: '#download-and-install-the-specified-xray-version-pass-latest-for-the-newest-release'
     - depth: 2
       title: Self-update the panel to the latest version. The server restarts on
-        success.
-      url: '#self-update-the-panel-to-the-latest-version-the-server-restarts-on-success'
+        success. Bearer-token callers need admin or node-admin scope.
+      url: '#self-update-the-panel-to-the-latest-version-the-server-restarts-on-success-bearer-token-callers-need-admin-or-node-admin-scope'
     - depth: 2
       title: Toggle the panel update channel between stable and the rolling per-commit
         dev release. Only effective on dev builds.
@@ -313,8 +313,8 @@ _openapi:
           newest release.
         id: download-and-install-the-specified-xray-version-pass-latest-for-the-newest-release
       - content: Self-update the panel to the latest version. The server restarts on
-          success.
-        id: self-update-the-panel-to-the-latest-version-the-server-restarts-on-success
+          success. Bearer-token callers need admin or node-admin scope.
+        id: self-update-the-panel-to-the-latest-version-the-server-restarts-on-success-bearer-token-callers-need-admin-or-node-admin-scope
       - content: Toggle the panel update channel between stable and the rolling
           per-commit dev release. Only effective on dev builds.
         id: toggle-the-panel-update-channel-between-stable-and-the-rolling-per-commit-dev-release-only-effective-on-dev-builds

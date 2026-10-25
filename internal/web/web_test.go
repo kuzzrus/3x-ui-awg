@@ -96,7 +96,7 @@ func TestStopPanelOnlyStopsFrontProxy(t *testing.T) {
 		t.Fatal("manager did not come up, cannot test that stop() takes it down")
 	}
 
-	s := NewServer()
+	s := NewServer(nil)
 	if err := s.stop(false, true); err != nil {
 		t.Fatalf("stop(false, true): %v", err)
 	}

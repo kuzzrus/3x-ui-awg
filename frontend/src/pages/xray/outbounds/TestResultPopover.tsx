@@ -110,12 +110,12 @@ export default function TestResultPopover({ result: r, children }: TestResultPop
         <span className={r.success ? (speedPartialFailure ? 'pill-warn' : 'pill-ok') : 'pill-fail'}>
           {r.success ? (
             speedPartialFailure ? (
-              <ExclamationCircleFilled />
+              <ExclamationCircleFilled aria-hidden />
             ) : (
-              <CheckCircleFilled />
+              <CheckCircleFilled aria-hidden />
             )
           ) : (
-            <CloseCircleFilled />
+            <CloseCircleFilled aria-hidden />
           )}
           {r.success ? (
             isSpeed ? (

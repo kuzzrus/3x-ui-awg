@@ -180,7 +180,8 @@ export default function OutboundCardList({
                           key: 'top',
                           label: (
                             <>
-                              <VerticalAlignTopOutlined /> {t('pages.xray.outbound.moveToTop')}
+                              <VerticalAlignTopOutlined aria-hidden />{' '}
+                              {t('pages.xray.outbound.moveToTop')}
                             </>
                           ),
                           onClick: () => setFirst(index),
@@ -191,7 +192,7 @@ export default function OutboundCardList({
                     key: 'edit',
                     label: (
                       <>
-                        <EditOutlined /> {t('edit')}
+                        <EditOutlined aria-hidden /> {t('edit')}
                       </>
                     ),
                     onClick: () => openEdit(index),
@@ -200,7 +201,7 @@ export default function OutboundCardList({
                     key: 'reset',
                     label: (
                       <>
-                        <RetweetOutlined /> {t('pages.inbounds.resetTraffic')}
+                        <RetweetOutlined aria-hidden /> {t('pages.inbounds.resetTraffic')}
                       </>
                     ),
                     onClick: () => onResetTraffic(record.tag || ''),
@@ -210,7 +211,7 @@ export default function OutboundCardList({
                     danger: true,
                     label: (
                       <>
-                        <DeleteOutlined /> {t('delete')}
+                        <DeleteOutlined aria-hidden /> {t('delete')}
                       </>
                     ),
                     onClick: () => confirmDelete(index),
@@ -218,7 +219,12 @@ export default function OutboundCardList({
                 ],
               }}
             >
-              <Button shape="circle" size="small" icon={<MoreOutlined />} aria-label={t('more')} />
+              <Button
+                shape="circle"
+                size="small"
+                icon={<MoreOutlined aria-hidden />}
+                aria-label={t('more')}
+              />
             </Dropdown>
           </div>
           {outboundAddresses(record).length > 0 && (
@@ -243,7 +249,7 @@ export default function OutboundCardList({
               {testResult(outboundTestStates, record.key) ? (
                 <TestResultPopover result={testResult(outboundTestStates, record.key)!} />
               ) : isTesting(outboundTestStates, record.key) ? (
-                <LoadingOutlined />
+                <LoadingOutlined aria-hidden />
               ) : null}
               <Button
                 type="primary"
@@ -251,7 +257,7 @@ export default function OutboundCardList({
                 size="small"
                 loading={isTesting(outboundTestStates, record.key)}
                 disabled={isUntestable(record) || isTesting(outboundTestStates, record.key)}
-                icon={<ThunderboltOutlined />}
+                icon={<ThunderboltOutlined aria-hidden />}
                 aria-label={t('check')}
                 onClick={() => onTest(record.key, testMode)}
               />

@@ -178,7 +178,12 @@ export default function SubscriptionBalancersTab({
       width: 80,
       align: 'center' as const,
       render: (_: unknown, r: SubBalancer) => (
-        <Switch size="small" checked={r.enabled} onChange={() => toggleEnabled(r)} />
+        <Switch
+          size="small"
+          aria-label={t('pages.settings.subBalancers.enabled')}
+          checked={r.enabled}
+          onChange={() => toggleEnabled(r)}
+        />
       ),
     },
     {
@@ -190,7 +195,7 @@ export default function SubscriptionBalancersTab({
           <Button
             aria-label={t('edit')}
             size="small"
-            icon={<EditOutlined />}
+            icon={<EditOutlined aria-hidden />}
             title={t('edit')}
             onClick={() => {
               setEditing(r);
@@ -203,7 +208,12 @@ export default function SubscriptionBalancersTab({
             cancelText={t('cancel')}
             onConfirm={() => remove(r.id)}
           >
-            <Button aria-label={t('delete')} size="small" danger icon={<DeleteOutlined />} />
+            <Button
+              aria-label={t('delete')}
+              size="small"
+              danger
+              icon={<DeleteOutlined aria-hidden />}
+            />
           </Popconfirm>
         </Space>
       ),
@@ -234,7 +244,7 @@ export default function SubscriptionBalancersTab({
       <div style={{ marginBottom: 12 }}>
         <Button
           type="primary"
-          icon={<PlusOutlined />}
+          icon={<PlusOutlined aria-hidden />}
           onClick={() => {
             setEditing(null);
             setModalOpen(true);
@@ -354,7 +364,7 @@ export default function SubscriptionBalancersTab({
           {
             key: 'balancers',
             label: catTabLabel(
-              <DeploymentUnitOutlined />,
+              <DeploymentUnitOutlined aria-hidden />,
               t('pages.settings.subBalancers.tabBalancers'),
               isMobile,
             ),
@@ -363,7 +373,7 @@ export default function SubscriptionBalancersTab({
           {
             key: 'observatory',
             label: catTabLabel(
-              <RadarChartOutlined />,
+              <RadarChartOutlined aria-hidden />,
               t('pages.settings.subBalancers.tabObservatory'),
               isMobile,
             ),

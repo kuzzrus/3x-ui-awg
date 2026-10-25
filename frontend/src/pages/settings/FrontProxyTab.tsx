@@ -290,7 +290,7 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
           {status?.running ? (
             <Button
               danger
-              icon={<PauseCircleOutlined />}
+              icon={<PauseCircleOutlined aria-hidden />}
               loading={loading}
               onClick={() => dispatch('stop', 'pages.settings.frontProxy.stoppedToast')}
             >
@@ -299,14 +299,18 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
           ) : (
             <Button
               type="primary"
-              icon={<PlayCircleOutlined />}
+              icon={<PlayCircleOutlined aria-hidden />}
               loading={loading}
               onClick={() => dispatch('start', 'pages.settings.frontProxy.startedToast')}
             >
               {t('pages.settings.frontProxy.startButton')}
             </Button>
           )}
-          <Button aria-label={t('refresh')} icon={<ReloadOutlined />} onClick={fetchStatus} />
+          <Button
+            aria-label={t('refresh')}
+            icon={<ReloadOutlined aria-hidden />}
+            onClick={fetchStatus}
+          />
         </Space>
       </SettingListItem>
 
@@ -477,7 +481,7 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
           description={t('pages.settings.frontProxy.certStatusDesc')}
         >
           {status.cert.state === 'obtaining' && (
-            <Tag icon={<SyncOutlined spin />} color="processing">
+            <Tag icon={<SyncOutlined aria-hidden spin />} color="processing">
               {t('pages.settings.frontProxy.certStatusObtaining')}
             </Tag>
           )}
@@ -553,7 +557,7 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
             ) : (
               <Tag color="orange">{t('pages.settings.frontProxy.decoyMissing')}</Tag>
             )}
-            <Button icon={<UploadOutlined />} loading={loading} onClick={uploadDecoy}>
+            <Button icon={<UploadOutlined aria-hidden />} loading={loading} onClick={uploadDecoy}>
               {t('pages.settings.frontProxy.decoyUploadButton')}
             </Button>
             {status?.decoyUploaded && (
@@ -564,7 +568,7 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
                 cancelText={t('cancel')}
                 onConfirm={() => dispatch('removeDecoy', 'pages.settings.frontProxy.decoyRemoved')}
               >
-                <Button danger icon={<DeleteOutlined />} loading={loading}>
+                <Button danger icon={<DeleteOutlined aria-hidden />} loading={loading}>
                   {t('delete')}
                 </Button>
               </Popconfirm>
@@ -614,7 +618,7 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
                 {!adGuard?.installed && (
                   <Button
                     type="primary"
-                    icon={<CloudDownloadOutlined />}
+                    icon={<CloudDownloadOutlined aria-hidden />}
                     loading={adGuardLoading}
                     onClick={() =>
                       dispatchAdGuard('install', 'pages.settings.frontProxy.adGuardInstalledToast')
@@ -626,7 +630,7 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
                 {adGuard?.installed && adGuard.running && (
                   <Button
                     danger
-                    icon={<PauseCircleOutlined />}
+                    icon={<PauseCircleOutlined aria-hidden />}
                     loading={adGuardLoading}
                     onClick={() =>
                       dispatchAdGuard('stop', 'pages.settings.frontProxy.adGuardStoppedToast')
@@ -638,7 +642,7 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
                 {adGuard?.installed && !adGuard.running && (
                   <Button
                     type="primary"
-                    icon={<PlayCircleOutlined />}
+                    icon={<PlayCircleOutlined aria-hidden />}
                     loading={adGuardLoading}
                     onClick={() =>
                       dispatchAdGuard('start', 'pages.settings.frontProxy.adGuardStartedToast')
@@ -657,14 +661,14 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
                       dispatchAdGuard('uninstall', 'pages.settings.frontProxy.adGuardRemovedToast')
                     }
                   >
-                    <Button danger icon={<DeleteOutlined />} loading={adGuardLoading}>
+                    <Button danger icon={<DeleteOutlined aria-hidden />} loading={adGuardLoading}>
                       {t('delete')}
                     </Button>
                   </Popconfirm>
                 )}
                 <Button
                   aria-label={t('refresh')}
-                  icon={<ReloadOutlined />}
+                  icon={<ReloadOutlined aria-hidden />}
                   onClick={fetchAdGuard}
                 />
               </Space>
@@ -701,12 +705,14 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
                     <Input
                       value={credUser}
                       style={{ width: 180 }}
+                      aria-label={t('pages.settings.frontProxy.adGuardUserPlaceholder')}
                       placeholder={t('pages.settings.frontProxy.adGuardUserPlaceholder')}
                       onChange={(e) => setCredUser(e.target.value)}
                     />
                     <Input.Password
                       value={credPassword}
                       style={{ width: 220 }}
+                      aria-label={t('pages.settings.frontProxy.adGuardPasswordPlaceholder')}
                       placeholder={t('pages.settings.frontProxy.adGuardPasswordPlaceholder')}
                       onChange={(e) => setCredPassword(e.target.value)}
                     />

@@ -20,12 +20,12 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/database/dbtest"
 )
 
-func mergeRemoteClashRulesYAML(base map[string]any, raw string) error {
+func mergeRemoteClashRulesYAML(base map[string]any, raw string, allowClientConfig bool) error {
 	var remote map[string]any
 	if err := yaml.Unmarshal([]byte(strings.TrimSpace(raw)), &remote); err != nil {
 		return err
 	}
-	return mergeRemoteClashRules(base, remote)
+	return mergeRemoteClashRules(base, remote, allowClientConfig)
 }
 
 type remoteRoutingRoundTripper func(*http.Request) (*http.Response, error)
@@ -544,7 +544,7 @@ rules:
   - RULE-SET,roscom,PROXY
   - MATCH,PROXY
 `
-	if err := mergeRemoteClashRulesYAML(base, remote); err != nil {
+	if err := mergeRemoteClashRulesYAML(base, remote, false); err != nil {
 		t.Fatalf("merge: %v", err)
 	}
 	proxies, ok := base["proxies"].([]map[string]any)
@@ -589,7 +589,7 @@ func TestMergeRemoteClashRulesKeepsBaseProxyGroupWhenRemoteOmitsIt(t *testing.T)
     proxies: [PROXY]
 rules:
   - MATCH,PROXY
-`); err != nil {
+`, false); err != nil {
 		t.Fatalf("merge: %v", err)
 	}
 	groups, ok := asAnySlice(base["proxy-groups"])
@@ -761,7 +761,7 @@ func TestRemoteClashRouteGraphValidation(t *testing.T) {
 				}},
 				"rules": []string{"MATCH,PROXY"},
 			}
-			err := mergeRemoteClashRulesYAML(base, tt.remote)
+			err := mergeRemoteClashRulesYAML(base, tt.remote, false)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("err=%v, want %q", err, tt.wantErr)
 			}
@@ -810,7 +810,7 @@ rules:
 		}},
 		"rules": []string{"MATCH,PROXY"},
 	}
-	if err := mergeRemoteClashRules(base, entry.Clash); err != nil {
+	if err := mergeRemoteClashRules(base, entry.Clash, false); err != nil {
 		t.Fatalf("merge cached document: %v", err)
 	}
 	if requests.Load() != 1 {

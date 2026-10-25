@@ -200,7 +200,7 @@ function InstallStep({ pairing }: { pairing: AgentPairingView }) {
           type="info"
           showIcon
           style={{ marginTop: 16 }}
-          icon={<LoadingOutlined />}
+          icon={<LoadingOutlined aria-hidden />}
           title={t('pages.nodes.agent.wizard.waiting')}
           description={t('pages.nodes.agent.wizard.waitingHint')}
         />

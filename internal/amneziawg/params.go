@@ -386,16 +386,8 @@ func ValidateSubnetIPv4(subnetIP string, subnetCIDR int) error {
 	return nil
 }
 
-// ValidateConfigValue rejects a value containing a newline, carriage return,
-// or other control character before it's saved. PrivateKey/PublicKey/I1 on
-// the server block, and Email/PublicKey/PreSharedKey per client, all get
-// interpolated verbatim into the generated .conf by generateServerConfig; a
-// newline in any of them lets a later line re-open a new [Interface]/[Peer]
-// section, and awg-quick's parser collects a following "PostUp = ..." line
-// into a hook it executes as root on the next apply — the same class this
-// package already closes for ExternalInterface/IPv6ExternalInterface (see
-// ValidateInterfaceName) and SubnetIP (see ValidateSubnetIPv4). field names
-// the value in the returned error, e.g. "email" or "publicKey".
+// ValidateConfigValue rejects control characters in values written to AWG configs,
+// preventing newline injection into config directives and awg-quick hooks.
 func ValidateConfigValue(field, v string) error {
 	for _, r := range v {
 		if r == '\n' || r == '\r' || r < 0x20 || r == 0x7f {
@@ -573,6 +565,10 @@ func ValidateHeaderProtection(headerProtectionKey string, o Obfuscation20) error
 	}
 	return nil
 }
+
+// DefaultMTU is WireGuard/AmneziaWG's usual tunnel MTU on a 1500-byte host
+// link, the fallbackDefault EffectiveMTU callers pass when the admin sets none.
+const DefaultMTU = 1420
 
 // mtuPathCeiling is the largest MTU+S4 sum that fits under a standard
 // 1500-byte path MTU: 1500 - 20 (IPv4) - 8 (UDP) - 32 (AmneziaWG transport

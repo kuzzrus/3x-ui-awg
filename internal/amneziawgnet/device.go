@@ -12,12 +12,10 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/util/wireguard"
 )
 
-// defaultMTU matches internal/amneziawg's own kernel-module interface
-// default -- 1420, WireGuard/AmneziaWG's usual accounting for tunnel
-// encapsulation overhead on a standard 1500-byte-MTU host link. Used only
-// when the admin leaves MTU unset; amneziawg.EffectiveMTU shrinks it further
-// when S4 needs the room (see newUnconfiguredDevice).
-const defaultMTU = 1420
+// defaultMTU is amneziawg.DefaultMTU, the same fallback internal/amneziawgkern
+// uses. Used only when the admin leaves MTU unset; amneziawg.EffectiveMTU
+// shrinks it further when S4 needs the room (see newUnconfiguredDevice).
+const defaultMTU = amneziawg.DefaultMTU
 
 // DeviceOptions carries AmneziaWG 3.0's device-wide fields (header
 // protection, content padding, and the five session-timing knobs) --

@@ -1,6 +1,18 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Divider, Form, Input, InputNumber, Select, Space, Switch } from 'antd';
+import { useFormContext, useWatch } from 'react-hook-form';
+import {
+  Alert,
+  Button,
+  Divider,
+  Form,
+  Input,
+  InputNumber,
+  Select,
+  Space,
+  Switch,
+  Typography,
+} from 'antd';
 import {
   RadarChartOutlined,
   ReloadOutlined,
@@ -17,6 +29,7 @@ import {
 } from '@/lib/xray/i1Generators';
 import { AWG_VERSION_2, AWG_VERSION_3 } from '@/schemas/protocols/inbound/amneziawg';
 import AwgDiagnosticsModal from '@/pages/inbounds/form/AwgDiagnosticsModal';
+import { useAmneziawgKernelReadiness } from '@/api/queries/useAmneziawgKernelReadiness';
 
 interface AmneziawgFieldsProps {
   awgPubKey: string;
@@ -65,29 +78,42 @@ export default function AmneziawgFields({
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [quicCaptureHost, setQuicCaptureHost] = useState('');
   const [quicCaptureSlot, setQuicCaptureSlot] = useState<CpsSlot>('i1');
+  const uid = useId();
+  const kernelModeOn = useWatch({ name: 'settings.server.kernelMode' });
+  const nodeId = useWatch({ name: 'nodeId' }) as number | null | undefined;
+  const remoteTarget = typeof nodeId === 'number';
+  const { formState } = useFormContext();
+  const { data: readiness } = useAmneziawgKernelReadiness(!remoteTarget);
+  const hostReady = remoteTarget || readiness?.ready !== false;
+  // The master can probe only its local host; a remote node checks on apply.
+  const savedKernelMode = Boolean(
+    (formState.defaultValues as { settings?: { server?: { kernelMode?: boolean } } } | undefined)
+      ?.settings?.server?.kernelMode,
+  );
+  const toggleDisabled = !hostReady && !savedKernelMode;
   return (
     <>
-      <Form.Item label={t('pages.xray.amneziawg.privateKey')}>
+      <Form.Item htmlFor={`${uid}-privateKey`} label={t('pages.xray.amneziawg.privateKey')}>
         <Space.Compact block>
           <FormField name={['settings', 'server', 'privateKey']} noStyle>
-            <Input style={{ width: 'calc(100% - 32px)' }} />
+            <Input id={`${uid}-privateKey`} style={{ width: 'calc(100% - 32px)' }} />
           </FormField>
           <Button
             aria-label={t('regenerate')}
-            icon={<ReloadOutlined />}
+            icon={<ReloadOutlined aria-hidden />}
             onClick={regenInboundAwg}
           />
         </Space.Compact>
       </Form.Item>
-      <Form.Item label={t('pages.xray.amneziawg.publicKey')}>
-        <Input value={awgPubKey} disabled />
+      <Form.Item htmlFor={`${uid}-publicKey`} label={t('pages.xray.amneziawg.publicKey')}>
+        <Input id={`${uid}-publicKey`} value={awgPubKey} disabled />
       </Form.Item>
       <Form.Item
         label={t('pages.xray.amneziawg.diagnostics')}
         tooltip={t('pages.xray.amneziawg.diagnosticsHint')}
       >
         <Button
-          icon={<ToolOutlined />}
+          icon={<ToolOutlined aria-hidden />}
           disabled={!inboundId}
           onClick={() => setDiagnosticsOpen(true)}
         >
@@ -164,7 +190,7 @@ export default function AmneziawgFields({
         label={t('pages.xray.amneziawg.obfuscation')}
         tooltip={t('pages.xray.amneziawg.obfuscationHint')}
       >
-        <Button icon={<ReloadOutlined />} onClick={regenInboundAwgObfuscation}>
+        <Button icon={<ReloadOutlined aria-hidden />} onClick={regenInboundAwgObfuscation}>
           {t('pages.xray.amneziawg.regenerateObfuscation')}
         </Button>
       </Form.Item>
@@ -206,11 +232,13 @@ export default function AmneziawgFields({
         <Input placeholder="4 or 100-800" />
       </FormField>
       <Form.Item
+        htmlFor={`${uid}-quic-host`}
         label={t('pages.xray.amneziawg.quicCapture')}
         tooltip={t('pages.xray.amneziawg.quicCaptureHint')}
       >
         <Space orientation="vertical" style={{ width: '100%' }} size={8}>
           <Input
+            id={`${uid}-quic-host`}
             value={quicCaptureHost}
             onChange={(e) => setQuicCaptureHost(e.target.value)}
             placeholder="www.google.com"
@@ -225,7 +253,7 @@ export default function AmneziawgFields({
             />
             <Button
               loading={quicCapturing}
-              icon={<RadarChartOutlined />}
+              icon={<RadarChartOutlined aria-hidden />}
               onClick={() => onQuicCapture(quicCaptureHost, quicCaptureSlot)}
               style={{ flex: 1 }}
             >
@@ -233,7 +261,7 @@ export default function AmneziawgFields({
             </Button>
             <Button
               loading={quicCapturing}
-              icon={<ThunderboltOutlined />}
+              icon={<ThunderboltOutlined aria-hidden />}
               onClick={() => onQuicCaptureAll(quicCaptureHost)}
               style={{ flex: 1 }}
             >
@@ -245,6 +273,7 @@ export default function AmneziawgFields({
       {CPS_SLOTS.map((slot, index) => (
         <Form.Item
           key={slot}
+          htmlFor={`${uid}-${slot}`}
           label={t(`pages.xray.amneziawg.${slot}`)}
           // The first slot explains *which profile to pick and why* (right
           // where the profile Select first appears), the last slot closes
@@ -270,11 +299,11 @@ export default function AmneziawgFields({
               }))}
             />
             <FormField name={['settings', 'server', slot]} noStyle>
-              <Input placeholder="<r 64>" style={{ flex: 1 }} />
+              <Input id={`${uid}-${slot}`} placeholder="<r 64>" style={{ flex: 1 }} />
             </FormField>
             <Button
               aria-label={t('regenerate')}
-              icon={<ReloadOutlined />}
+              icon={<ReloadOutlined aria-hidden />}
               onClick={() => onRegenCps(slot)}
             />
           </Space.Compact>
@@ -295,106 +324,137 @@ export default function AmneziawgFields({
         />
       </FormField>
       <Form.Item
+        htmlFor={`${uid}-hpk`}
         label={t('pages.xray.amneziawg.headerProtectionKey')}
         tooltip={t('pages.xray.amneziawg.headerProtectionKeyHint')}
       >
         <Space.Compact block>
           <FormField name={['settings', 'server', 'headerProtectionKey']} noStyle>
-            <Input style={{ width: 'calc(100% - 32px)' }} />
+            <Input id={`${uid}-hpk`} style={{ width: 'calc(100% - 32px)' }} />
           </FormField>
           <Button
             aria-label={t('regenerate')}
-            icon={<ReloadOutlined />}
+            icon={<ReloadOutlined aria-hidden />}
             onClick={regenInboundAwgHeaderProtectionKey}
           />
         </Space.Compact>
       </Form.Item>
       <Form.Item
+        htmlFor={`${uid}-content-padding`}
         label={t('pages.xray.amneziawg.contentPaddingAddition')}
         tooltip={t('pages.xray.amneziawg.contentPaddingAdditionHint')}
       >
         <Space.Compact block>
           <FormField name={['settings', 'server', 'contentPaddingAddition']} noStyle>
-            <Input placeholder="0 or 50-100" style={{ width: 'calc(100% - 32px)' }} />
+            <Input
+              id={`${uid}-content-padding`}
+              placeholder="0 or 50-100"
+              style={{ width: 'calc(100% - 32px)' }}
+            />
           </FormField>
           <Button
             aria-label={t('regenerate')}
-            icon={<ReloadOutlined />}
+            icon={<ReloadOutlined aria-hidden />}
             onClick={regenInboundAwgContentPaddingAddition}
           />
         </Space.Compact>
       </Form.Item>
       <Form.Item
+        htmlFor={`${uid}-rekey-after`}
         label={t('pages.xray.amneziawg.rekeyAfterTime')}
         tooltip={t('pages.xray.amneziawg.rekeyAfterTimeHint')}
       >
         <Space.Compact block>
           <FormField name={['settings', 'server', 'rekeyAfterTime']} noStyle>
-            <Input placeholder="120 or 118-135" style={{ width: 'calc(100% - 32px)' }} />
+            <Input
+              id={`${uid}-rekey-after`}
+              placeholder="120 or 118-135"
+              style={{ width: 'calc(100% - 32px)' }}
+            />
           </FormField>
           <Button
             aria-label={t('regenerate')}
-            icon={<ReloadOutlined />}
+            icon={<ReloadOutlined aria-hidden />}
             onClick={regenInboundAwgRekeyAfterTime}
           />
         </Space.Compact>
       </Form.Item>
       <Form.Item
+        htmlFor={`${uid}-rekey-timeout`}
         label={t('pages.xray.amneziawg.rekeyTimeout')}
         tooltip={t('pages.xray.amneziawg.rekeyTimeoutHint')}
       >
         <Space.Compact block>
           <FormField name={['settings', 'server', 'rekeyTimeout']} noStyle>
-            <Input placeholder="5 or 4-8" style={{ width: 'calc(100% - 32px)' }} />
+            <Input
+              id={`${uid}-rekey-timeout`}
+              placeholder="5 or 4-8"
+              style={{ width: 'calc(100% - 32px)' }}
+            />
           </FormField>
           <Button
             aria-label={t('regenerate')}
-            icon={<ReloadOutlined />}
+            icon={<ReloadOutlined aria-hidden />}
             onClick={regenInboundAwgRekeyTimeout}
           />
         </Space.Compact>
       </Form.Item>
       <Form.Item
+        htmlFor={`${uid}-reject-after`}
         label={t('pages.xray.amneziawg.rejectAfterTime')}
         tooltip={t('pages.xray.amneziawg.rejectAfterTimeHint')}
       >
         <Space.Compact block>
           <FormField name={['settings', 'server', 'rejectAfterTime']} noStyle>
-            <Input placeholder="180 or 175-190" style={{ width: 'calc(100% - 32px)' }} />
+            <Input
+              id={`${uid}-reject-after`}
+              placeholder="180 or 175-190"
+              style={{ width: 'calc(100% - 32px)' }}
+            />
           </FormField>
           <Button
             aria-label={t('regenerate')}
-            icon={<ReloadOutlined />}
+            icon={<ReloadOutlined aria-hidden />}
             onClick={regenInboundAwgRejectAfterTime}
           />
         </Space.Compact>
       </Form.Item>
       <Form.Item
+        htmlFor={`${uid}-keepalive-timeout`}
         label={t('pages.xray.amneziawg.keepaliveTimeout')}
         tooltip={t('pages.xray.amneziawg.keepaliveTimeoutHint')}
       >
         <Space.Compact block>
           <FormField name={['settings', 'server', 'keepaliveTimeout']} noStyle>
-            <Input placeholder="10 or 9-17" style={{ width: 'calc(100% - 32px)' }} />
+            <Input
+              id={`${uid}-keepalive-timeout`}
+              placeholder="10 or 9-17"
+              style={{ width: 'calc(100% - 32px)' }}
+            />
           </FormField>
           <Button
             aria-label={t('regenerate')}
-            icon={<ReloadOutlined />}
+            icon={<ReloadOutlined aria-hidden />}
             onClick={regenInboundAwgKeepaliveTimeout}
           />
         </Space.Compact>
       </Form.Item>
       <Form.Item
+        htmlFor={`${uid}-max-handshake`}
         label={t('pages.xray.amneziawg.maxHandshakeAttempts')}
         tooltip={t('pages.xray.amneziawg.maxHandshakeAttemptsHint')}
       >
         <Space.Compact block>
           <FormField name={['settings', 'server', 'maxHandshakeAttempts']} noStyle>
-            <Input placeholder="18 or 15-22" style={{ width: 'calc(100% - 32px)' }} />
+            <Input
+              id={`${uid}-max-handshake`}
+              placeholder="18 or 15-22"
+              style={{ width: 'calc(100% - 32px)' }}
+            />
           </FormField>
           <Button
             aria-label={t('regenerate')}
-            icon={<ReloadOutlined />}
+            icon={<ReloadOutlined aria-hidden />}
             onClick={regenInboundAwgMaxHandshakeAttempts}
           />
         </Space.Compact>
@@ -415,6 +475,44 @@ export default function AmneziawgFields({
       >
         <Switch />
       </FormField>
+      <FormField
+        name={['settings', 'server', 'kernelMode']}
+        label={t('pages.xray.amneziawg.kernelMode')}
+        extra={t('pages.xray.amneziawg.kernelModeHint')}
+        valueProp="checked"
+      >
+        <Switch disabled={toggleDisabled} />
+      </FormField>
+      {!hostReady && (
+        <Alert
+          type={kernelModeOn ? 'warning' : 'info'}
+          showIcon
+          message={t('pages.xray.amneziawg.kernelUnavailable')}
+          description={
+            <>
+              <ul style={{ margin: '0 0 8px', paddingInlineStart: 20 }}>
+                {(readiness?.blockers ?? []).map((b) => (
+                  <li key={`${b.code}:${b.detail ?? ''}`}>
+                    {t(`pages.xray.amneziawg.kernelBlocker.${b.code}`, {
+                      defaultValue: b.code,
+                    })}
+                    {b.detail ? ` (${b.detail})` : ''}
+                  </li>
+                ))}
+              </ul>
+              {readiness?.installCommand ? (
+                <Typography.Paragraph
+                  copyable={{ text: readiness.installCommand }}
+                  code
+                  style={{ marginBottom: 0 }}
+                >
+                  {readiness.installCommand}
+                </Typography.Paragraph>
+              ) : null}
+            </>
+          }
+        />
+      )}
     </>
   );
 }

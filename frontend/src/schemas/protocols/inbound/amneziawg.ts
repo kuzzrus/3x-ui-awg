@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { OptionalClientKeepAliveSchema } from '@/schemas/primitives/keepalive';
 
 // AntD InputNumber emits null (not undefined) when the user clears it, and
 // the form store hands that null straight to safeParse on submit — a bare
@@ -24,7 +25,7 @@ export const AmneziawgClientSchema = z.object({
   publicKey: z.string().optional(),
   preSharedKey: z.string().optional(),
   allowedIPs: z.array(z.string()).default([]),
-  keepAlive: optionalClearedInt(z.number().int().min(0)),
+  keepAlive: OptionalClientKeepAliveSchema,
   forwardedPorts: z.string().default(''),
   email: z.string().min(1),
   limitIp: z.number().int().min(0).default(0),
@@ -49,13 +50,6 @@ export type AmneziawgClient = z.infer<typeof AmneziawgClientSchema>;
 // port like every other protocol. H1-H4 blank falls back to the classic
 // 1/2/3/4 magic header on save; I1 blank omits the 2.0-only CPS signature
 // packet (a 1.x-compatible config).
-//
-// Deliberately missing routeThroughXray: that field is vestigial on the Go
-// side too, as of the hard cutover to the embedded (amneziawg-go) path --
-// see ServerSettings' own doc comment. Omitting it here means z.object's
-// default unknown-key stripping quietly drops it from an existing stored
-// settings blob on the next save, rather than the form round-tripping a
-// value nothing reads anymore.
 // AWG_VERSION_2/AWG_VERSION_3 mirror internal/amneziawg.AwgVersion2/AwgVersion3
 // on the Go side exactly (same string values).
 export const AWG_VERSION_2 = '2';
@@ -97,6 +91,15 @@ export const AmneziawgServerSchema = z.object({
   ipv6Enabled: z.boolean().default(false),
   ipv6Subnet: z.string().default(''),
   ipv6ExternalInterface: z.string().default(''),
+  // routeThroughXray is vestigial on the Go side (see ServerSettings' own
+  // doc comment) -- the embedded relay is always on, this field is read by
+  // nothing. Kept here anyway, with no corresponding form control, purely so
+  // z.object's default unknown-key stripping doesn't silently drop it from
+  // an existing stored settings blob on the next save.
+  routeThroughXray: z.boolean().default(false).optional(),
+  // kernelMode runs this inbound on the DKMS kernel module instead of the
+  // embedded userspace stack -- no Xray routing, sniffing, IPv6 or port forwarding.
+  kernelMode: z.boolean().default(false).optional(),
   // jc/jmin/jmax upper bound matches amneziawg-go's own UAPI parser
   // (device/uapi.go, uint32). s1/s2/s3 are capped at what the smallest
   // receive buffer any real client uses (iOS, 1700 bytes) can hold once the
