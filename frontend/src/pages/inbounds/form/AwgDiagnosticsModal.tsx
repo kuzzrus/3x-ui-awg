@@ -75,7 +75,7 @@ export default function AwgDiagnosticsModal({
         <Alert
           type="error"
           showIcon
-          message={t('pages.xray.amneziawg.diagnosticsError')}
+          title={t('pages.xray.amneziawg.diagnosticsError')}
           style={{ marginBottom: 16 }}
         />
       )}
@@ -83,7 +83,7 @@ export default function AwgDiagnosticsModal({
         <Alert
           type="warning"
           showIcon
-          message={t('pages.xray.amneziawg.diagnosticsNotRunning')}
+          title={t('pages.xray.amneziawg.diagnosticsNotRunning')}
           style={{ marginBottom: 16 }}
         />
       )}

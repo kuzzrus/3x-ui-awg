@@ -353,7 +353,7 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
         title={t('pages.settings.frontProxy.upstreams')}
         description={t('pages.settings.frontProxy.upstreamsDesc')}
       >
-        <Space direction="vertical" size={4}>
+        <Space orientation="vertical" size={4}>
           <Typography.Text type="secondary">
             {t('pages.settings.frontProxy.upstreamPanel')}
             {': '}
@@ -421,7 +421,7 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
           title={t('pages.settings.frontProxy.subUri')}
           description={t('pages.settings.frontProxy.subUriDesc')}
         >
-          <Space direction="vertical" size={6} style={{ width: '100%' }}>
+          <Space orientation="vertical" size={6} style={{ width: '100%' }}>
             <Typography.Text code copyable={!!proxiedSubURI}>
               {proxiedSubURI || t('pages.settings.frontProxy.subUriNeedsDomain')}
             </Typography.Text>
@@ -498,7 +498,7 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
               type="error"
               showIcon
               style={{ width: '100%' }}
-              message={t('pages.settings.frontProxy.certStatusFailed')}
+              title={t('pages.settings.frontProxy.certStatusFailed')}
               description={status.cert.error}
             />
           )}
@@ -600,7 +600,7 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
             title={t('pages.settings.frontProxy.adGuard')}
             description={t('pages.settings.frontProxy.adGuardDesc')}
           >
-            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+            <Space orientation="vertical" size={8} style={{ width: '100%' }}>
               <Space wrap>
                 {!adGuard?.installed && (
                   <Tag color="orange">{t('pages.settings.frontProxy.adGuardMissing')}</Tag>
@@ -670,7 +670,7 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
               </Space>
 
               {adGuard?.installed && (
-                <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                <Space orientation="vertical" size={4} style={{ width: '100%' }}>
                   <Typography.Text type="secondary">
                     {t('pages.settings.frontProxy.adGuardLogin')}
                     {': '}
@@ -733,7 +733,7 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
         title={t('pages.settings.frontProxy.pathRoutes.title') || 'Path routing'}
         description={t('pages.settings.frontProxy.pathRoutes.desc')}
       >
-        <Space direction="vertical" size={8} style={{ width: '100%' }}>
+        <Space orientation="vertical" size={8} style={{ width: '100%' }}>
           <FrontProxyPathRoutesCard
             routes={pathRoutes}
             pathTargetOptions={pathTargetOptions}
