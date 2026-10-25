@@ -9,6 +9,12 @@ import (
 // ApplyHot reconciles the running core with newCfg over its gRPC API; false means the
 // caller must restart, which also cleans up a failed apply. Calls must not overlap.
 func ApplyHot(process *Process, newCfg *Config, restartToDropUsers func(*HotDiff) bool) bool {
+	return ApplyHotWith(process, newCfg, restartToDropUsers, nil)
+}
+
+// ApplyHotWith is ApplyHot with a step that runs on the API client once every change is in,
+// where the panel restores the balancer overrides that a routing reload drops.
+func ApplyHotWith(process *Process, newCfg *Config, restartToDropUsers func(*HotDiff) bool, afterApply func(api *XrayAPI)) bool {
 	oldCfg := process.GetConfig()
 	diff, ok := ComputeHotDiff(oldCfg, newCfg)
 	if !ok {
@@ -17,6 +23,7 @@ func ApplyHot(process *Process, newCfg *Config, restartToDropUsers func(*HotDiff
 	}
 	if diff.Empty() {
 		process.SetConfig(newCfg)
+		persistHotConfig(process)
 		return true
 	}
 	// The core's RemoveUser drops the credential only, so a disabled or deleted
@@ -84,8 +91,21 @@ func ApplyHot(process *Process, newCfg *Config, restartToDropUsers func(*HotDiff
 		}
 	}
 
+	if afterApply != nil {
+		afterApply(&hotAPI)
+	}
+
 	process.SetConfig(newCfg)
+	persistHotConfig(process)
 	return true
+}
+
+// persistHotConfig refreshes config.json after a hot apply; a write failure is
+// logged only, since the running core already has the change.
+func persistHotConfig(process *Process) {
+	if err := process.PersistConfig(); err != nil {
+		logger.Warning("hot apply: failed to update config.json:", err)
+	}
 }
 
 // addUserReconciling adds a user, and on an email conflict (the user was

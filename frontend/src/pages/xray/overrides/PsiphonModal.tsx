@@ -257,7 +257,7 @@ export default function PsiphonModal({
           type="error"
           showIcon
           banner
-          message={t('pages.xray.psiphon.russiaWarningTitle')}
+          title={t('pages.xray.psiphon.russiaWarningTitle')}
           description={t('pages.xray.psiphon.russiaWarningDesc')}
           style={{ marginBottom: 12, fontWeight: 600 }}
         />

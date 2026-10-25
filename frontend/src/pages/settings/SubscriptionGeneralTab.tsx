@@ -19,6 +19,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { catTabLabel } from './catTabLabel';
 import { sanitizePath, normalizePath } from './uriPath';
 import HappSettingsContent from './HappSettingsContent';
+import IncySettingsContent from './IncySettingsContent';
 import { remoteSourceBadge } from './subscriptionShared';
 
 interface SubscriptionGeneralTabProps {
@@ -247,6 +248,26 @@ export default function SubscriptionGeneralTab({
                   onChange={onNumber((v) => updateSetting({ subUpdates: v }))}
                 />
               </SettingListItem>
+
+              <SettingListItem
+                paddings="small"
+                title={t('pages.settings.externalSubUserAgent')}
+                badge={
+                  <DefaultSettingTag
+                    settingKey="externalSubUserAgent"
+                    value={allSetting.externalSubUserAgent}
+                  />
+                }
+                description={t('pages.settings.externalSubUserAgentDesc')}
+              >
+                <Input
+                  value={allSetting.externalSubUserAgent}
+                  placeholder="v2rayNG/1.8.5"
+                  maxLength={512}
+                  allowClear
+                  onChange={(e) => updateSetting({ externalSubUserAgent: e.target.value })}
+                />
+              </SettingListItem>
             </>
           ),
         },
@@ -393,8 +414,6 @@ export default function SubscriptionGeneralTab({
               updateSetting={updateSetting}
               isMobile={isMobile}
               remoteSourceBadge={remoteSourceBadge}
-              // QR settings links select the link control; ordinary Happ visits still start on routing.
-              defaultActiveTab={searchParams.get('happTab') === 'links' ? 'links' : 'routing'}
             />
           ),
         },
@@ -432,53 +451,12 @@ export default function SubscriptionGeneralTab({
           key: '7',
           label: catTabLabel(<CompassOutlined />, 'Incy', isMobile),
           children: (
-            <>
-              <SettingListItem
-                paddings="small"
-                title={t('pages.settings.subIncyEnableRouting')}
-                description={t('pages.settings.subIncyEnableRoutingDesc')}
-              >
-                <Switch
-                  checked={allSetting.subIncyEnableRouting}
-                  onChange={(v) => updateSetting({ subIncyEnableRouting: v })}
-                />
-              </SettingListItem>
-              <SettingListItem
-                paddings="small"
-                title={t('pages.settings.subIncyRoutingSource')}
-                description={
-                  allSetting.subIncyRoutingSource === 'custom' || !allSetting.subIncyRoutingSource
-                    ? t('pages.settings.subRoutingSourceDescCustom')
-                    : t('pages.settings.subRoutingSourceDescPreset')
-                }
-              >
-                <Select
-                  value={allSetting.subIncyRoutingSource || 'custom'}
-                  style={{ width: '100%' }}
-                  onChange={(v) => updateSetting({ subIncyRoutingSource: v })}
-                  options={[
-                    { value: 'default', label: 'DEFAULT — RoscomVPN' },
-                    { value: 'jsonsub', label: 'JSONSUB — RoscomVPN' },
-                    { value: 'whitelist', label: 'WHITELIST — RoscomVPN' },
-                    { value: 'custom', label: t('pages.settings.subRoutingSourceCustom') },
-                  ]}
-                />
-              </SettingListItem>
-              {(!allSetting.subIncyRoutingSource ||
-                allSetting.subIncyRoutingSource === 'custom') && (
-                <SettingListItem
-                  paddings="small"
-                  title={t('pages.settings.subIncyRoutingRules')}
-                  description={t('pages.settings.subIncyRoutingRulesDesc')}
-                >
-                  <Input.TextArea
-                    value={allSetting.subIncyRoutingRules}
-                    placeholder="incy://routing/onadd/..."
-                    onChange={(e) => updateSetting({ subIncyRoutingRules: e.target.value })}
-                  />
-                </SettingListItem>
-              )}
-            </>
+            <IncySettingsContent
+              allSetting={allSetting}
+              updateSetting={updateSetting}
+              isMobile={isMobile}
+              remoteSourceBadge={remoteSourceBadge}
+            />
           ),
         },
       ]}

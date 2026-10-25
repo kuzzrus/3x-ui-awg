@@ -19,8 +19,8 @@ Xray JSON config from that state, supervises the Xray child process, and exposes
 WebSocket API. A React SPA (built by Vite, embedded into the Go binary) is the UI. A second,
 separate HTTP server serves **subscription links** to end users.
 
-The panel supervises **managed child processes**: Xray-core itself and — when MTProto or
-TUIC inbounds exist — dedicated child proxy binaries:
+The panel supervises **managed child processes**: Xray-core itself and — when MTProto
+inbounds exist — a dedicated child proxy binary:
 
 - **`mtg-multi` for MTProto inbounds** (`github.com/mhsanaei/mtg-multi`, a multi-secret fork
   built from source; `internal/mtproto/`): One process per inbound serves every attached
@@ -28,10 +28,10 @@ TUIC inbounds exist — dedicated child proxy binaries:
   sponsored-channel ad-tags via `[secret-ad-tags]`. A client or ad-tag edit is hot-applied via
   the fork's management API (`PUT /secrets`, guarded by a per-process bearer token), with a
   process restart as the fallback on older binaries.
-- **`tuic-server` for TUIC v5 inbounds** (`internal/tuic/`): One process per inbound runs on
-  loopback behind an in-process native Go UDP relay that owns the public port and meters
-  traffic deltas. The sidecar handles decrypted client traffic standalone, independent of
-  Xray routing and outbounds.
+
+In contrast, **AmneziaWG** (`internal/amneziawgnet/`) and **TUIC v5** (`internal/tuic/`) run as
+**in-process native Go servers** without external child processes, bridging client traffic into
+Xray-core via loopback SOCKS5 relays.
 
 Servers and processes, all launched from `main.go`:
 
@@ -41,7 +41,6 @@ Servers and processes, all launched from `main.go`:
 | **Subscription** | `internal/sub`                    | Public endpoint that hands out client configs (raw / JSON / Clash) | `subPort` setting |
 | **Xray-core**    | supervised via `internal/xray`    | The actual proxy engine; a child process, not Go code              | `inbounds[].port` |
 | **mtg-multi**    | supervised via `internal/mtproto` | MTProto proxy child process for MTProto inbounds (multi-secret)    | per inbound       |
-| **tuic-server**  | supervised via `internal/tuic`    | TUIC v5 proxy child process fronted by a Go UDP relay              | per inbound       |
 
 Two key ideas that explain most of the complexity:
 
@@ -299,7 +298,7 @@ node heartbeat every 5s, periodic traffic resets (hourly/daily/weekly/monthly). 
 ├── install-agent.sh                                        # Node agent installer (docs/node-agent.md)
 ├── x-ui.service.*  / x-ui.rc                               # systemd units (debian/rhel/arch) + rc script
 ├── windows_files/                                          # Windows service support
-└── .github/workflows/        # CI: ci.yml, codeql.yml, docs-ci.yml, release.yml, smoke.yml,
+└── .github/workflows/        # CI: ci.yml, codeql.yml, docs-ci.yml, release.yml,
                               #     mutation.yml, cleanup_caches.yml, claude-pr-review.yml,
                               #     claude-issue-analyst.yml, claude-mention.yml
 ```
@@ -375,6 +374,8 @@ merged with GUID-based baselines to avoid double counting after resets.
 `job/xray_traffic_job.go`, `job/node_traffic_sync_job.go`, `service/inbound_node.go`
 (`SetRemoteTraffic` / `upsertNodeBaseline`), models `xray.ClientTraffic`,
 `model.NodeClientTraffic`, `model.ClientGlobalTraffic` (cross-master totals).
+A client reset is queued per hosting node in `model.NodePendingReset` (`service/node_reset_queue.go`)
+and replayed by the node sync until the node accepts it.
 Periodic resets: `job/periodic_traffic_reset_job.go` (keyed off `Inbound.TrafficReset`).
 
 ### 5.4 Background jobs (cron)
@@ -473,6 +474,7 @@ for AutoMigrate in `internal/database/db.go`.
 | `Host`                          | Subscription host overrides (per inbound) | `Address`, `Port`, `Sni`, `Path`, `Security`, `Fingerprint`, `SortOrder`, visibility/exclusion flags                                                               |
 | `Node`                          | A managed child panel                     | `Guid`, `Address`, `Status`, `TlsVerifyMode`, `PinnedCertSha256`, `ConfigDirty`, version/heartbeat/metric fields                                                   |
 | `NodeClientTraffic`             | Per-node client traffic baseline          | cross-node merge (anti-double-count)                                                                                                                               |
+| `NodePendingReset`              | Client resets a node has not confirmed    | `NodeId`, `Email`, `QueuedAt`; replayed by the node sync, freezes that client's node verdict until delivered                                                       |
 | `NodeClientIp`                  | Per-node client IP attribution            | `NodeGuid`, `Email`, `Ips`                                                                                                                                         |
 | `ClientGlobalTraffic`           | Cross-master usage totals                 | `MasterGuid`, `Email`, `Up`, `Down`                                                                                                                                |
 | `xray.ClientTraffic`            | Per-client counters (`client_traffics`)   | `Email`, `Up`, `Down`, `Total`, `ExpiryTime`, `LastOnline`                                                                                                         |
@@ -573,7 +575,7 @@ golangci-lint run                   # full lint (gofumpt + goimports formatting)
 go run main.go                      # run the panel locally (serves embedded dist if built)
 ```
 
-**Frontend (`cd frontend`, Node 24 — see `.nvmrc`):**
+**Frontend (`cd frontend`, Node 26 — see `.nvmrc`):**
 
 ```bash
 npm install
@@ -589,10 +591,10 @@ npm run build        # gen:api + vite build → outputs to internal/web/dist (th
 root → `go build ./...` / `go run main.go`.
 
 **CI** (`.github/workflows/`): `ci.yml` (build/test/lint), `codeql.yml` (security scan),
-`smoke.yml` (smoke tests), `mutation.yml` (mutation testing), `release.yml`
-(multi-arch release builds), `docs-ci.yml` (docs site build/lint/test), `cleanup_caches.yml`,
-`claude-pr-review.yml` (PR review only - it changes no code), `claude-issue-analyst.yml`
-(issue triage), `claude-mention.yml` (owner `@claude` Q&A plus the opt-in conflict-resolution job).
+`mutation.yml` (mutation testing), `release.yml` (multi-arch release builds),
+`docs-ci.yml` (docs site build/lint/test), `cleanup_caches.yml`, `claude-pr-review.yml`
+(PR review only - it changes no code), `claude-issue-analyst.yml` (issue triage),
+`claude-mention.yml` (owner `@claude` Q&A plus the opt-in conflict-resolution job).
 
 ---
 

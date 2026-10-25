@@ -94,10 +94,12 @@ func NewHub() *Hub {
 	}
 }
 
+// Traffic messages carry independent partial updates from Xray, TUIC, and node
+// polling jobs. Throttling by message type would silently discard one source
+// when two jobs publish within the throttle window.
 var throttledMessageTypes = map[MessageType]struct{}{
 	MessageTypeInbounds:    {},
 	MessageTypeOutbounds:   {},
-	MessageTypeTraffic:     {},
 	MessageTypeClientStats: {},
 }
 
@@ -269,37 +271,6 @@ func (h *Hub) Broadcast(messageType MessageType, payload any) {
 		return
 	}
 	if h.shouldThrottle(messageType) {
-		return
-	}
-	data, err := json.Marshal(Message{
-		Type:    messageType,
-		Payload: payload,
-		Time:    time.Now().UnixMilli(),
-	})
-	if err != nil {
-		logger.Error("WebSocket marshal failed:", err)
-		return
-	}
-	if len(data) > maxMessageSize {
-		logger.Debugf("WebSocket payload %d bytes exceeds limit, sending invalidate for %s", len(data), messageType)
-		h.broadcastInvalidate(messageType)
-		return
-	}
-	h.enqueue(data)
-}
-
-// BroadcastUnthrottled behaves like Broadcast but skips the per-type rate
-// limit in shouldThrottle. Use for message types whose callers are already
-// self-limited by their own poll cadence (e.g. the AmneziaWG/MTProto sidecar
-// traffic jobs, both "@every 10s" in internal/web/web.go), so a same-tick
-// collision with another caller of the same MessageType (see
-// throttledMessageTypes) never silently drops one side. robfig/cron's
-// "@every" schedules are lastRun+interval grids anchored at AddJob time, not
-// wall-clock-aligned, so two same-cadence jobs registered milliseconds apart
-// stay in lockstep indefinitely -- with the throttled path, one of them
-// would lose almost every tick, forever, not just occasionally.
-func (h *Hub) BroadcastUnthrottled(messageType MessageType, payload any) {
-	if h == nil || payload == nil || h.GetClientCount() == 0 {
 		return
 	}
 	data, err := json.Marshal(Message{

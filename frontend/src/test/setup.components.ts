@@ -1,9 +1,12 @@
-import { afterEach, vi } from 'vitest';
+import { afterEach, beforeEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import i18next from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
 import enUS from '../../../internal/web/translation/en-US.json';
+
+// RTL sets this from a global beforeAll, which never runs with `globals: false`.
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock('persian-calendar-suite', () => ({
   PersianDateTimePicker: () => null,
@@ -96,8 +99,20 @@ afterEach(async () => {
 
 import { HttpUtil, Msg } from '@/utils';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-vi.spyOn(HttpUtil, 'post').mockResolvedValue({ success: true, obj: {} } as any);
-vi.spyOn(HttpUtil, 'get').mockImplementation(
-  async (url: string) => new Msg(true, '', url.includes('/panel/api/inbounds/options') ? [] : {}),
-);
+const LIST_URLS = ['/panel/api/inbounds/options', '/panel/api/nodes/list'];
+
+function stubRequests() {
+  if (!vi.isMockFunction(HttpUtil.post)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.spyOn(HttpUtil, 'post').mockResolvedValue({ success: true, obj: {} } as any);
+  }
+  if (!vi.isMockFunction(HttpUtil.get)) {
+    vi.spyOn(HttpUtil, 'get').mockImplementation(
+      async (url: string) => new Msg(true, '', LIST_URLS.some((u) => url.includes(u)) ? [] : {}),
+    );
+  }
+}
+
+// A file's vi.restoreAllMocks() drops the stubs for its remaining tests, which then send real requests.
+stubRequests();
+beforeEach(stubRequests);

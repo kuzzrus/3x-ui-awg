@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 
@@ -16,12 +16,9 @@ function wrapper({ children }: { children: ReactNode }) {
 describe('subscription balancer request body', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
-  beforeAll(() => {
-    // The component tests stub the post of HttpUtil; this one follows it down to the body on the wire.
-    vi.mocked(HttpUtil.post).mockRestore();
-  });
-
   beforeEach(() => {
+    // The component tests stub the post of HttpUtil before each test; this one follows it down to the body on the wire.
+    vi.mocked(HttpUtil.post).mockRestore();
     document.head.innerHTML = '<meta name="csrf-token" content="tok">';
     setupHttp();
     fetchMock = vi.fn().mockResolvedValue(

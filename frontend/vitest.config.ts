@@ -18,6 +18,12 @@ export default defineConfig({
     globals: false,
     // Keep jsdom-heavy form tests within the memory budget of local and CI runners.
     maxWorkers: 2,
+    // A state update or console call that lands after its file's jsdom is gone fails no test.
+    onUnhandledError: (error) =>
+      error.name === 'EnvironmentTeardownError' ||
+      (error.name === 'ReferenceError' && error.message === 'window is not defined')
+        ? false
+        : undefined,
     projects: [
       {
         extends: true,
@@ -25,6 +31,8 @@ export default defineConfig({
           name: 'unit',
           include: ['src/test/**/*.test.ts'],
           environment: 'node',
+          // msw probes localStorage on load; Node 25+'s file-less one warns per worker.
+          execArgv: ['--no-experimental-webstorage'],
           setupFiles: ['./src/test/setup.ts', './src/test/setup.msw.ts'],
         },
       },

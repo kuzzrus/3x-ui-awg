@@ -43,7 +43,7 @@ function EngineNotice() {
         type="error"
         showIcon
         style={{ marginBottom: 16 }}
-        message={t('pages.inbounds.form.naiveProxyEngineUnsupported', {
+        title={t('pages.inbounds.form.naiveProxyEngineUnsupported', {
           platform: status.platform,
         })}
       />
@@ -54,7 +54,7 @@ function EngineNotice() {
       type="warning"
       showIcon
       style={{ marginBottom: 16 }}
-      message={t('pages.inbounds.form.naiveProxyEngineMissing')}
+      title={t('pages.inbounds.form.naiveProxyEngineMissing')}
       description={t('pages.inbounds.form.naiveProxyEngineHint')}
       action={
         <Button size="small" type="primary" loading={installing} onClick={install}>
@@ -227,7 +227,7 @@ function CertNotice({
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message={t('pages.inbounds.form.naiveProxyCertAutoHint')}
+        title={t('pages.inbounds.form.naiveProxyCertAutoHint')}
       />
     ) : null;
   }
@@ -238,7 +238,7 @@ function CertNotice({
       type={view.type}
       showIcon
       style={{ marginBottom: 16 }}
-      message={view.message}
+      title={view.message}
       description={view.hint}
       action={
         view.retry ? (

@@ -19,6 +19,7 @@ const MULTI_USER_PROTOCOLS = new Set([
   'tuic',
   'tproxy',
   'naiveproxy',
+  'masque',
 ]);
 
 interface BulkDetachInboundsModalProps {

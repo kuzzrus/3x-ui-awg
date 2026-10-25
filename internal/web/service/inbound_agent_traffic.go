@@ -99,7 +99,7 @@ func (s *InboundService) addAgentTrafficLocked(nodeID int, stats *agentproto.Sta
 
 		for start := 0; start < len(clientDeltas); start += agentClientBatch {
 			end := min(start+agentClientBatch, len(clientDeltas))
-			if err := s.applyClientTraffic(tx, clientDeltas[start:end], true); err != nil {
+			if err := s.addClientTraffic(tx, clientDeltas[start:end]); err != nil {
 				return err
 			}
 		}

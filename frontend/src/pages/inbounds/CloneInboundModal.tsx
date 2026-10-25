@@ -5,6 +5,7 @@ import { Modal, Select, Typography, message } from 'antd';
 import { HttpUtil } from '@/utils';
 import { SelectAllClearButtons } from '@/components/form';
 import { buildClonePayload, pickClonePort } from '@/lib/xray/inbound-clone';
+import { nodeHostsProtocol } from '@/lib/xray/node-protocols';
 import type { NodeRecord } from '@/api/queries/useNodesQuery';
 import type { DBInbound } from '@/models/dbinbound';
 
@@ -38,7 +39,7 @@ export default function CloneInboundModal({
     () => [
       { value: LOCAL_PANEL, label: t('pages.inbounds.localPanel'), disabled: false },
       ...(nodes || [])
-        .filter((n) => n.enable)
+        .filter((n) => n.enable && nodeHostsProtocol(dbInbound?.protocol ?? '', n.kind))
         .map((n) => ({
           value: n.id,
           // Only online nodes are deployable targets: nodes report `unknown`
@@ -48,7 +49,7 @@ export default function CloneInboundModal({
           disabled: n.status !== 'online',
         })),
     ],
-    [nodes, t],
+    [nodes, dbInbound?.protocol, t],
   );
 
   // "Select all" must not pick targets the user can't pick manually —

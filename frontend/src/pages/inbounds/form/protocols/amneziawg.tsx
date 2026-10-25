@@ -209,7 +209,7 @@ export default function AmneziawgFields({
         label={t('pages.xray.amneziawg.quicCapture')}
         tooltip={t('pages.xray.amneziawg.quicCaptureHint')}
       >
-        <Space direction="vertical" style={{ width: '100%' }} size={8}>
+        <Space orientation="vertical" style={{ width: '100%' }} size={8}>
           <Input
             value={quicCaptureHost}
             onChange={(e) => setQuicCaptureHost(e.target.value)}
