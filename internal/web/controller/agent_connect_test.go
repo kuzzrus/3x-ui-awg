@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -35,9 +36,26 @@ type pullPanel struct {
 func newPullPanel(t *testing.T) *pullPanel {
 	t.Helper()
 	engine := newNodeCredentialTestEngine(t)
+	// A hijacked connection outlives httptest's Close; its handler reads the database, which the next
+	// test starts over, so the cleanup waits for the handlers to return.
+	var handlers sync.WaitGroup
+	engine.Use(func(c *gin.Context) {
+		handlers.Add(1)
+		defer handlers.Done()
+		c.Next()
+	})
 	connect := NewAgentConnectController(engine.Group("/base"))
 	server := httptest.NewTLSServer(engine)
-	t.Cleanup(server.Close)
+	t.Cleanup(func() {
+		server.Close()
+		done := make(chan struct{})
+		go func() { handlers.Wait(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Error("an agent connect handler was still running 10s after the test")
+		}
+	})
 	return &pullPanel{t: t, engine: engine, server: server, connect: connect}
 }
 
