@@ -8,6 +8,7 @@ import (
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
+	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
 
 func xdriveInbound(port int, xdriveSettings string) *model.Inbound {
@@ -106,6 +107,57 @@ func TestGetXrayConfig_DropsATemplateXDriveOutboundTheCoreRefuses(t *testing.T) 
 	}
 	if !slices.Equal(tags, []string{"direct", "drive-encrypted"}) {
 		t.Fatalf("emitted outbound tags = %v, want [direct drive-encrypted]", tags)
+	}
+}
+
+// Whatever reached the outbound that was dropped must be blocked, not left to fall through to the
+// default outbound: a rule to it, a balancer of it alone, and the first place, which is the default.
+func TestConfigBuildBlocksWhatReachedADroppedXDriveOutbound(t *testing.T) {
+	setupSettingTestDB(t)
+	node := seedAgentRow(t, "agent")
+	t.Cleanup(func() { setAgentConfigProblem(node, "") })
+	const stream = `{"network":"xdrive","security":"none","xdriveSettings":{"service":"local","remoteFolder":"/tmp/shared"}}`
+	template := `{"outbounds":[
+		{"protocol":"vless","tag":"drive-plain","streamSettings":` + stream + `,
+			"settings":{"address":"10.0.0.1","port":443,"id":"11111111-2222-4333-8444-555555555555","encryption":"none"}},
+		{"protocol":"freedom","tag":"direct"}],
+		"routing":{"domainStrategy":"AsIs","rules":[
+			{"type":"field","domain":["marker-rule"],"outboundTag":"drive-plain"},
+			{"type":"field","domain":["marker-pool"],"balancerTag":"drive-pool"}],
+			"balancers":[{"tag":"drive-pool","selector":["drive-plain"]}]}}`
+	if err := (&SettingService{}).saveSetting("xrayTemplateConfig", template); err != nil {
+		t.Fatalf("seed template: %v", err)
+	}
+
+	svc := &XrayService{}
+	master, err := svc.GetXrayConfig()
+	if err != nil {
+		t.Fatalf("GetXrayConfig: %v", err)
+	}
+	agent, err := svc.GetAgentConfig(node)
+	if err != nil {
+		t.Fatalf("GetAgentConfig: %v", err)
+	}
+	for name, cfg := range map[string]*xray.Config{"the panel's core": master, "an agent's core": agent} {
+		targets := ruleTargets(t, cfg)
+		for marker, got := range targets {
+			if got != "outbound "+missingOutboundTag {
+				t.Errorf("%s: the rule %s sends to %q, want the blackhole", name, marker, got)
+			}
+		}
+		if len(targets) != 2 {
+			t.Errorf("%s: found the rules %v, want both of the template's", name, targets)
+		}
+		var outbounds []struct{ Protocol, Tag string }
+		if err := json.Unmarshal(cfg.OutboundConfigs, &outbounds); err != nil {
+			t.Fatal(err)
+		}
+		if len(outbounds) == 0 || outbounds[0].Protocol != "blackhole" || outbounds[0].Tag != missingOutboundTag {
+			t.Errorf("%s: the default outbound is %+v, want the blackhole that takes the place of the dropped one", name, outbounds)
+		}
+	}
+	if problem := agentConfigProblem(node); !strings.Contains(problem, `"drive-plain"`) {
+		t.Errorf("the agent's problem is %q, want it to name the outbound that is gone", problem)
 	}
 }
 

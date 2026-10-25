@@ -418,7 +418,15 @@ func (s *XrayService) newConfigFromTemplate(scope configScope) (*xray.Config, ma
 	// pre-26.9.9 quicParams.udpHop, which the core ignores, or a udphop not last, which it cannot dial.
 	xrayConfig.OutboundConfigs = healOutboundStreams(xrayConfig.OutboundConfigs,
 		liftXhttpSessionIDKeys, upgradeStreamLegacyXdns, upgradeStreamLegacyUDPHop, normalizeStreamUDPHop)
-	xrayConfig.OutboundConfigs = dropXDriveOutboundsRefusedByCore(xrayConfig.OutboundConfigs)
+	var refused []string
+	xrayConfig.OutboundConfigs, refused = dropXDriveOutboundsRefusedByCore(xrayConfig.OutboundConfigs)
+	// What reached an outbound left out for the core is repaired like what reached one the scope left out.
+	for _, tag := range refused {
+		if left == nil {
+			left = map[string][]string{}
+		}
+		left[tag] = nil
+	}
 	return xrayConfig, left, nil
 }
 
@@ -1785,15 +1793,17 @@ func dropInboundsRefusedByXDrive(inbounds []xray.InboundConfig) []xray.InboundCo
 	})
 }
 
-// dropXDriveOutboundsRefusedByCore keeps out an XDRIVE outbound stored before xray-core 26.10.17
-// required VLESS encryption and mux on it (#7182), which would stop the whole core at startup.
-func dropXDriveOutboundsRefusedByCore(raw json_util.RawMessage) json_util.RawMessage {
+// dropXDriveOutboundsRefusedByCore leaves out the XDRIVE outbounds that stop 26.10.17 at startup (#7182) and returns
+// their tags; a refused first outbound leaves a blackhole, so the default route does not move to the next.
+func dropXDriveOutboundsRefusedByCore(raw json_util.RawMessage) (json_util.RawMessage, []string) {
 	var outbounds []json.RawMessage
 	if len(raw) == 0 || json.Unmarshal(raw, &outbounds) != nil {
-		return raw
+		return raw, nil
 	}
 	kept := make([]json.RawMessage, 0, len(outbounds))
-	for _, ob := range outbounds {
+	var refused []string
+	dropped := false
+	for i, ob := range outbounds {
 		var probe struct {
 			Tag            string `json:"tag"`
 			StreamSettings struct {
@@ -1803,18 +1813,26 @@ func dropXDriveOutboundsRefusedByCore(raw json_util.RawMessage) json_util.RawMes
 		if json.Unmarshal(ob, &probe) == nil && probe.StreamSettings.Network == "xdrive" {
 			if err := xray.ValidateOutboundConfig(ob); err != nil {
 				logger.Warningf("Outbound %q: not started, xray-core refuses it: %v", probe.Tag, err)
+				dropped = true
+				if probe.Tag != "" {
+					refused = append(refused, probe.Tag)
+				}
+				if i == 0 {
+					kept = append(kept, json.RawMessage(`{"protocol":"blackhole","tag":"`+missingOutboundTag+`"}`))
+				}
 				continue
 			}
 		}
 		kept = append(kept, ob)
 	}
-	if len(kept) == len(outbounds) {
-		return raw
+	if !dropped {
+		return raw, nil
 	}
-	if rewritten, err := json.Marshal(kept); err == nil {
-		return rewritten
+	rewritten, err := json.Marshal(kept)
+	if err != nil {
+		return raw, nil
 	}
-	return raw
+	return rewritten, refused
 }
 
 // routingScriptRefused mirrors xray-core 26.10.17's RouterConfig.Build (#7136): a routing
