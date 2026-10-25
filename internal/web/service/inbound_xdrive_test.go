@@ -2,6 +2,8 @@ package service
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -210,6 +212,20 @@ func TestAddInboundAcceptsACompleteXDriveTemplate(t *testing.T) {
 	tmpl := `{"service":"template","template":{"put":{"url":"u"},"get":{"url":"u"},"list":{"url":"u","namesRegex":"\"name\":\"([^\"]+)\""},"delete":{"url":"u"}}}`
 	if _, _, err := (&InboundService{}).AddInbound(xdriveInbound(18480, tmpl)); err != nil {
 		t.Fatalf("AddInbound of a template xray-core can open: %v", err)
+	}
+}
+
+// The XDRIVE form offers Yandex Disk from a file the frontend imports; the save path must
+// accept the stream the form makes from it, folder and credentials filled in.
+func TestAddInboundAcceptsTheYandexDiskTemplateOfTheForm(t *testing.T) {
+	setupBulkDB(t)
+	template, err := os.ReadFile(filepath.Join("..", "..", "..", "frontend", "src", "lib", "xray", "xdrive-yandex.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings := `{"service":"template","remoteFolder":"xdrive-test","secrets":["login","app-password"],"template":` + string(template) + `}`
+	if _, _, err := (&InboundService{}).AddInbound(xdriveInbound(18496, settings)); err != nil {
+		t.Fatalf("AddInbound with the Yandex Disk template: %v", err)
 	}
 }
 
