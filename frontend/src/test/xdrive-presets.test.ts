@@ -1,0 +1,23 @@
+import { describe, expect, it } from 'vitest';
+
+import { yandexDiskPreset } from '@/lib/xray/xdrive-presets';
+
+describe('Yandex Disk XDRIVE preset', () => {
+  it('takes the object names out of a multistatus answer and not the folder itself', () => {
+    const { list } = yandexDiskPreset().template as { list: { namesRegex: string } };
+    const body =
+      '<d:multistatus xmlns:d="DAV:">' +
+      '<d:response><d:href>/xdrive-test/</d:href></d:response>' +
+      '<d:response><d:href>/xdrive-test/streams~ab12~c2s~000000000.seg</d:href></d:response>' +
+      '<d:response><d:href>/xdrive-test/sessions~1792927873-ab12</d:href></d:response>' +
+      '</d:multistatus>';
+    const names = [...body.matchAll(new RegExp(list.namesRegex, 'g'))].map((m) => m[1]);
+    expect(names).toEqual(['streams~ab12~c2s~000000000.seg', 'sessions~1792927873-ab12']);
+  });
+
+  it('hands out a fresh template each time, so one form cannot edit another', () => {
+    const first = yandexDiskPreset();
+    expect(yandexDiskPreset().template).not.toBe(first.template);
+    expect(yandexDiskPreset().template).toEqual(first.template);
+  });
+});
