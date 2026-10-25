@@ -680,7 +680,11 @@ func (s *SubJsonService) getConfig(subReq *SubService, inbound *model.Inbound, c
 			if vc.Flow != "" && !vlessFlowAllowed(newNetwork, security, subReq.linkSettings(inbound)) {
 				vc.Flow = ""
 			}
-			newOutbounds = append(newOutbounds, s.genVless(subReq, inbound, streamSettings, vc, jsonMux(mux, hostMux)))
+			vlessMux := jsonMux(mux, hostMux)
+			if newNetwork == "xdrive" {
+				vlessMux = xdriveMux(vlessMux)
+			}
+			newOutbounds = append(newOutbounds, s.genVless(subReq, inbound, streamSettings, vc, vlessMux))
 		case "trojan", "shadowsocks":
 			newOutbounds = append(newOutbounds, s.genServer(subReq, inbound, streamSettings, client, jsonMux(mux, hostMux)))
 		case "hysteria":
@@ -942,6 +946,29 @@ func muxWithoutTCP(mux string) json_util.RawMessage {
 		return nil
 	}
 	return json_util.RawMessage(out)
+}
+
+// xdriveMux keeps the configured mux where xray-core 26.10.17 accepts it on an XDRIVE outbound (#7182) and mends
+// the rest: enabled, no negative concurrency or xudpConcurrency, and no xudpProxyUDP443 skip.
+func xdriveMux(mux string) string {
+	var m map[string]any
+	if mux == "" || json.Unmarshal([]byte(mux), &m) != nil || m == nil {
+		m = map[string]any{}
+	}
+	m["enabled"] = true
+	for _, key := range []string{"concurrency", "xudpConcurrency"} {
+		if n, ok := m[key].(float64); ok && n < 0 {
+			delete(m, key)
+		}
+	}
+	if m["xudpProxyUDP443"] == "skip" {
+		delete(m, "xudpProxyUDP443")
+	}
+	out, err := json.Marshal(m)
+	if err != nil {
+		return `{"enabled":true}`
+	}
+	return string(out)
 }
 
 func (s *SubJsonService) genServer(subReq *SubService, inbound *model.Inbound, streamSettings json_util.RawMessage, client model.Client, mux string) json_util.RawMessage {
