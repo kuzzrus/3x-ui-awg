@@ -121,7 +121,6 @@
     "outbounds": "Outbounds",
     "apiDocs": "API Docs",
     "donate": "Donate",
-    "sponsors": "Sponsors",
     "docs": "Documentation",
     "openMenu": "Open menu",
     "pinSidebar": "Pin sidebar",
@@ -2936,15 +2935,6 @@
         "alreadyAdded": "This server is already in the outbound list. Use {reset} to renew its key.",
         "provisionFailed": "Could not build the PIA outbound. Try again."
       }
-    },
-    "sponsors": {
-      "title": "Sponsors",
-      "intro": "Companies that support 3X-UI development. Sponsored links open in a new tab.",
-      "become": "Become a sponsor",
-      "tag": "Sponsor",
-      "visit": "Visit",
-      "yourBrand": "Your brand here",
-      "yourBrandText": "Put your company in front of thousands of server admins who open 3X-UI every day."
     }
   },
   "tgbot": {
