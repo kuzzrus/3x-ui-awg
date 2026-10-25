@@ -1,15 +1,12 @@
 import { act, fireEvent, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AllSetting } from '@/models/setting';
 import GeneralTab from '@/pages/settings/GeneralTab';
 import { HttpUtil, Msg } from '@/utils';
 import { renderWithProviders } from './test-utils';
 
-beforeEach(() => {
-  vi.spyOn(HttpUtil, 'get').mockResolvedValue(new Msg(true, '', []));
-});
 afterEach(() => vi.restoreAllMocks());
 
 // Mounting fetches inbound options with no visible change; settle it inside act().
