@@ -2880,7 +2880,7 @@
         "tunnelConnected": "Tunnel connected",
         "tunnelNotConnected": "No active tunnel yet",
         "countriesTitle": "Countries",
-        "countriesHint": "One Psiphon tunnel per country, each on a port of its own, beside the default one above. Switch an outbound on for the countries you want to route through, or add the balancer to let the fastest one carry the traffic.",
+        "countriesHint": "One Psiphon tunnel per country, each on a port of its own, beside the default one above. Switch an outbound on for the countries you want to route through, or add the balancer to let the fastest one carry the traffic. They run on their own: stopping the default tunnel does not stop them, and the ones that were running come back when the panel restarts.",
         "addCountryPlaceholder": "Add a country",
         "addCountryButton": "Add",
         "countriesCount": "{n} of {max}",

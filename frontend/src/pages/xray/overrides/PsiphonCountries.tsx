@@ -85,8 +85,6 @@ const noImpact = (): DeletionImpact => ({
   observatory: false,
   burst: false,
 });
-const hasImpact = (i: DeletionImpact) =>
-  i.rules.length > 0 || i.balancers.length > 0 || i.observatory || i.burst;
 
 function outboundIndex(tt: XraySettingsValue | null, region: string): number {
   return tt?.outbounds?.findIndex((o) => o?.tag === outboundTag(region)) ?? -1;
@@ -167,7 +165,8 @@ export default function PsiphonCountries({
         region ? { region } : {},
       );
       if (msg?.success && Array.isArray(msg.obj)) {
-        const rows = msg.obj;
+        // The answer also names the countries that are down, which this call did not ask about.
+        const rows = msg.obj.filter((r) => targets.includes(r.region));
         setProbes((prev) => ({ ...prev, ...Object.fromEntries(rows.map((r) => [r.region, r])) }));
       } else {
         messageApi.error(msg?.msg || t('pages.xray.psiphon.countryActionFailed'));
@@ -224,15 +223,10 @@ export default function PsiphonCountries({
 
   function setCountryOutbound(country: Country, on: boolean) {
     if (!on) {
-      // The tabs show what a deletion takes with it before they make it; so does this switch, when it takes any.
-      const impact = impactOfDropping(country.region);
-      if (!hasImpact(impact)) {
-        dropOutbound(country.region);
-        return;
-      }
+      // Like both tabs, the switch always asks first: the preview lists the rules and balancers that go, not all that changes.
       modal.confirm({
         title: t('pages.xray.psiphon.outboundOffConfirm', { region: country.region }),
-        content: <DeletionImpactList impact={impact} />,
+        content: <DeletionImpactList impact={impactOfDropping(country.region)} />,
         okText: t('delete'),
         okType: 'danger',
         cancelText: t('cancel'),

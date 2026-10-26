@@ -125,7 +125,8 @@ server located in Russia.
 Under **Countries** in the same window you can add up to six countries. Each one is a
 Psiphon process of its own with its own region and its own loopback port (`19101` and
 up, kept for as long as the country stays in the list), so different clients can leave
-through different countries at the same time.
+through different countries at the same time. They run on their own: stopping the default
+tunnel does not stop them, and the ones that were running come back when the panel restarts.
 
 - **Add** puts a country in the list and starts its tunnel at once. A country that cannot
   start, for example because another program holds its port, stays in the list with the

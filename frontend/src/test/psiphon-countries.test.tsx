@@ -207,7 +207,22 @@ describe('PsiphonCountries', () => {
     ]);
 
     fireEvent.click(screen.getByRole('switch', { name: 'Outbound psiphon-DE' }));
+    fireEvent.click(within(await dialog()).getByRole('button', { name: 'Delete' }));
     expect(result.template().outbounds).toEqual([]);
+  });
+
+  it('asks before the switch drops an outbound even when no rule names it, and keeps it when asked not to', async () => {
+    const plain = template({ outbounds: [outboundOf('DE', 19101)] });
+    const result = renderCountries(listOf(connected('DE', 19101)), plain);
+    await screen.findByText('Germany (DE)');
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Outbound psiphon-DE' }));
+    const asked = await dialog();
+    expect(screen.getByRole('dialog', { name: 'Remove the outbound psiphon-DE?' })).toBe(asked);
+    expect(result.template().outbounds).toHaveLength(1);
+
+    fireEvent.click(within(asked).getByRole('button', { name: 'Cancel' }));
+    expect(result.template().outbounds).toHaveLength(1);
   });
 
   it('offers to fix an outbound that points at another port than its tunnel', async () => {
@@ -412,11 +427,13 @@ describe('PsiphonCountries', () => {
 
   it('probes the running countries and shows the latency and the exit', async () => {
     renderCountries(listOf(connected('DE', 19101), { ...connected('US', 19102), running: false }));
-    const post = vi
-      .spyOn(HttpUtil, 'post')
-      .mockResolvedValue(
-        new Msg(true, '', [{ region: 'DE', latencyMs: 62, ip: '172.104.225.141', country: 'DE' }]),
-      );
+    // The server answers for every country, the one that is down with a reason.
+    const post = vi.spyOn(HttpUtil, 'post').mockResolvedValue(
+      new Msg(true, '', [
+        { region: 'DE', latencyMs: 62, ip: '172.104.225.141', country: 'DE' },
+        { region: 'US', latencyMs: 0, error: 'not running' },
+      ]),
+    );
     await screen.findByText('Germany (DE)');
 
     fireEvent.click(screen.getByRole('button', { name: 'Probe all' }));
@@ -425,5 +442,6 @@ describe('PsiphonCountries', () => {
       expect(post).toHaveBeenCalledWith('/panel/api/xray/psiphon/countries/probe', {}),
     );
     expect(await screen.findByText(/62 ms · 172\.104\.225\.141 \(DE\)/)).toBeTruthy();
+    expect(screen.queryByText('No answer')).toBeNull();
   });
 });
