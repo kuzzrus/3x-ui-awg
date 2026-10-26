@@ -101,9 +101,14 @@ func withProbeTargets(t *testing.T, urls []string, exit string) {
 	t.Cleanup(func() { probeURLs, exitURL = oldURLs, oldExit })
 }
 
+// probeLatency is how long the generate_204 stand-in takes to answer, so that a probe which lost the measurement
+// can be told from one that timed a sub-millisecond loopback round trip.
+const probeLatency = 20 * time.Millisecond
+
 func probeServers(t *testing.T) (generate204, exitInfo *httptest.Server) {
 	t.Helper()
 	generate204 = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(probeLatency)
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	exitInfo = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -123,8 +128,8 @@ func TestProbeReportsTheLatencyAndTheExitOfATunnel(t *testing.T) {
 	if got.Error != "" || got.IP != "203.0.113.9" || got.Country != "DE" {
 		t.Fatalf("probe = %+v, want the exit 203.0.113.9 in DE and no error", got)
 	}
-	if got.LatencyMs < 0 || got.LatencyMs > 5000 {
-		t.Fatalf("latency = %d ms, not a plausible round trip", got.LatencyMs)
+	if got.LatencyMs < probeLatency.Milliseconds() || got.LatencyMs > 5000 {
+		t.Fatalf("latency = %d ms, want about the %v the address took to answer", got.LatencyMs, probeLatency)
 	}
 }
 
@@ -168,7 +173,7 @@ func TestProbeKeepsTheLatencyWhenTheExitCannotBeLookedUp(t *testing.T) {
 	if !strings.Contains(got.Error, "exit could not be looked up") || got.IP != "" {
 		t.Fatalf("probe = %+v, want the failed lookup as the error", got)
 	}
-	if got.LatencyMs < 0 {
-		t.Fatalf("the latency was lost with the lookup: %+v", got)
+	if got.LatencyMs < probeLatency.Milliseconds() {
+		t.Fatalf("the latency was lost with the lookup of the exit: %+v", got)
 	}
 }

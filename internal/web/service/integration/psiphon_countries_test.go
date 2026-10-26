@@ -426,8 +426,8 @@ func TestRemoveCountryDoesNotKeepALockForARegionItRefuses(t *testing.T) {
 	}
 }
 
-// installedPsiphon gives the package a bin folder with a binary and a config in it, which is all the restore at
-// boot looks for before it starts anything.
+// installedPsiphon gives the package a bin folder with a binary and a config in it, which is what autoStartDefault
+// looks for before it starts the default tunnel.
 func installedPsiphon(t *testing.T) {
 	t.Helper()
 	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
