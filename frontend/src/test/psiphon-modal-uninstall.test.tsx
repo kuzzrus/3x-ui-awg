@@ -155,4 +155,23 @@ describe('uninstalling Psiphon from its window', () => {
     expect(within(popover).queryByText(/^Rule /)).toBeNull();
     expect(after.burstObservatory).toBeUndefined();
   });
+
+  it('names the outbound that dialed through Psiphon, which the uninstall lets dial directly', async () => {
+    const tt = template();
+    tt.outbounds?.push({
+      tag: 'via-psiphon',
+      protocol: 'vless',
+      streamSettings: { sockopt: { dialerProxy: 'psiphon' } },
+    } as never);
+
+    const { template: after, popover } = await uninstall(tt);
+
+    expect(
+      within(popover).getByText(/Outbound via-psiphon — no longer chained through this one/),
+    ).toBeTruthy();
+    const chained = after.outbounds?.find((o) => o?.tag === 'via-psiphon') as
+      | { streamSettings?: { sockopt?: { dialerProxy?: string } } }
+      | undefined;
+    expect(chained?.streamSettings?.sockopt?.dialerProxy).toBeUndefined();
+  });
 });

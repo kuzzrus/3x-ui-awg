@@ -134,7 +134,9 @@ tunnel does not stop them, and the ones that were running come back when the pan
 - The switch **Outbound psiphon-XX** adds or removes a `socks` outbound tagged
   `psiphon-<CC>` that points at the port of that country. An outbound that points at
   another port is marked, with a button that fixes the port. Taking one out, like removing
-  a country, asks first and lists the routing rules and balancers that go with it.
+  a country, asks first and lists what changes with it: the routing rules and balancers that
+  are removed, the balancers that only lose it from their selector or fallback, and the
+  outbounds whose `dialerProxy` chain through it is cleared.
 - **Probe** measures the latency through a tunnel and shows its exit IP and country;
   **Probe all** does it for every running country.
 - **Add the balancer** adds `psiphon-balancer`, a `leastPing` balancer over every outbound

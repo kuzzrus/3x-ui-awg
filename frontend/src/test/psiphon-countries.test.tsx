@@ -335,6 +335,45 @@ describe('PsiphonCountries', () => {
     expect((result.template().routing as unknown as { rules: unknown[] }).rules).toEqual([]);
   });
 
+  it('lists the balancer and the chain that lose the outbound, though no rule leads to it', async () => {
+    const shared = template({
+      outbounds: [
+        outboundOf('DE', 19101),
+        outboundOf('US', 19102),
+        {
+          tag: 'via-de',
+          protocol: 'vless',
+          streamSettings: { sockopt: { dialerProxy: 'psiphon-DE' } },
+        },
+      ],
+    });
+    (shared.routing as unknown as { balancers: unknown[] }).balancers = [
+      { tag: 'pair', selector: ['psiphon-DE', 'psiphon-US'] },
+      { tag: 'spare', selector: ['direct'], fallbackTag: 'psiphon-DE' },
+    ];
+    const result = renderCountries(listOf(connected('DE', 19101), connected('US', 19102)), shared);
+    await screen.findByText('Germany (DE)');
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Outbound psiphon-DE' }));
+    const asked = await dialog();
+    expect(
+      within(asked).getByText(/Balancer pair — this outbound leaves its selector/),
+    ).toBeTruthy();
+    expect(within(asked).getByText(/Balancer spare — its fallback is cleared/)).toBeTruthy();
+    expect(
+      within(asked).getByText(/Outbound via-de — no longer chained through this one/),
+    ).toBeTruthy();
+
+    fireEvent.click(within(asked).getByRole('button', { name: 'Delete' }));
+    const after = result.template() as unknown as {
+      outbounds: { tag: string; streamSettings?: { sockopt?: { dialerProxy?: string } } }[];
+      routing: { balancers: { selector: string[]; fallbackTag?: string }[] };
+    };
+    expect(after.routing.balancers[0].selector).toEqual(['psiphon-US']);
+    expect(after.routing.balancers[1].fallbackTag).toBe('');
+    expect(after.outbounds.find((o) => o.tag === 'via-de')?.streamSettings?.sockopt).toEqual({});
+  });
+
   it('does not delete the balancer that another balancer falls back to', async () => {
     const used = template({
       outbounds: [{ tag: 'direct', protocol: 'freedom' }],

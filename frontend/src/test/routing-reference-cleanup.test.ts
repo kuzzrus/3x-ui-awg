@@ -102,7 +102,9 @@ describe('outbound deletion', () => {
         ],
       },
     });
-    expect(planOutboundDeletion(tt, 0).balancers).toEqual([]);
+    expect(planOutboundDeletion(tt, 0).balancers).toEqual([
+      { tag: 'pool', reason: 'selectorNarrowed' },
+    ]);
     applyOutboundDeletion(tt, 0);
     // The nodes go on selecting for it, and the placeholder keeps the stored selector from being empty.
     expect(tt.routing!.balancers![0].selector).toEqual(['xui-node-']);
@@ -219,7 +221,7 @@ describe('outbound deletion', () => {
     ]);
   });
 
-  it('clears a fallbackTag and a dialerProxy pointing at the deleted outbound', () => {
+  it('reports, then clears, a selector entry, a fallbackTag and a dialerProxy that name the deleted outbound', () => {
     const tt = tpl({
       outbounds: [
         { tag: 'proxy-us' },
@@ -230,9 +232,13 @@ describe('outbound deletion', () => {
         balancers: [{ tag: 'pool', selector: ['proxy-us', 'proxy-uk'], fallbackTag: 'proxy-us' }],
       },
     });
-    expect(planOutboundDeletion(tt, 0).balancers).toEqual([
+    const impact = planOutboundDeletion(tt, 0);
+    expect(impact.balancers).toEqual([
+      { tag: 'pool', reason: 'selectorNarrowed' },
       { tag: 'pool', reason: 'fallbackCleared' },
     ]);
+    expect(impact.chains).toEqual(['chain']);
+
     applyOutboundDeletion(tt, 0);
     expect(tt.routing!.balancers![0].selector).toEqual(['proxy-uk']);
     expect(tt.routing!.balancers![0].fallbackTag).toBe('');
@@ -253,6 +259,52 @@ describe('outbound deletion', () => {
     expect(planOutboundDeletion(tt, 0).balancers).toEqual([
       { tag: '#2', reason: 'fallbackCleared' },
     ]);
+  });
+
+  it('reports a balancer that only falls back to the deleted outbound, and no balancer that does not', () => {
+    const tt = tpl({
+      outbounds: [{ tag: 'proxy-us' }, { tag: 'proxy-uk' }],
+      routing: {
+        rules: [],
+        balancers: [
+          { tag: 'pool', selector: ['proxy-uk'], fallbackTag: 'proxy-us' },
+          { tag: 'other', selector: ['proxy-uk'], fallbackTag: 'proxy-uk' },
+        ],
+      },
+    });
+    expect(planOutboundDeletion(tt, 0).balancers).toEqual([
+      { tag: 'pool', reason: 'fallbackCleared' },
+    ]);
+  });
+
+  it('names the outbounds that chain through the deleted one, and none that chain elsewhere', () => {
+    const tt = tpl({
+      outbounds: [
+        { tag: 'chain', streamSettings: { sockopt: { dialerProxy: 'proxy-us' } } },
+        { tag: 'proxy-us' },
+        { tag: 'elsewhere', streamSettings: { sockopt: { dialerProxy: 'proxy-uk' } } },
+        { tag: 'plain' },
+      ],
+      routing: { rules: [], balancers: [] },
+    });
+    expect(planOutboundDeletion(tt, 1).chains).toEqual(['chain']);
+    expect(planOutboundDeletion(tt, 0).chains).toEqual([]);
+  });
+
+  it('names an untagged outbound or balancer that the deletion rewrites by its position', () => {
+    const tt = tpl({
+      outbounds: [
+        { tag: 'proxy-us' },
+        { streamSettings: { sockopt: { dialerProxy: 'proxy-us' } } },
+      ],
+      routing: { rules: [], balancers: [{ selector: ['proxy-us', 'proxy-uk'] }] },
+    });
+    const impact = planOutboundDeletion(tt, 0);
+    expect(impact.chains).toEqual(['#2']);
+    expect(impact.balancers).toEqual([{ tag: '#1', reason: 'selectorNarrowed' }]);
+    applyOutboundDeletion(tt, 0);
+    expect(tt.routing!.balancers![0].selector).toEqual(['proxy-uk']);
+    expect(tt.outbounds).toEqual([{ streamSettings: { sockopt: {} } }]);
   });
 
   it('never cascade-removes a tagless balancer (an empty tag must not match others)', () => {
@@ -332,6 +384,7 @@ describe('outbound deletion', () => {
       balancers: [],
       observatory: false,
       burst: false,
+      chains: [],
     });
     applyOutboundDeletion(tt, 0);
     expect(tt.outbounds).toEqual([]);
@@ -384,6 +437,63 @@ describe('outbound deletion', () => {
     ).length;
     applyOutboundDeletion(applied, 0);
     expect(applied.routing!.rules!.length).toBe(total - removed);
+  });
+
+  it('reports the balancers and chains the apply rewrites, and only those (plan/apply parity)', () => {
+    const make = () =>
+      tpl({
+        outbounds: [
+          { tag: 'proxy-us' },
+          { tag: 'proxy-uk' },
+          { tag: 'via-us', streamSettings: { sockopt: { dialerProxy: 'proxy-us' } } },
+          { tag: 'via-uk', streamSettings: { sockopt: { dialerProxy: 'proxy-uk' } } },
+        ],
+        routing: {
+          rules: [],
+          balancers: [
+            { tag: 'both', selector: ['proxy-us', 'proxy-uk'], fallbackTag: 'proxy-us' },
+            { tag: 'selector-only', selector: ['proxy-us', 'proxy-uk'] },
+            { tag: 'fallback-only', selector: ['proxy-uk'], fallbackTag: 'proxy-us' },
+            { tag: 'untouched', selector: ['proxy-uk'], fallbackTag: 'proxy-uk' },
+            { tag: 'emptied', selector: ['proxy-us'] },
+            {
+              tag: 'nodes',
+              selector: ['proxy-us'],
+              nodeMembers: { client: 'a@b.c', nodeIds: [1] },
+            },
+          ],
+        },
+      });
+    const before = make();
+    const planned = make();
+    const applied = make();
+    const impact = planOutboundDeletion(planned, 0);
+    applyOutboundDeletion(applied, 0);
+
+    const was = before.routing!.balancers!;
+    const now = applied.routing!.balancers!;
+    const emptied = was
+      .filter((w) => !now.some((n) => n.tag === w.tag))
+      .map((w) => ({ tag: w.tag, reason: 'selectorEmptied' }));
+    const edited = was.flatMap((w) => {
+      const n = now.find((x) => x.tag === w.tag);
+      if (!n) return [];
+      return [
+        ...(JSON.stringify(n.selector) !== JSON.stringify(w.selector)
+          ? [{ tag: w.tag, reason: 'selectorNarrowed' }]
+          : []),
+        ...(n.fallbackTag !== w.fallbackTag ? [{ tag: w.tag, reason: 'fallbackCleared' }] : []),
+      ];
+    });
+    expect(impact.balancers).toEqual([...emptied, ...edited]);
+
+    const chained = (before.outbounds ?? [])
+      .filter((w) => {
+        const n = applied.outbounds?.find((x) => x?.tag === w?.tag);
+        return n !== undefined && JSON.stringify(n) !== JSON.stringify(w);
+      })
+      .map((w) => w?.tag);
+    expect(impact.chains).toEqual(chained);
   });
 });
 
@@ -726,5 +836,29 @@ describe('deletion by tags', () => {
     applyOutboundDeletion(byIndex, 1);
     applyDeletionByTags(byTag, ['psiphon-DE']);
     expect(byTag).toEqual(byIndex);
+  });
+
+  it('lists the selectors it narrows, the fallbacks it clears and the chains it breaks, as the plan of one outbound does', () => {
+    const make = () =>
+      tpl({
+        outbounds: [
+          { tag: 'proxy-us' },
+          { tag: 'proxy-uk' },
+          { tag: 'chain', streamSettings: { sockopt: { dialerProxy: 'proxy-us' } } },
+        ],
+        routing: {
+          rules: [],
+          balancers: [{ tag: 'pool', selector: ['proxy-us', 'proxy-uk'], fallbackTag: 'proxy-us' }],
+        },
+      });
+
+    const impact = planDeletionByTags(make(), ['proxy-us']);
+
+    expect(impact.balancers).toEqual([
+      { tag: 'pool', reason: 'selectorNarrowed' },
+      { tag: 'pool', reason: 'fallbackCleared' },
+    ]);
+    expect(impact.chains).toEqual(['chain']);
+    expect(impact).toEqual(planOutboundDeletion(make(), 0));
   });
 });

@@ -31,14 +31,16 @@ export interface RuleImpact {
 
 export interface BalancerImpact {
   tag: string;
-  reason: 'selectorEmptied' | 'fallbackCleared';
+  reason: 'selectorEmptied' | 'selectorNarrowed' | 'fallbackCleared';
 }
 
+/** What a deletion changes besides the entry itself: whatever `applyCleanup` rewrites must be listed, or the dialog hides it. */
 export interface DeletionImpact {
   rules: RuleImpact[];
   balancers: BalancerImpact[];
   observatory: boolean;
   burst: boolean;
+  chains: string[];
 }
 
 const emptyImpact = (): DeletionImpact => ({
@@ -46,6 +48,7 @@ const emptyImpact = (): DeletionImpact => ({
   balancers: [],
   observatory: false,
   burst: false,
+  chains: [],
 });
 
 function ruleList(tt: XraySettingsValue): RuleObject[] {
@@ -91,6 +94,41 @@ function balancersEmptiedBy(tt: XraySettingsValue, removedOutbounds: Set<string>
     if (selector.every((s) => removedOutbounds.has(s))) emptied.push(tag);
   }
   return emptied;
+}
+
+/** Balancers that survive but that `applyCleanup` rewrites: an entry leaves the selector, or the fallback that named it is cleared. */
+function balancersEditedBy(
+  tt: XraySettingsValue,
+  removedOutbounds: Set<string>,
+  removedBalancers: Set<string>,
+): BalancerImpact[] {
+  const edited: BalancerImpact[] = [];
+  balancerList(tt).forEach((b, index) => {
+    if (!b || removedBalancers.has(b.tag)) return;
+    const tag = nameOf(b.tag, index);
+    if (Array.isArray(b.selector) && b.selector.some((s) => removedOutbounds.has(s))) {
+      edited.push({ tag, reason: 'selectorNarrowed' });
+    }
+    if (losesFallback(b, removedOutbounds, removedBalancers)) {
+      edited.push({ tag, reason: 'fallbackCleared' });
+    }
+  });
+  return edited;
+}
+
+/** Outbounds that survive but dialed through a removed one: `applyCleanup` drops the `dialerProxy` from their sockopt. */
+function chainsBrokenBy(tt: XraySettingsValue, removedOutbounds: Set<string>): string[] {
+  const broken: string[] = [];
+  const outbounds = Array.isArray(tt.outbounds) ? tt.outbounds : [];
+  outbounds.forEach((o, index) => {
+    if (typeof o?.tag === 'string' && removedOutbounds.has(o.tag)) return;
+    const dialerProxy = (o as { streamSettings?: { sockopt?: { dialerProxy?: string } } } | null)
+      ?.streamSettings?.sockopt?.dialerProxy;
+    if (typeof dialerProxy === 'string' && removedOutbounds.has(dialerProxy)) {
+      broken.push(nameOf(o?.tag, index));
+    }
+  });
+  return broken;
 }
 
 /**
@@ -142,22 +180,6 @@ function losesFallback(
   if (removedOutbounds.has(fallback)) return true;
   const target = balancerTagFromLoopback(fallback);
   return target !== null && removedBalancers.has(target);
-}
-
-/** Balancers that survive but lose their fallback, which `applyCleanup` clears. */
-function balancersLosingFallback(
-  tt: XraySettingsValue,
-  removedOutbounds: Set<string>,
-  removedBalancers: Set<string>,
-): BalancerImpact[] {
-  const losing: BalancerImpact[] = [];
-  balancerList(tt).forEach((b, index) => {
-    if (!b || removedBalancers.has(b.tag)) return;
-    if (losesFallback(b, removedOutbounds, removedBalancers)) {
-      losing.push({ tag: nameOf(b.tag, index), reason: 'fallbackCleared' });
-    }
-  });
-  return losing;
 }
 
 function applyCleanup(
@@ -246,9 +268,10 @@ export function planBalancerDeletion(tt: XraySettingsValue, index: number): Dele
   const obs = observersRemovedBy(tt, removedOutbounds, removedBalancers);
   return {
     rules: ruleImpacts(tt, removedOutbounds, removedBalancers),
-    balancers: balancersLosingFallback(tt, removedOutbounds, removedBalancers),
+    balancers: balancersEditedBy(tt, removedOutbounds, removedBalancers),
     observatory: obs.observatory,
     burst: obs.burst,
+    chains: [],
   };
 }
 
@@ -273,10 +296,11 @@ export function planOutboundDeletion(tt: XraySettingsValue, index: number): Dele
     rules: ruleImpacts(tt, removedOutbounds, removedBalancers),
     balancers: [
       ...cascaded.map((bTag) => ({ tag: bTag, reason: 'selectorEmptied' as const })),
-      ...balancersLosingFallback(tt, removedOutbounds, removedBalancers),
+      ...balancersEditedBy(tt, removedOutbounds, removedBalancers),
     ],
     observatory: obs.observatory,
     burst: obs.burst,
+    chains: chainsBrokenBy(tt, removedOutbounds),
   };
 }
 
@@ -304,10 +328,11 @@ export function planDeletionByTags(
     ),
     balancers: [
       ...cascaded.map((tag) => ({ tag, reason: 'selectorEmptied' as const })),
-      ...balancersLosingFallback(tt, removedOutbounds, removedBalancers),
+      ...balancersEditedBy(tt, removedOutbounds, removedBalancers),
     ],
     observatory: obs.observatory,
     burst: obs.burst,
+    chains: chainsBrokenBy(tt, removedOutbounds),
   };
 }
 
