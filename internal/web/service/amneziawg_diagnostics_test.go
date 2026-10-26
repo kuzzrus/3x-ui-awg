@@ -157,3 +157,79 @@ func TestAmneziawgLogActivityListsKernelAndEmbeddedInbounds(t *testing.T) {
 		t.Fatalf("embedded row = %+v, want the embedded label and offline", e)
 	}
 }
+
+// stubKernelHost makes the kernel datapath answer from the given dump, as a
+// host whose interface is up, for the length of the test.
+func stubKernelHost(t *testing.T, stats []amneziawgkern.PeerStat) {
+	t.Helper()
+	prevDump, prevUp := kernelPeerDump, kernelInterfaceUp
+	t.Cleanup(func() { kernelPeerDump, kernelInterfaceUp = prevDump, prevUp })
+	kernelPeerDump = func(string) ([]amneziawgkern.PeerStat, error) { return stats, nil }
+	kernelInterfaceUp = func(int) bool { return true }
+}
+
+const kernelModeAwgSettings = `{"server":{"privateKey":"priv","publicKey":"pub","subnetIp":"10.8.1.0","subnetCidr":24,"kernelMode":true},` +
+	`"clients":[{"email":"kernel-user","enable":true,"publicKey":"pkA","allowedIPs":["10.8.1.2/32"]}]}`
+
+// The modal reads the endpoint, not the helper: a kernel-mode inbound is not in
+// the embedded manager, so only the kernel branch can report it running.
+func TestGetAmneziaWGDiagnosticsReadsAKernelModeInbound(t *testing.T) {
+	setupConflictDB(t)
+	seedInboundConflict(t, "awg-kernel", "0.0.0.0", 51820, model.AmneziaWG, ``, kernelModeAwgSettings)
+	handshake := time.Now().Add(-10 * time.Second).Unix()
+	stubKernelHost(t, []amneziawgkern.PeerStat{
+		{PublicKey: "pkA", Endpoint: "198.51.100.4:40000", LatestHandshake: handshake, RxBytes: 1000, TxBytes: 5000},
+	})
+
+	var ib model.Inbound
+	if err := database.GetDB().Where("tag = ?", "awg-kernel").First(&ib).Error; err != nil {
+		t.Fatalf("read seeded inbound: %v", err)
+	}
+	diag, err := (&InboundService{}).GetAmneziaWGDiagnostics(ib.Id)
+	if err != nil {
+		t.Fatalf("GetAmneziaWGDiagnostics: %v", err)
+	}
+	if !diag.Running || diag.ListenPort != 51820 {
+		t.Fatalf("diagnostics = running %v on port %d, want running on 51820", diag.Running, diag.ListenPort)
+	}
+	if len(diag.Clients) != 1 || !diag.Clients[0].Connected() || diag.Clients[0].RxBytes != 1000 {
+		t.Fatalf("clients = %+v, want kernel-user connected with its counters", diag.Clients)
+	}
+}
+
+// The logs page goes through the real diagnose, not only through the seam: a
+// kernel-mode inbound must show up there with the interface the kernel runs.
+func TestAmneziawgLogActivityReadsAKernelModeInbound(t *testing.T) {
+	setupConflictDB(t)
+	seedInboundConflict(t, "awg-kernel", "0.0.0.0", 51820, model.AmneziaWG, ``, kernelModeAwgSettings)
+	stubKernelHost(t, []amneziawgkern.PeerStat{
+		{PublicKey: "pkA", Endpoint: "198.51.100.4:40000", LatestHandshake: time.Now().Unix(), RxBytes: 7, TxBytes: 9},
+	})
+
+	var ib model.Inbound
+	if err := database.GetDB().Where("tag = ?", "awg-kernel").First(&ib).Error; err != nil {
+		t.Fatalf("read seeded inbound: %v", err)
+	}
+	rows := amneziawgLogActivity()
+	if len(rows) != 1 || rows[0].Email != "kernel-user" || rows[0].Interface != amneziawgkern.InterfaceName(ib.Id) || !rows[0].Online {
+		t.Fatalf("rows = %+v, want kernel-user online on the kernel interface", rows)
+	}
+}
+
+// A host that runs only kernel interfaces must not read as stopped on the logs
+// page: its Running flag is the one the status card uses.
+func TestGetAmneziaWGLogsRunningFollowsEitherDatapath(t *testing.T) {
+	setupConflictDB(t)
+	prev := amneziawgRunning
+	t.Cleanup(func() { amneziawgRunning = prev })
+
+	svc := &ServerService{}
+	amneziawgRunning = func() bool { return true }
+	if !svc.GetAmneziaWGLogs("10", "").Running {
+		t.Fatal("logs report AmneziaWG stopped while a datapath is running")
+	}
+	amneziawgRunning = func() bool { return false }
+	if svc.GetAmneziaWGLogs("10", "").Running {
+		t.Fatal("logs report AmneziaWG running while no datapath is")
+	}
+}

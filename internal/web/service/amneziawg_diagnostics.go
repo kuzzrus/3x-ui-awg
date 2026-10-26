@@ -16,6 +16,13 @@ var (
 	// stand in for the awg tool and the host.
 	kernelPeerDump    = amneziawgkern.Dump
 	kernelInterfaceUp = func(id int) bool { return amneziawgkern.GetManager().Running(id) }
+
+	// amneziawgRunning says whether any AmneziaWG interface is up, on either
+	// datapath. The status card and the logs page both read it, so they cannot
+	// drift apart again; a variable for the same reason as the two above.
+	amneziawgRunning = func() bool {
+		return amneziawgnet.GetManager().HasRunning() || amneziawgkern.GetManager().HasRunning()
+	}
 )
 
 // diagnoseAmneziaWG is amneziawgnet.Diagnose for whichever datapath serves the
@@ -42,7 +49,7 @@ func diagnoseKernelAmneziaWG(inst amneziawg.Instance, running bool, dump func(st
 	iface := amneziawgkern.InterfaceName(inst.Id)
 	stats, err := dump(iface)
 	if err != nil {
-		logger.Debug("amneziawg diagnostics: reading", iface, "failed:", err)
+		logger.Debug("amneziawg diagnostics: reading ", iface, " failed: ", err)
 		return diag
 	}
 	byKey := make(map[string]amneziawgkern.PeerStat, len(stats))

@@ -1836,7 +1836,7 @@
         "type": "object"
       },
       "AmneziaWGLogs": {
-        "description": "AmneziaWGLogs is what the overview's AmneziaWG log view renders: the live\nper-peer activity of every running embedded interface, plus the panel's\nown recent AmneziaWG lifecycle log lines that explain a peer being absent\nfrom Peers at all.",
+        "description": "AmneziaWGLogs is what the overview's AmneziaWG log view renders: the live\nper-peer activity of every running AmneziaWG interface, on either datapath,\nplus the panel's own recent AmneziaWG lifecycle log lines that explain a\npeer being absent from Peers at all.",
         "properties": {
           "events": {
             "example": [
@@ -4791,7 +4791,7 @@
         "type": "object"
       },
       "PeerActivity": {
-        "description": "PeerActivity is one peer's live embedded-Device-reported state, the\ncounterpart of an Xray access-log entry: a tunnel logs no requests, only\nhandshakes and bytes.",
+        "description": "PeerActivity is one peer's live state as reported by the datapath serving\nits inbound, the counterpart of an Xray access-log entry: a tunnel logs no\nrequests, only handshakes and bytes.",
         "properties": {
           "allowedIPs": {
             "example": "10.8.1.2/32",
@@ -5115,7 +5115,7 @@
             "type": "boolean"
           },
           "externalInterface": {
-            "description": "ExternalInterface, IPv6Enabled, and IPv6ExternalInterface are live\nagain as of Phase 3.5 -- see the matching fields on Instance for what\nthey gate (internal/amneziawgnet's IPv6-address-alias mechanism).\nIPv6Subnet was never actually vestigial either: InstanceFromInbound\nalready consumes it (via serverAddressV6) to build the server's own\ntunnel address, same as always. Only RouteThroughXray, below, remains\ngenuinely vestigial as of the hard cutover to the embedded path\n(internal/amneziawgnet) -- read from existing stored settings for\nbackward compatibility, but not acted on by anything.",
+            "description": "ExternalInterface, IPv6Enabled, and IPv6ExternalInterface are live\nagain as of Phase 3.5 -- see the matching fields on Instance for what\nthey gate (internal/amneziawgnet's IPv6-address-alias mechanism).\nIPv6Subnet was never actually vestigial either: InstanceFromInbound\nalready consumes it (via serverAddressV6) to build the server's own\ntunnel address, same as always. RouteThroughXray, below, is acted on\nonly by the kernel datapath, as a refusal (see Instance.RouteThroughXray);\nthe embedded path (internal/amneziawgnet) ignores it.",
             "type": "string"
           },
           "h1": {

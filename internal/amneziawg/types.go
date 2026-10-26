@@ -165,9 +165,10 @@ type Instance struct {
 	// has no equivalent opt-in at all -- every peer's traffic already goes
 	// through Xray's own SOCKS5 inbound unconditionally, since there's no
 	// other way for decapsulated gVisor traffic to reach the real internet
-	// -- so this field is now vestigial: read from existing stored settings
-	// for backward compatibility, but not acted on by anything. Slated for
-	// removal alongside the frontend toggle in a follow-up.
+	// -- so it ignores this field. The kernel datapath
+	// (internal/amneziawgkern) cannot route into Xray at all: its preflight
+	// refuses a kernel-mode inbound while this is set, and a value that was
+	// persisted anyway leaves its NAT and FORWARD rules out.
 	RouteThroughXray bool
 
 	// KernelMode selects internal/amneziawgkern over internal/amneziawgnet as
@@ -198,10 +199,9 @@ type ServerSettings struct {
 	// they gate (internal/amneziawgnet's IPv6-address-alias mechanism).
 	// IPv6Subnet was never actually vestigial either: InstanceFromInbound
 	// already consumes it (via serverAddressV6) to build the server's own
-	// tunnel address, same as always. Only RouteThroughXray, below, remains
-	// genuinely vestigial as of the hard cutover to the embedded path
-	// (internal/amneziawgnet) -- read from existing stored settings for
-	// backward compatibility, but not acted on by anything.
+	// tunnel address, same as always. RouteThroughXray, below, is acted on
+	// only by the kernel datapath, as a refusal (see Instance.RouteThroughXray);
+	// the embedded path (internal/amneziawgnet) ignores it.
 	ExternalInterface string `json:"externalInterface,omitempty"`
 
 	IPv6Enabled           bool   `json:"ipv6Enabled,omitempty"`

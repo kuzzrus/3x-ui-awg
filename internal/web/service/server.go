@@ -34,7 +34,6 @@ import (
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/amneziawg"
-	"github.com/mhsanaei/3x-ui/v3/internal/amneziawgkern"
 	"github.com/mhsanaei/3x-ui/v3/internal/amneziawgnet"
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
@@ -762,7 +761,7 @@ func (s *ServerService) GetStatus(lastStatus *Status) *Status {
 		logger.Warning("count amneziawg inbounds failed:", err)
 	}
 	status.AmneziaWG.Configured = amneziawgCount > 0
-	status.AmneziaWG.Running = amneziawgnet.GetManager().HasRunning() || amneziawgkern.GetManager().HasRunning()
+	status.AmneziaWG.Running = amneziawgRunning()
 
 	status.PanelVersion = config.GetPanelVersion()
 	if guid, err := s.settingService.GetPanelGuid(); err == nil {
@@ -1386,9 +1385,9 @@ func parseAccessLogFields(line string) LogEntry {
 	return entry
 }
 
-// PeerActivity is one peer's live embedded-Device-reported state, the
-// counterpart of an Xray access-log entry: a tunnel logs no requests, only
-// handshakes and bytes.
+// PeerActivity is one peer's live state as reported by the datapath serving
+// its inbound, the counterpart of an Xray access-log entry: a tunnel logs no
+// requests, only handshakes and bytes.
 type PeerActivity struct {
 	Interface  string `json:"interface" example:"awg1"`
 	Tag        string `json:"tag" example:"inbound-51820"`
@@ -1409,9 +1408,9 @@ type PeerActivity struct {
 const amneziawgOnlineWindow = 180 * time.Second
 
 // AmneziaWGLogs is what the overview's AmneziaWG log view renders: the live
-// per-peer activity of every running embedded interface, plus the panel's
-// own recent AmneziaWG lifecycle log lines that explain a peer being absent
-// from Peers at all.
+// per-peer activity of every running AmneziaWG interface, on either datapath,
+// plus the panel's own recent AmneziaWG lifecycle log lines that explain a
+// peer being absent from Peers at all.
 type AmneziaWGLogs struct {
 	Peers   []PeerActivity `json:"peers"`
 	Events  []string       `json:"events" example:"[\"2025/01/01 12:00:00 amneziawg: started interface awg1 for inbound 1\"]"`
@@ -1535,7 +1534,7 @@ func (s *ServerService) GetAmneziaWGLogs(count string, filter string) *AmneziaWG
 	logs := &AmneziaWGLogs{
 		Peers:   []PeerActivity{},
 		Events:  []string{},
-		Running: amneziawgnet.GetManager().HasRunning() || amneziawgkern.GetManager().HasRunning(),
+		Running: amneziawgRunning(),
 	}
 
 	for _, peer := range amneziawgLogActivity() {

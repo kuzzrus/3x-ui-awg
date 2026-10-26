@@ -91,11 +91,11 @@ export const AmneziawgServerSchema = z.object({
   ipv6Enabled: z.boolean().default(false),
   ipv6Subnet: z.string().default(''),
   ipv6ExternalInterface: z.string().default(''),
-  // routeThroughXray is vestigial on the Go side (see ServerSettings' own
-  // doc comment) -- the embedded relay is always on, this field is read by
-  // nothing. Kept here anyway, with no corresponding form control, purely so
-  // z.object's default unknown-key stripping doesn't silently drop it from
-  // an existing stored settings blob on the next save.
+  // routeThroughXray is ignored by the embedded datapath (its relay is always
+  // on); only the kernel datapath reads it, to refuse to run with it set (see
+  // ServerSettings' own doc comment). Kept here with no corresponding form
+  // control, so z.object's default unknown-key stripping doesn't silently
+  // drop it from an existing stored settings blob on the next save.
   routeThroughXray: z.boolean().default(false).optional(),
   // kernelMode runs this inbound on the DKMS kernel module instead of the
   // embedded userspace stack -- no Xray routing, sniffing, IPv6 or port forwarding.
