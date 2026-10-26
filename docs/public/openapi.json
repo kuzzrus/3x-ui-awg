@@ -15695,6 +15695,116 @@
         }
       }
     },
+    "/panel/api/xray/psiphon/countries": {
+      "get": {
+        "tags": [
+          "Xray Settings"
+        ],
+        "summary": "List the Psiphon country tunnels (one ConsoleClient process per country, each on a loopback SOCKS port of its own, beside the default one) with how each stands, and how many there may be.",
+        "operationId": "get_panel_api_xray_psiphon_countries",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "max": 6,
+                    "countries": [
+                      {
+                        "region": "DE",
+                        "port": 19101,
+                        "enabled": true,
+                        "running": true,
+                        "tunnel": {
+                          "connected": true,
+                          "tunnelCount": 1,
+                          "serverRegion": "DE",
+                          "clientRegion": "LV"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/xray/psiphon/countries/{action}": {
+      "post": {
+        "tags": [
+          "Xray Settings"
+        ],
+        "summary": "Change the Psiphon country tunnels. The action parameter selects the operation.",
+        "operationId": "post_panel_api_xray_psiphon_countries_action",
+        "parameters": [
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "description": "add — add a country (sends region), stopped, on the first free port of 19101-19199; it keeps that port, so an outbound that points at it never moves. At most 6 countries. remove — stop it, delete its files and drop it (sends region). start — start one country (sends region) or all of them (no region) and remember that they run again after a panel restart; a country that fails to start keeps its reason in error, and the others are not held up. stop — the same for stopping. probe — measure one country (sends region) or every running one (no region): returns [{region, latencyMs, ip, country, error}], the latency being the best of two requests to a generate_204 address through the tunnel and ip/country the exit it shows. Every action but probe answers the list as GET psiphon/countries does, also when it fails.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "region": {
+                    "type": "string",
+                    "description": "ISO 3166-1 alpha-2 code in capitals. Required for add and remove, optional for start, stop and probe (empty means every country)."
+                  }
+                },
+                "required": [
+                  "region"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/panel/api/xray/naiveproxy/{action}": {
       "post": {
         "tags": [

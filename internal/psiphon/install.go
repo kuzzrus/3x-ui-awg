@@ -162,5 +162,6 @@ func Uninstall() error {
 	if err := os.RemoveAll(Dir()); err != nil {
 		return fmt.Errorf("cannot remove %s: %w", Dir(), err)
 	}
+	GetManager().forgetCountries()
 	return nil
 }
