@@ -15,14 +15,19 @@ import {
   CheckCircleOutlined,
 } from '@ant-design/icons';
 
+import type { XraySettingsValue } from '@/hooks/useXraySetting';
 import { HttpUtil } from '@/utils';
+
+import PsiphonCountries from './PsiphonCountries';
 
 interface PsiphonModalProps {
   open: boolean;
-  templateSettings: { outbounds?: { tag?: string }[] } | null;
+  templateSettings: XraySettingsValue | null;
   onClose: () => void;
   onAddOutbound: (outbound: Record<string, unknown>) => void;
   onRemoveOutbound: (tag: string) => void;
+  // The countries add and remove outbounds and a balancer in one go, with the cleanup of what refers to them.
+  onMutateTemplate: (mutator: (tt: XraySettingsValue) => void) => void;
 }
 
 interface TunnelStatus {
@@ -60,6 +65,7 @@ export default function PsiphonModal({
   onClose,
   onAddOutbound,
   onRemoveOutbound,
+  onMutateTemplate,
 }: PsiphonModalProps) {
   const { t } = useTranslation();
   const [messageApi, messageContextHolder] = message.useMessage();
@@ -252,7 +258,13 @@ export default function PsiphonModal({
   return (
     <>
       {messageContextHolder}
-      <Modal open={open} title={t('pages.xray.psiphon.title')} footer={null} onCancel={onClose}>
+      <Modal
+        open={open}
+        title={t('pages.xray.psiphon.title')}
+        footer={null}
+        width={760}
+        onCancel={onClose}
+      >
         <Alert
           type="error"
           showIcon
@@ -420,6 +432,14 @@ export default function PsiphonModal({
             <Typography.Paragraph type="secondary" style={{ marginTop: 12, fontSize: 12 }}>
               {t('pages.xray.psiphon.outboundHint', { port: status?.port })}
             </Typography.Paragraph>
+
+            <Divider className="my-10">{t('pages.xray.psiphon.countriesTitle')}</Divider>
+            <PsiphonCountries
+              open={open}
+              regions={regions}
+              templateSettings={templateSettings}
+              onMutateTemplate={onMutateTemplate}
+            />
           </>
         )}
       </Modal>
