@@ -374,9 +374,8 @@ func (a *XraySettingController) psiphonCountries(c *gin.Context) {
 	jsonObj(c, resp, err)
 }
 
-// psiphonCountry changes the country tunnels by the action parameter: add and remove one (region), start,
-// stop and probe one (region) or all of them (no region). The answer is the list as it stands afterwards,
-// except for probe, which answers the measurements. A country that fails to start keeps its reason in the list.
+// psiphonCountry changes the country tunnels: add and remove take a region, start, stop and probe a region or all.
+// It answers the list as it stands, also on failure (a country that did not start says why); probe answers measurements.
 func (a *XraySettingController) psiphonCountry(c *gin.Context) {
 	region := c.PostForm("region")
 	var (

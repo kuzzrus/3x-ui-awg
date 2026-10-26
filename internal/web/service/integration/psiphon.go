@@ -51,9 +51,8 @@ func (s *PsiphonService) Status() (PsiphonStatus, error) {
 	}, nil
 }
 
-// AutoStart brings Psiphon up at boot if enabled, the countries that were running with it, and starts the
-// supervisor that brings back a tunnel that stops on its own; never errors, mirroring AdGuardService.AutoStart,
-// plus an IsConfigured gate AdGuard has no equivalent of.
+// AutoStart brings Psiphon up at boot if enabled, with the countries that were running, and starts the supervisor
+// that restarts a tunnel that dies; it never errors, like AdGuardService.AutoStart.
 func (s *PsiphonService) AutoStart() {
 	psiphon.GetManager().Supervise()
 	go s.autoStartCountries()

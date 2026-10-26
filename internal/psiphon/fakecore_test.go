@@ -15,10 +15,8 @@ import (
 	"time"
 )
 
-// The tests that need a tunnel-core process run this test binary as one: BinPath points at a copy of it, and
-// PSIPHON_FAKE_CORE=1 in the environment sends it here instead of into the tests. The fake does what the manager
-// can see of the real one: it binds the SOCKS port the config names, writes the notices a tunnel writes, and ends
-// on SIGTERM.
+// The tests that need a tunnel-core run this test binary as one: BinPath is a copy of it and PSIPHON_FAKE_CORE=1
+// sends it here. The fake binds the port its config names, writes the notices of a tunnel and ends on SIGTERM.
 const (
 	fakeCoreEnv      = "PSIPHON_FAKE_CORE"
 	fakeNoTunnelEnv  = "PSIPHON_FAKE_NO_TUNNEL"  // "1": bind the port but never report a tunnel

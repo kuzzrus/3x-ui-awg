@@ -12,9 +12,8 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/psiphon"
 )
 
-// storedCountry is one country tunnel as the setting keeps it. Enabled says whether it should be running, which
-// the panel restores at boot. The port is chosen when the country is added and stays, so the outbound that points
-// at it never has to move.
+// storedCountry is one country as the setting keeps it. Enabled is whether it should run, restored at boot; the port
+// is chosen when it is added and stays, so an outbound that points at it never has to move.
 type storedCountry struct {
 	Region  string `json:"region"`
 	Port    int    `json:"port"`
@@ -36,6 +35,17 @@ var tunnels = tunnelOps{
 	remove: func(region string) error { return psiphon.GetManager().RemoveCountry(region) },
 	state:  func(region string) psiphon.InstanceState { return psiphon.GetManager().CountryState(region) },
 	probe:  psiphon.Probe,
+}
+
+// regionLocks keep a start, a stop and a removal of one region from interleaving, so that a start which read the
+// list before a removal cannot bring the country back after it. Other regions do not wait for each other.
+var regionLocks sync.Map // region -> *sync.Mutex
+
+func lockRegion(region string) (unlock func()) {
+	lock, _ := regionLocks.LoadOrStore(region, &sync.Mutex{})
+	mu := lock.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 // countriesMu serializes the read, change and write of the stored list: PsiphonService is a value, made afresh for
@@ -66,9 +76,8 @@ type CountryProbe struct {
 	psiphon.ProbeResult
 }
 
-// loadCountries reads the stored list. An entry this package would not hand out (a region that is not two
-// capital letters, a port outside the range) or a repeat is dropped, so a hand-edited setting cannot name a
-// path or a port of something else; the next save writes the list back without it.
+// loadCountries reads the stored list, dropping an entry this package would not hand out, or a repeat: the region
+// becomes a path and the port something the panel listens on, so a hand-edited setting must not name either.
 func (s *PsiphonService) loadCountries() ([]storedCountry, error) {
 	raw, err := s.GetPsiphonCountries()
 	if err != nil {
@@ -156,6 +165,7 @@ func (s *PsiphonService) AddCountry(region string) error {
 
 // RemoveCountry stops a country tunnel, deletes its files and takes it out of the list.
 func (s *PsiphonService) RemoveCountry(region string) error {
+	defer lockRegion(region)()
 	if err := tunnels.remove(region); err != nil {
 		return err
 	}
@@ -226,6 +236,28 @@ func joinByRegion(list []storedCountry, errs []error) error {
 	return errors.Join(all...)
 }
 
+// startOne starts a country that is still in the list. The list is read under the lock of its region, which a
+// removal also holds, so a country removed meanwhile is not started.
+func (s *PsiphonService) startOne(region string) error {
+	defer lockRegion(region)()
+	list, err := s.loadCountries()
+	if err != nil {
+		return err
+	}
+	for _, c := range list {
+		if c.Region == region {
+			return tunnels.start(countryOf(c))
+		}
+	}
+	return errors.New("it is no longer in the list")
+}
+
+// stopOne stops a country under the lock of its region, so it cannot overtake a start of the same one.
+func stopOne(region string) error {
+	defer lockRegion(region)()
+	return tunnels.stop(region)
+}
+
 // StartCountries starts one country tunnel, or every one for an empty region, and remembers that they should run.
 // A country that does not start keeps its reason in its status; the others are not held up by it.
 func (s *PsiphonService) StartCountries(region string) error {
@@ -237,9 +269,7 @@ func (s *PsiphonService) StartCountries(region string) error {
 	if err != nil {
 		return err
 	}
-	errs := forEach(targets, func(_ int, c storedCountry) error {
-		return tunnels.start(countryOf(c))
-	})
+	errs := forEach(targets, func(_ int, c storedCountry) error { return s.startOne(c.Region) })
 	up := map[string]bool{}
 	for i, err := range errs {
 		if err == nil {
@@ -262,9 +292,7 @@ func (s *PsiphonService) StopCountries(region string) error {
 	if err != nil {
 		return err
 	}
-	errs := forEach(targets, func(_ int, c storedCountry) error {
-		return tunnels.stop(c.Region)
-	})
+	errs := forEach(targets, func(_ int, c storedCountry) error { return stopOne(c.Region) })
 	down := map[string]bool{}
 	for _, c := range targets {
 		down[c.Region] = false
@@ -322,9 +350,7 @@ func (s *PsiphonService) autoStartCountries() {
 		logger.Warning("psiphon: countries are enabled but Psiphon is not installed or has no config yet, staying down")
 		return
 	}
-	for i, err := range forEach(want, func(_ int, c storedCountry) error {
-		return tunnels.start(countryOf(c))
-	}) {
+	for i, err := range forEach(want, func(_ int, c storedCountry) error { return s.startOne(c.Region) }) {
 		if err != nil {
 			logger.Warningf("psiphon[%s]: failed to auto-start on boot: %v", want[i].Region, err)
 		}

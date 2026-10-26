@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database/dbtest"
 	"github.com/mhsanaei/3x-ui/v3/internal/psiphon"
@@ -262,6 +263,133 @@ func TestStoredCountriesThatThisPackageWouldNotHandOutAreDropped(t *testing.T) {
 	}
 	if _, err := svc.Countries(); err == nil {
 		t.Fatal("an unreadable setting was taken for an empty list")
+	}
+}
+
+func await[T any](t *testing.T, ch <-chan T, what string) T {
+	t.Helper()
+	select {
+	case v := <-ch:
+		return v
+	case <-time.After(5 * time.Second):
+		t.Fatalf("timed out waiting for %s", what)
+		var none T
+		return none
+	}
+}
+
+// stillWaiting checks that nothing arrives on ch for a moment; it cannot fail by being slow, only by being wrong.
+func stillWaiting[T any](t *testing.T, ch <-chan T, what string) {
+	t.Helper()
+	select {
+	case <-ch:
+		t.Fatalf("%s did not wait", what)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+// gate holds a stub until the test opens it, and opens itself when the test ends, so that a failure cannot leave
+// a request held with the lock of its region.
+type gate struct {
+	reached chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func newGate(t *testing.T) *gate {
+	g := &gate{reached: make(chan struct{}), release: make(chan struct{})}
+	t.Cleanup(g.open)
+	return g
+}
+
+func (g *gate) open() { g.once.Do(func() { close(g.release) }) }
+
+func (g *gate) hold() {
+	close(g.reached)
+	<-g.release
+}
+
+func TestAStartDoesNotBringBackACountryThatIsBeingRemoved(t *testing.T) {
+	fake := useTunnels(t, nil)
+	svc := &PsiphonService{}
+	if err := svc.AddCountry("DE"); err != nil {
+		t.Fatal(err)
+	}
+	removing := newGate(t)
+	tunnels.remove = func(string) error {
+		removing.hold()
+		return nil
+	}
+
+	removed := make(chan error, 1)
+	go func() { removed <- svc.RemoveCountry("DE") }()
+	await(t, removing.reached, "the removal to begin")
+	started := make(chan error, 1)
+	go func() { started <- svc.StartCountries("DE") }()
+	stillWaiting(t, started, "a start of a country that is being removed")
+
+	removing.open()
+	if err := await(t, removed, "the removal"); err != nil {
+		t.Fatalf("RemoveCountry: %v", err)
+	}
+	if err := await(t, started, "the start"); err == nil || !strings.Contains(err.Error(), "no longer in the list") {
+		t.Fatalf("StartCountries = %v, want it refused: the country is gone", err)
+	}
+	if len(fake.started) != 0 {
+		t.Fatalf("started %v: a removed country was brought back, running with nothing in the list to show it", fake.started)
+	}
+	if view, _ := svc.Countries(); len(view.Countries) != 0 {
+		t.Fatalf("countries = %v, want none", regionsOf(view))
+	}
+}
+
+func TestARemovalAndAStopWaitForAStartUnderWay(t *testing.T) {
+	for name, act := range map[string]func(*PsiphonService) error{
+		"remove": func(s *PsiphonService) error { return s.RemoveCountry("DE") },
+		"stop":   func(s *PsiphonService) error { return s.StopCountries("DE") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			useTunnels(t, nil)
+			svc := &PsiphonService{}
+			if err := svc.AddCountry("DE"); err != nil {
+				t.Fatal(err)
+			}
+			var mu sync.Mutex
+			var order []string
+			note := func(what string) {
+				mu.Lock()
+				defer mu.Unlock()
+				order = append(order, what)
+			}
+			starting := newGate(t)
+			tunnels.start = func(psiphon.Country) error {
+				starting.hold()
+				note("start")
+				return nil
+			}
+			tunnels.stop = func(string) error { note("stop"); return nil }
+			tunnels.remove = func(string) error { note("remove"); return nil }
+
+			started := make(chan error, 1)
+			go func() { started <- svc.StartCountries("DE") }()
+			await(t, starting.reached, "the start to begin")
+			acted := make(chan error, 1)
+			go func() { acted <- act(svc) }()
+			stillWaiting(t, acted, name+" of a country that is starting")
+
+			starting.open()
+			if err := await(t, started, "the start"); err != nil {
+				t.Fatalf("StartCountries: %v", err)
+			}
+			if err := await(t, acted, name); err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if want := []string{"start", name}; !slices.Equal(order, want) {
+				t.Fatalf("order %v, want %v: the later request overtook the start", order, want)
+			}
+		})
 	}
 }
 

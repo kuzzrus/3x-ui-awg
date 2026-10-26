@@ -93,9 +93,8 @@ func portFree(port int) bool {
 	return true
 }
 
-// renderCountryConfig writes the config one country tunnel starts with: the base psiphon.config (the admin's
-// own, or the bundled default) with the fields this package forces, this country's region and its port. It is
-// written again at every start, so a new base config reaches the countries with their next restart.
+// renderCountryConfig writes the config a country starts with: the base psiphon.config plus the forced fields,
+// its region and its port. It is rewritten at every start, so a new base reaches the country on its next one.
 func renderCountryConfig(c Country) error {
 	sp, err := countrySpec(c)
 	if err != nil {

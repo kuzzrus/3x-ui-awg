@@ -1,7 +1,5 @@
-// Package psiphon manages Psiphon ConsoleClient sidecar processes for the whole panel install (not one per
-// inbound, unlike mtproto/amneziawgnet): the default instance on a fixed loopback port, the shape of
-// internal/tor, and up to MaxCountries country tunnels beside it, each a process of its own with its own
-// port, so that traffic can leave through several countries at once.
+// Package psiphon manages Psiphon ConsoleClient sidecar processes: the default one, the shape of internal/tor,
+// and up to MaxCountries country tunnels beside it, each a process of its own on its own loopback port.
 //
 // Unlike internal/tor, which expects a system-installed binary, Psiphon is not
 // packaged by any distro -- this package downloads an official release itself,
@@ -99,9 +97,8 @@ func (m *Manager) LastResult() string { return m.def.result() }
 // or the config itself -- Psiphon does not hot-reload either.
 func (m *Manager) Restart() error { return m.def.restart(time.Now()) }
 
-// StopAll stops every managed Psiphon process, the default one and the countries, matching every other
-// sidecar manager's StopAll() shape so web.go's shutdown sequence can call it the same way. They stop
-// together: each one waits for its process to end.
+// StopAll stops the default process and every country together, each waiting for its process to end; web.go's
+// shutdown calls it like the StopAll of every sidecar manager.
 func (m *Manager) StopAll() {
 	var wg sync.WaitGroup
 	for _, in := range m.instances() {
@@ -232,9 +229,8 @@ func (m *Manager) RestartCountries() error {
 	return errors.Join(errs...)
 }
 
-// Supervise starts the supervisor, which looks at the tunnels every superviseEvery and starts again one that
-// stopped without being told to. It is for the panel; an agent runs its own supervision of its helper
-// programs, so nothing starts it there. Calling it again changes nothing.
+// Supervise starts the supervisor, which starts again a tunnel that stopped without being told to. The panel
+// turns it on; an agent supervises its own helper programs. Calling it again changes nothing.
 func (m *Manager) Supervise() {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -42,9 +42,8 @@ type life struct {
 
 func (l *life) started(now time.Time) { l.startedAt, l.lastErr = now, "" }
 
-// noteDown accounts for the end of a process that should have been running. One that had not lasted
-// stableAfter counts as a failed start and waits longer before the next, one that had is restarted at once
-// and forgets the earlier failures. It is called on every look, and counts an end once.
+// noteDown counts, once, the end of a process that should be running: one that lasted less than stableAfter is a
+// failed start and waits longer, one that lasted longer is restarted at once and clears the earlier failures.
 func (l *life) noteDown(now time.Time, reason string) {
 	if l.startedAt.IsZero() {
 		return
@@ -68,9 +67,8 @@ func (l *life) failed(now time.Time, err error) {
 	l.startedAt = time.Time{}
 }
 
-// instance is one tunnel-core process the panel keeps: the default one, or one country. A start waits for
-// the SOCKS listener, which takes seconds, so the lifecycle has a lock of its own and the cheap state
-// another: a status request never waits for a start.
+// instance is one tunnel-core process the panel keeps, the default or a country. A start waits seconds for the
+// listener, so the lifecycle has a lock of its own and the cheap state another: status never waits for a start.
 type instance struct {
 	tag string // "" for the default instance, "[DE]" for a country: how its lines read in the panel log
 	// spec resolves the files and the port when they are needed, since the bin folder is read from the environment.
