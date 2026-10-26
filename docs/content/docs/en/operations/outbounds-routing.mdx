@@ -132,7 +132,8 @@ through different countries at the same time.
   reason in its row; remove it and add it again to get another port.
 - The switch **Outbound psiphon-XX** adds or removes a `socks` outbound tagged
   `psiphon-<CC>` that points at the port of that country. An outbound that points at
-  another port is marked, with a button that fixes the port.
+  another port is marked, with a button that fixes the port. Taking one out, like removing
+  a country, asks first and lists the routing rules and balancers that go with it.
 - **Probe** measures the latency through a tunnel and shows its exit IP and country;
   **Probe all** does it for every running country.
 - **Add the balancer** adds `psiphon-balancer`, a `leastPing` balancer over every outbound
@@ -145,8 +146,9 @@ countries itself takes effect at once and survives a restart of the panel: the c
 that were running come back with it.
 
 A tunnel that dies on its own is started again: at once if it had been up for a minute,
-otherwise after 30 seconds, then after longer waits up to five minutes. One you stopped
-stays stopped. Agent nodes run only the default tunnel for now.
+otherwise after 30 seconds, then after longer waits up to five minutes, and its row says
+**Restarting** meanwhile. One you stopped stays stopped, and a country whose start you saw
+fail says **Failed** and is not tried again until you start it. Agent nodes run only the default tunnel for now.
 
 ## Outbound subscriptions (server pools)
 

@@ -12,6 +12,7 @@ const REGIONS = [
   { code: 'DE', name: 'Germany' },
   { code: 'US', name: 'United States' },
   { code: 'FR', name: 'France' },
+  { code: 'JP', name: 'Japan' },
 ];
 
 interface TestCountry {
@@ -90,6 +91,28 @@ function renderCountries(view: ReturnType<typeof listOf>, initial: XraySettingsV
 const inTable = () => within(screen.getByRole('table'));
 const rowOf = (text: string) => inTable().getByText(text).closest('tr') as HTMLElement;
 
+// The confirmations of the tabs are dialogs of their own, outside the table.
+const dialog = () => screen.findByRole('dialog');
+
+function outboundOf(region: string, port: number) {
+  return {
+    tag: `psiphon-${region}`,
+    protocol: 'socks',
+    settings: { servers: [{ address: '127.0.0.1', port }] },
+  };
+}
+
+// A template with the outbound of DE and a rule that has nowhere else to go.
+function templateWithARuleOnDE() {
+  const tt = template({
+    outbounds: [outboundOf('DE', 19101), { tag: 'direct', protocol: 'freedom' }],
+  });
+  (tt.routing as unknown as { rules: unknown[] }).rules = [
+    { type: 'field', domain: ['example.com'], outboundTag: 'psiphon-DE' },
+  ];
+  return tt;
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -106,18 +129,25 @@ describe('PsiphonCountries', () => {
     expect(screen.getByText('2 of 6')).toBeTruthy();
   });
 
-  it('shows a country that did not start as failed, and one waiting for a restart as restarting', async () => {
+  it('tells a start nobody retries from a tunnel the supervisor will start again, and from a stopped one', async () => {
+    const down = { running: false };
     const failed: TestCountry = {
       ...connected('DE', 19101),
-      running: false,
+      ...down,
+      enabled: false,
       error: 'port 19101 is held by another process',
     };
-    const waiting: TestCountry = { ...connected('US', 19102), running: false };
-    renderCountries(listOf(failed, waiting));
+    const waiting: TestCountry = { ...connected('US', 19102), ...down };
+    // It crashed, and the last thing the supervisor knows about it is how: still a tunnel it will start again.
+    const crashed: TestCountry = { ...connected('FR', 19103), ...down, error: 'exit status 2' };
+    const stopped: TestCountry = { ...connected('JP', 19104), ...down, enabled: false };
+    renderCountries(listOf(failed, waiting, crashed, stopped));
 
     await screen.findByText('Germany (DE)');
     expect(within(rowOf('Germany (DE)')).getByText('Failed')).toBeTruthy();
     expect(within(rowOf('United States (US)')).getByText('Restarting')).toBeTruthy();
+    expect(within(rowOf('France (FR)')).getByText('Restarting')).toBeTruthy();
+    expect(within(rowOf('Japan (JP)')).getByText('Stopped')).toBeTruthy();
   });
 
   it('adds a country and starts it at once', async () => {
@@ -143,6 +173,7 @@ describe('PsiphonCountries', () => {
     renderCountries(listOf());
     const failedRow: TestCountry = {
       ...connected('FR', 19101),
+      enabled: false,
       running: false,
       error: 'port 19101 is held by another process',
     };
@@ -233,6 +264,7 @@ describe('PsiphonCountries', () => {
     await screen.findByText('Germany (DE)');
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(within(await dialog()).getByRole('button', { name: 'Delete' }));
     const after = result.template() as unknown as {
       routing: { balancers: unknown[] };
       observatory?: unknown;
@@ -242,25 +274,14 @@ describe('PsiphonCountries', () => {
   });
 
   it('removes a country with its outbound and what refers to that outbound', async () => {
-    const start = template({
-      outbounds: [
-        {
-          tag: 'psiphon-DE',
-          protocol: 'socks',
-          settings: { servers: [{ address: '127.0.0.1', port: 19101 }] },
-        },
-        { tag: 'direct', protocol: 'freedom' },
-      ],
-    });
-    (start.routing as unknown as { rules: unknown[] }).rules = [
-      { type: 'field', domain: ['example.com'], outboundTag: 'psiphon-DE' },
-    ];
-    const result = renderCountries(listOf(connected('DE', 19101)), start);
+    const result = renderCountries(listOf(connected('DE', 19101)), templateWithARuleOnDE());
     const post = vi.spyOn(HttpUtil, 'post').mockResolvedValue(new Msg(true, '', listOf()));
     await screen.findByText('Germany (DE)');
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove the country' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+    const asked = await dialog();
+    expect(within(asked).getByText(/removed \(no destination left\)/)).toBeTruthy();
+    fireEvent.click(within(asked).getByRole('button', { name: 'Delete' }));
 
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith('/panel/api/xray/psiphon/countries/remove', {
@@ -271,6 +292,100 @@ describe('PsiphonCountries', () => {
       expect((result.template().outbounds ?? []).map((o) => o?.tag)).toEqual(['direct']),
     );
     expect((result.template().routing as unknown as { rules: unknown[] }).rules).toEqual([]);
+  });
+
+  it('shows what goes with an outbound before its switch takes it out, and keeps it when asked not to', async () => {
+    const result = renderCountries(listOf(connected('DE', 19101)), templateWithARuleOnDE());
+    await screen.findByText('Germany (DE)');
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Outbound psiphon-DE' }));
+    const asked = await dialog();
+    expect(within(asked).getByText(/Deleting this also updates your routing/)).toBeTruthy();
+    expect(within(asked).getByText(/removed \(no destination left\)/)).toBeTruthy();
+    expect(result.template().outbounds).toHaveLength(2);
+
+    fireEvent.click(within(asked).getByRole('button', { name: 'Cancel' }));
+    expect(result.template().outbounds).toHaveLength(2);
+    expect((result.template().routing as unknown as { rules: unknown[] }).rules).toHaveLength(1);
+  });
+
+  it('takes the outbound and the rules that lead only to it out once its switch is confirmed', async () => {
+    const result = renderCountries(listOf(connected('DE', 19101)), templateWithARuleOnDE());
+    await screen.findByText('Germany (DE)');
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Outbound psiphon-DE' }));
+    fireEvent.click(within(await dialog()).getByRole('button', { name: 'Delete' }));
+
+    expect((result.template().outbounds ?? []).map((o) => o?.tag)).toEqual(['direct']);
+    expect((result.template().routing as unknown as { rules: unknown[] }).rules).toEqual([]);
+  });
+
+  it('does not delete the balancer that another balancer falls back to', async () => {
+    const used = template({
+      outbounds: [{ tag: 'direct', protocol: 'freedom' }],
+    });
+    (used.routing as unknown as { balancers: unknown[] }).balancers = [
+      { tag: 'psiphon-balancer', selector: ['psiphon-'], strategy: { type: 'leastPing' } },
+      { tag: 'main', selector: ['direct'], fallbackTag: '_bl_psiphon-balancer' },
+    ];
+    const result = renderCountries(listOf(connected('DE', 19101)), used);
+    await screen.findByText('Germany (DE)');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(await screen.findByText(/it is used as fallback by: main/)).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const after = result.template().routing as unknown as { balancers: { tag: string }[] };
+    expect(after.balancers.map((b) => b.tag)).toEqual(['psiphon-balancer', 'main']);
+  });
+
+  it('takes the loopback of the balancer along when it deletes the balancer', async () => {
+    const withLoopback = template({
+      outbounds: [
+        { tag: 'direct', protocol: 'freedom' },
+        {
+          tag: '_bl_psiphon-balancer',
+          protocol: 'loopback',
+          settings: { inboundTag: '_bl_psiphon-balancer' },
+        },
+      ],
+    });
+    (withLoopback.routing as unknown as { balancers: unknown[]; rules: unknown[] }).balancers = [
+      { tag: 'psiphon-balancer', selector: ['psiphon-'], strategy: { type: 'leastPing' } },
+    ];
+    (withLoopback.routing as unknown as { rules: unknown[] }).rules = [
+      { type: 'field', inboundTag: ['_bl_psiphon-balancer'], balancerTag: 'psiphon-balancer' },
+    ];
+    const result = renderCountries(listOf(connected('DE', 19101)), withLoopback);
+    await screen.findByText('Germany (DE)');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(within(await dialog()).getByRole('button', { name: 'Delete' }));
+
+    const after = result.template();
+    expect((after.outbounds ?? []).map((o) => o?.tag)).toEqual(['direct']);
+    expect((after.routing as unknown as { rules: unknown[] }).rules).toEqual([]);
+  });
+
+  it('reads the list again while a tunnel waits for the supervisor, and shows it up again', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const waiting: TestCountry = {
+      ...connected('DE', 19101),
+      running: false,
+      error: 'exit status 2',
+    };
+    const get = vi
+      .spyOn(HttpUtil, 'get')
+      .mockResolvedValueOnce(new Msg(true, '', listOf(waiting)))
+      .mockResolvedValue(new Msg(true, '', listOf(connected('DE', 19101))));
+    renderWithProviders(<Harness initial={template()} onTemplate={() => {}} />);
+    await screen.findByText('Restarting');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3100);
+    });
+    await screen.findByText('Connected (DE)');
+    expect(get).toHaveBeenCalledTimes(2);
   });
 
   it('reads the list again while a tunnel is connecting, and stops once all are up', async () => {

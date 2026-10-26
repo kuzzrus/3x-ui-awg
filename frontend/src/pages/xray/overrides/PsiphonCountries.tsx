@@ -2,7 +2,7 @@
    when a response lands, at modal-open frequency and on a slow poll while a tunnel connects, not on a hot path. */
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Popconfirm, Select, Switch, Table, Tag, Tooltip, Typography, message } from 'antd';
+import { Button, Modal, Select, Switch, Table, Tag, Tooltip, Typography, message } from 'antd';
 import type { TableColumnsType } from 'antd';
 import {
   DeleteOutlined,
@@ -15,7 +15,15 @@ import {
 
 import type { XraySettingsValue } from '@/hooks/useXraySetting';
 import { syncObservatories } from '@/pages/xray/balancers/balancer-helpers';
-import { applyBalancerDeletion, applyOutboundDeletion } from '@/pages/xray/reference-cleanup';
+import { loopbackTagFor, removeBalancerLoopback } from '@/pages/xray/balancers/balancer-loopback';
+import DeletionImpactList from '@/pages/xray/DeletionImpactList';
+import {
+  applyBalancerDeletion,
+  applyOutboundDeletion,
+  planBalancerDeletion,
+  planOutboundDeletion,
+} from '@/pages/xray/reference-cleanup';
+import type { DeletionImpact } from '@/pages/xray/reference-cleanup';
 import { HttpUtil } from '@/utils';
 
 interface TunnelStatus {
@@ -71,6 +79,19 @@ const POLL_MS = 3000;
 
 const outboundTag = (region: string) => `${COUNTRY_PREFIX}${region}`;
 
+const noImpact = (): DeletionImpact => ({
+  rules: [],
+  balancers: [],
+  observatory: false,
+  burst: false,
+});
+const hasImpact = (i: DeletionImpact) =>
+  i.rules.length > 0 || i.balancers.length > 0 || i.observatory || i.burst;
+
+function outboundIndex(tt: XraySettingsValue | null, region: string): number {
+  return tt?.outbounds?.findIndex((o) => o?.tag === outboundTag(region)) ?? -1;
+}
+
 function outboundPort(tt: XraySettingsValue | null, region: string): number | null {
   const outbound = tt?.outbounds?.find((o) => o?.tag === outboundTag(region)) as
     | { settings?: { servers?: { port?: number }[] } }
@@ -87,6 +108,7 @@ export default function PsiphonCountries({
 }: PsiphonCountriesProps) {
   const { t } = useTranslation();
   const [messageApi, messageContextHolder] = message.useMessage();
+  const [modal, modalContextHolder] = Modal.useModal();
   const [view, setView] = useState<CountriesView | null>(null);
   const [probes, setProbes] = useState<Record<string, ProbeResult>>({});
   const [busy, setBusy] = useState('');
@@ -102,14 +124,16 @@ export default function PsiphonCountries({
     if (open) void refresh();
   }, [open, refresh]);
 
-  // A tunnel takes seconds to come up and sometimes much longer, so the list is read again for as long as one is
-  // still connecting, and no longer.
-  const connecting = !!view?.countries.some((c) => c.running && !c.tunnel.connected);
+  // A tunnel takes seconds to come up and sometimes much longer, and one that is down is started again by the
+  // supervisor, so the list is read again for as long as one is connecting or waiting for that.
+  const settling = !!view?.countries.some(
+    (c) => (c.running && !c.tunnel.connected) || (c.enabled && !c.running),
+  );
   useEffect(() => {
-    if (!open || !connecting) return;
+    if (!open || !settling) return;
     const timer = setInterval(() => void refresh(), POLL_MS);
     return () => clearInterval(timer);
-  }, [open, connecting, refresh]);
+  }, [open, settling, refresh]);
 
   // One action on the list. The answer carries the list also when the action failed, so a country that did not
   // start shows why in its row.
@@ -171,25 +195,56 @@ export default function PsiphonCountries({
         return next;
       });
       // Its outbound would point at a port nothing listens on.
-      onMutateTemplate((tt) => {
-        const idx = tt.outbounds?.findIndex((o) => o?.tag === outboundTag(region)) ?? -1;
-        if (idx >= 0) applyOutboundDeletion(tt, idx);
-      });
+      dropOutbound(region);
     }
   }
 
-  function setCountryOutbound(country: Country, on: boolean) {
-    const tag = outboundTag(country.region);
+  function dropOutbound(region: string) {
     onMutateTemplate((tt) => {
-      const idx = tt.outbounds?.findIndex((o) => o?.tag === tag) ?? -1;
-      if (!on) {
-        if (idx >= 0) applyOutboundDeletion(tt, idx);
+      const idx = outboundIndex(tt, region);
+      if (idx >= 0) applyOutboundDeletion(tt, idx);
+    });
+  }
+
+  function impactOfDropping(region: string): DeletionImpact {
+    const idx = outboundIndex(templateSettings, region);
+    return idx >= 0 && templateSettings ? planOutboundDeletion(templateSettings, idx) : noImpact();
+  }
+
+  function confirmRemove(country: Country) {
+    modal.confirm({
+      title: t('pages.xray.psiphon.removeCountryConfirm', { region: country.region }),
+      content: <DeletionImpactList impact={impactOfDropping(country.region)} />,
+      okText: t('delete'),
+      okType: 'danger',
+      cancelText: t('cancel'),
+      onOk: () => removeCountry(country.region),
+    });
+  }
+
+  function setCountryOutbound(country: Country, on: boolean) {
+    if (!on) {
+      // The tabs show what a deletion takes with it before they make it; so does this switch, when it takes any.
+      const impact = impactOfDropping(country.region);
+      if (!hasImpact(impact)) {
+        dropOutbound(country.region);
         return;
       }
-      if (idx >= 0) return;
+      modal.confirm({
+        title: t('pages.xray.psiphon.outboundOffConfirm', { region: country.region }),
+        content: <DeletionImpactList impact={impact} />,
+        okText: t('delete'),
+        okType: 'danger',
+        cancelText: t('cancel'),
+        onOk: () => dropOutbound(country.region),
+      });
+      return;
+    }
+    onMutateTemplate((tt) => {
+      if (outboundIndex(tt, country.region) >= 0) return;
       if (!Array.isArray(tt.outbounds)) tt.outbounds = [];
       tt.outbounds.push({
-        tag,
+        tag: outboundTag(country.region),
         protocol: 'socks',
         settings: { servers: [{ address: '127.0.0.1', port: country.port }] },
       } as never);
@@ -229,10 +284,34 @@ export default function PsiphonCountries({
     });
   }
 
-  function removeBalancer() {
-    onMutateTemplate((tt) => {
-      const idx = tt.routing?.balancers?.findIndex((b) => b?.tag === BALANCER_TAG) ?? -1;
-      if (idx >= 0) applyBalancerDeletion(tt, idx);
+  // The same refusal and preview as the Balancers tab: a balancer that another one falls back to is not deleted.
+  function confirmRemoveBalancer() {
+    if (!templateSettings || balancerIndex < 0) return;
+    const fallbackTag = loopbackTagFor(BALANCER_TAG);
+    const dependents = (templateSettings.routing?.balancers ?? [])
+      .filter((b) => b.tag !== BALANCER_TAG && b.fallbackTag === fallbackTag)
+      .map((b) => b.tag);
+    if (dependents.length > 0) {
+      messageApi.error(
+        t('pages.xray.balancer.balancerDeleteInUse', { names: dependents.join(', ') }),
+      );
+      return;
+    }
+    modal.confirm({
+      title: t('pages.xray.psiphon.balancerRemoveConfirm'),
+      content: (
+        <DeletionImpactList impact={planBalancerDeletion(templateSettings, balancerIndex)} />
+      ),
+      okText: t('delete'),
+      okType: 'danger',
+      cancelText: t('cancel'),
+      onOk: () =>
+        onMutateTemplate((tt) => {
+          const idx = tt.routing?.balancers?.findIndex((b) => b?.tag === BALANCER_TAG) ?? -1;
+          if (idx < 0) return;
+          removeBalancerLoopback(tt, BALANCER_TAG);
+          applyBalancerDeletion(tt, idx);
+        }),
     });
   }
 
@@ -262,17 +341,19 @@ export default function PsiphonCountries({
       );
     }
     const why = c.error || c.lastLog;
-    if (c.error) {
-      return (
-        <Tooltip title={why}>
-          <Tag color="red">{t('pages.xray.psiphon.countryFailed')}</Tag>
-        </Tooltip>
-      );
-    }
+    // One that should be running is started again by the supervisor, whatever stopped it; a start that the
+    // operator saw fail is the only one nobody retries.
     if (c.enabled) {
       return (
         <Tooltip title={why}>
           <Tag color="orange">{t('pages.xray.psiphon.countryRestarting')}</Tag>
+        </Tooltip>
+      );
+    }
+    if (c.error) {
+      return (
+        <Tooltip title={why}>
+          <Tag color="red">{t('pages.xray.psiphon.countryFailed')}</Tag>
         </Tooltip>
       );
     }
@@ -381,21 +462,14 @@ export default function PsiphonCountries({
               />
             </Tooltip>
           )}{' '}
-          <Popconfirm
-            title={t('pages.xray.psiphon.removeCountryConfirm', { region: c.region })}
-            okText={t('delete')}
-            okType="danger"
-            cancelText={t('cancel')}
-            onConfirm={() => void removeCountry(c.region)}
-          >
-            <Button
-              size="small"
-              danger
-              aria-label={t('pages.xray.psiphon.removeCountryButton')}
-              icon={<DeleteOutlined aria-hidden />}
-              disabled={!!busy}
-            />
-          </Popconfirm>
+          <Button
+            size="small"
+            danger
+            aria-label={t('pages.xray.psiphon.removeCountryButton')}
+            icon={<DeleteOutlined aria-hidden />}
+            disabled={!!busy}
+            onClick={() => confirmRemove(c)}
+          />
         </span>
       ),
     },
@@ -404,6 +478,7 @@ export default function PsiphonCountries({
   return (
     <>
       {messageContextHolder}
+      {modalContextHolder}
       <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
         {t('pages.xray.psiphon.countriesHint')}
       </Typography.Paragraph>
@@ -487,7 +562,7 @@ export default function PsiphonCountries({
       {balancerIndex >= 0 ? (
         <>
           <Tag color="green">{t('enabled')}</Tag>
-          <Button type="primary" danger className="ml-8" onClick={removeBalancer}>
+          <Button type="primary" danger className="ml-8" onClick={confirmRemoveBalancer}>
             {t('delete')}
           </Button>
         </>

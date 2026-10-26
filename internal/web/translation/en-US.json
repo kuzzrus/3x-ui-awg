@@ -2904,6 +2904,8 @@
         "stopAllButton": "Stop all",
         "removeCountryButton": "Remove the country",
         "removeCountryConfirm": "Remove {region}? Its tunnel stops, its files are deleted and its outbound is taken out of the config.",
+        "outboundOffConfirm": "Remove the outbound psiphon-{region}?",
+        "balancerRemoveConfirm": "Delete psiphon-balancer?",
         "countryOutboundSwitch": "Outbound psiphon-{region}",
         "outboundPortMismatch": "The outbound points at port {port}, the tunnel listens on {expected}",
         "outboundPortFix": "Fix the port",
