@@ -1446,16 +1446,10 @@ func amneziawgEmailIndex(inbounds []*model.Inbound) map[string]string {
 }
 
 // amneziawgEventMarker selects the panel's own AmneziaWG log lines: every
-// logger call in internal/amneziawg, internal/amneziawgnet and their jobs
-// prefixes its message with it.
+// logger call in internal/amneziawg, internal/amneziawgnet,
+// internal/amneziawgkern and their jobs prefixes its message with it.
 const amneziawgEventMarker = "amneziawg"
 
-// amneziawgLogActivity gathers live PeerActivity rows across every enabled,
-// non-node-hosted AmneziaWG inbound, newest handshake first. An inbound
-// amneziawgnet has no running Device for yet (not reconciled, disabled,
-// errored) contributes no rows -- not reported as an error, since the
-// caller (GetAmneziaWGLogs) already has a device-agnostic Running flag from
-// amneziawgnet.GetManager().HasRunning() for that.
 // clampUint64ToInt64 saturates at math.MaxInt64 instead of wrapping negative,
 // for a live uint64 byte counter (amneziawgnet's own UAPI-dump snapshot, not
 // a DB-accumulated total) going into an int64 API field -- unreachable in
@@ -1468,7 +1462,17 @@ func clampUint64ToInt64(v uint64) int64 {
 	return int64(v)
 }
 
+// amneziawgLogActivity gathers live PeerActivity rows across every enabled,
+// non-node-hosted AmneziaWG inbound, newest handshake first, from whichever
+// datapath serves each one. An inbound whose datapath is not running (not
+// reconciled, disabled, errored) contributes no rows -- not reported as an
+// error, since the caller (GetAmneziaWGLogs) already has a device-agnostic
+// Running flag for that.
 func amneziawgLogActivity() []PeerActivity {
+	return amneziawgLogActivityWith(diagnoseAmneziaWG)
+}
+
+func amneziawgLogActivityWith(diagnose func(amneziawg.Instance) amneziawgnet.Diagnostics) []PeerActivity {
 	var inbounds []*model.Inbound
 	if err := database.GetDB().
 		Where("protocol = ? AND enable = ? AND node_id IS NULL", model.AmneziaWG, true).
@@ -1484,7 +1488,7 @@ func amneziawgLogActivity() []PeerActivity {
 		if !ok {
 			continue
 		}
-		diag := amneziawgnet.Diagnose(inbound.Id, inst.Peers)
+		diag := diagnose(inst)
 		if !diag.Running {
 			continue
 		}
@@ -1496,7 +1500,7 @@ func amneziawgLogActivity() []PeerActivity {
 				online = now.Sub(cd.LastHandshake) < amneziawgOnlineWindow
 			}
 			out = append(out, PeerActivity{
-				Interface:  inst.InterfaceName,
+				Interface:  amneziawgInterfaceName(inst),
 				Tag:        inbound.Tag,
 				InboundId:  inbound.Id,
 				Email:      cd.Email,
@@ -1528,7 +1532,11 @@ func (s *ServerService) GetAmneziaWGLogs(count string, filter string) *AmneziaWG
 	}
 	needle := strings.ToLower(strings.TrimSpace(filter))
 
-	logs := &AmneziaWGLogs{Peers: []PeerActivity{}, Events: []string{}, Running: amneziawgnet.GetManager().HasRunning()}
+	logs := &AmneziaWGLogs{
+		Peers:   []PeerActivity{},
+		Events:  []string{},
+		Running: amneziawgnet.GetManager().HasRunning() || amneziawgkern.GetManager().HasRunning(),
+	}
 
 	for _, peer := range amneziawgLogActivity() {
 		if len(logs.Peers) >= limit {

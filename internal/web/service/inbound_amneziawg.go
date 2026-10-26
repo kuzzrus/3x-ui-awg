@@ -503,7 +503,8 @@ func (s *InboundService) checkForwardedPortsConflict(ctx portConflictContext, fo
 
 // GetAmneziaWGDiagnostics returns a live diagnostics snapshot for inbound
 // id: interface up/down, listen port, and per-client handshake/traffic
-// state, read entirely from data amneziawgnet.Manager already tracks --
+// state, read from whichever datapath serves the inbound (the embedded
+// manager's own Device, or the interface of a kernel-mode inbound) --
 // gathering it can never itself change anything. Returns an error only
 // when id doesn't name an AmneziaWG inbound at all; an inbound that simply
 // isn't running right now (disabled, no enabled clients, or reconcile
@@ -522,5 +523,5 @@ func (s *InboundService) GetAmneziaWGDiagnostics(id int) (amneziawgnet.Diagnosti
 	if !ok {
 		return amneziawgnet.Diagnostics{}, nil
 	}
-	return amneziawgnet.Diagnose(inst.Id, inst.Peers), nil
+	return diagnoseAmneziaWG(inst), nil
 }

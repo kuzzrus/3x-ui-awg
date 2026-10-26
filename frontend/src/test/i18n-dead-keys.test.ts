@@ -77,9 +77,7 @@ describe('i18n keys', () => {
     const dead = enKeys.filter(
       (key) => !tokens.has(key) && !prefixes.some((p) => key.startsWith(p)),
     );
-    expect(dead, `dead i18n keys (delete from all 14 locales):\n  ${dead.join('\n  ')}`).toEqual(
-      [],
-    );
+    expect(dead, `dead i18n keys (delete from every locale):\n  ${dead.join('\n  ')}`).toEqual([]);
   });
 
   it('every locale carries exactly the en-US key set', () => {
