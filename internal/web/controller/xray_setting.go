@@ -78,6 +78,8 @@ func (a *XraySettingController) initRouter(g *gin.RouterGroup) {
 	g.POST("/routeTest", a.routeTest)
 
 	g.GET("/psiphon/regions", a.psiphonRegions)
+	g.GET("/psiphon/countries", a.psiphonCountries)
+	g.POST("/psiphon/countries/:action", a.psiphonCountry)
 
 	g.GET("/geodata/files", a.geodataFiles)
 	g.GET("/geodata/categories", a.geodataCategories)
@@ -364,6 +366,46 @@ func (a *XraySettingController) naiveProxy(c *gin.Context) {
 		}
 	}
 	jsonObj(c, resp, err)
+}
+
+// psiphonCountries lists the country tunnels (internal/psiphon) with how each stands, and how many there may be.
+func (a *XraySettingController) psiphonCountries(c *gin.Context) {
+	resp, err := a.PsiphonService.Countries()
+	jsonObj(c, resp, err)
+}
+
+// psiphonCountry changes the country tunnels by the action parameter: add and remove one (region), start,
+// stop and probe one (region) or all of them (no region). The answer is the list as it stands afterwards,
+// except for probe, which answers the measurements. A country that fails to start keeps its reason in the list.
+func (a *XraySettingController) psiphonCountry(c *gin.Context) {
+	region := c.PostForm("region")
+	var (
+		resp any
+		err  error
+	)
+	switch c.Param("action") {
+	case "add":
+		err = a.PsiphonService.AddCountry(region)
+	case "remove":
+		err = a.PsiphonService.RemoveCountry(region)
+	case "start":
+		err = a.PsiphonService.StartCountries(region)
+	case "stop":
+		err = a.PsiphonService.StopCountries(region)
+	case "probe":
+		resp, err = a.PsiphonService.ProbeCountries(region)
+		jsonObj(c, resp, err)
+		return
+	default:
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), errors.New("unknown action"))
+		return
+	}
+	// The list is read again even when the action failed: a start that failed in one country says why there.
+	view, listErr := a.PsiphonService.Countries()
+	if err == nil {
+		err = listErr
+	}
+	jsonObj(c, view, err)
 }
 
 // psiphonRegions lists the ISO 3166-1 alpha-2 codes the region picker offers.

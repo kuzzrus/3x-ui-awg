@@ -2486,6 +2486,33 @@ export const sections: readonly Section[] = [
           'List ISO 3166-1 codes (states plus common territories) for the egress-region picker (not a Psiphon-curated subset -- see the psiphon/:action region action to actually apply and verify one).',
       },
       {
+        method: 'GET',
+        path: '/panel/api/xray/psiphon/countries',
+        summary:
+          'List the Psiphon country tunnels (one ConsoleClient process per country, each on a loopback SOCKS port of its own, beside the default one) with how each stands, and how many there may be.',
+        response:
+          '{\n  "success": true,\n  "obj": {\n    "max": 6,\n    "countries": [\n      {\n        "region": "DE",\n        "port": 19101,\n        "enabled": true,\n        "running": true,\n        "tunnel": { "connected": true, "tunnelCount": 1, "serverRegion": "DE", "clientRegion": "LV" }\n      }\n    ]\n  }\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/xray/psiphon/countries/:action',
+        summary: 'Change the Psiphon country tunnels. The action parameter selects the operation.',
+        params: [
+          {
+            name: 'action',
+            in: 'path',
+            type: 'string',
+            desc: 'add — add a country (sends region), stopped, on the first free port of 19101-19199; it keeps that port, so an outbound that points at it never moves. At most 6 countries. remove — stop it, delete its files and drop it (sends region). start — start one country (sends region) or all of them (no region) and remember that they run again after a panel restart; a country that fails to start keeps its reason in error, and the others are not held up. stop — the same for stopping. probe — measure one country (sends region) or every running one (no region): returns [{region, latencyMs, ip, country, error}], the latency being the best of two requests to a generate_204 address through the tunnel and ip/country the exit it shows. Every action but probe answers the list as GET psiphon/countries does, also when it fails.',
+          },
+          {
+            name: 'region',
+            in: 'body (form)',
+            type: 'string',
+            desc: 'ISO 3166-1 alpha-2 code in capitals. Required for add and remove, optional for start, stop and probe (empty means every country).',
+          },
+        ],
+      },
+      {
         method: 'POST',
         path: '/panel/api/xray/naiveproxy/:action',
         summary:

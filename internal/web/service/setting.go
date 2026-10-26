@@ -1424,6 +1424,26 @@ func (s *SettingService) SetPsiphonEnable(value bool) error {
 	return s.setBool("psiphonEnable", value)
 }
 
+// GetPsiphonCountries returns the stored JSON list of the extra Psiphon country tunnels, "[]" when none was
+// saved. The list is the PsiphonService's to read and write; the setting only keeps it.
+func (s *SettingService) GetPsiphonCountries() (string, error) {
+	setting, err := s.getSetting("psiphonCountries")
+	if database.IsNotFound(err) {
+		return "[]", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(setting.Value) == "" {
+		return "[]", nil
+	}
+	return setting.Value, nil
+}
+
+func (s *SettingService) SetPsiphonCountries(value string) error {
+	return s.setString("psiphonCountries", value)
+}
+
 // GetFrontProxyEnable reports whether the reverse proxy should be listening.
 // Read at boot to restore whatever state the admin last left it in.
 func (s *SettingService) GetFrontProxyEnable() (bool, error) {

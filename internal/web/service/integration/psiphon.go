@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -50,9 +51,16 @@ func (s *PsiphonService) Status() (PsiphonStatus, error) {
 	}, nil
 }
 
-// AutoStart brings Psiphon up at boot if enabled; never errors, mirroring
-// AdGuardService.AutoStart, plus an IsConfigured gate AdGuard has no equivalent of.
+// AutoStart brings Psiphon up at boot if enabled, the countries that were running with it, and starts the
+// supervisor that brings back a tunnel that stops on its own; never errors, mirroring AdGuardService.AutoStart,
+// plus an IsConfigured gate AdGuard has no equivalent of.
 func (s *PsiphonService) AutoStart() {
+	psiphon.GetManager().Supervise()
+	go s.autoStartCountries()
+	s.autoStartDefault()
+}
+
+func (s *PsiphonService) autoStartDefault() {
 	enabled, err := s.GetPsiphonEnable()
 	if err != nil || !enabled {
 		return
@@ -96,25 +104,32 @@ func (s *PsiphonService) Install() error {
 	return psiphon.Install(ctx, s.NewProxiedHTTPClient(installTimeout))
 }
 
-// Uninstall stops the daemon, removes the binary and config, and clears the
-// auto-start flag so a future boot doesn't relaunch something no longer there.
+// Uninstall stops the daemon and the countries, removes the binary, the config and the country files, and
+// clears the auto-start flag and the list of countries so a future boot doesn't relaunch something no longer there.
 func (s *PsiphonService) Uninstall() error {
 	if err := psiphon.Uninstall(); err != nil {
+		return err
+	}
+	countriesMu.Lock()
+	defer countriesMu.Unlock()
+	if err := s.saveCountries(nil); err != nil {
 		return err
 	}
 	return s.SetPsiphonEnable(false)
 }
 
-// SaveConfig validates and stores the config, restarting the process if it
-// was already running so the change actually takes effect.
+// SaveConfig validates and stores the config, restarting the process and the running countries if they were
+// already up so the change actually takes effect: a country is made from this config at every start.
 func (s *PsiphonService) SaveConfig(raw []byte) error {
 	if err := psiphon.SaveConfig(raw); err != nil {
 		return err
 	}
-	if !psiphon.GetManager().IsRunning() {
-		return nil
+	var restarts []error
+	if psiphon.GetManager().IsRunning() {
+		restarts = append(restarts, psiphon.GetManager().Restart())
 	}
-	return psiphon.GetManager().Restart()
+	restarts = append(restarts, psiphon.GetManager().RestartCountries())
+	return errors.Join(restarts...)
 }
 
 // AvailableRegions lists ISO 3166-1 codes (states plus common territories),

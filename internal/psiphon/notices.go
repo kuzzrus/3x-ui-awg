@@ -28,10 +28,13 @@ type TunnelStatus struct {
 	ClientRegion string `json:"clientRegion,omitempty"`
 }
 
-// CurrentTunnel scans the whole of NoticesPath, not just a tail: Tunnels and
+// CurrentTunnel is currentTunnel of the default instance.
+func CurrentTunnel() (TunnelStatus, error) { return currentTunnel(NoticesPath()) }
+
+// currentTunnel scans the whole of the notice log at path, not just a tail: Tunnels and
 // ClientRegion fire once, not periodically, so a bounded read can miss the only copy of either on a long-lived tunnel.
-func CurrentTunnel() (TunnelStatus, error) {
-	f, err := os.Open(NoticesPath())
+func currentTunnel(path string) (TunnelStatus, error) {
+	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return TunnelStatus{}, nil
@@ -85,10 +88,15 @@ type ExitInfo struct {
 	Country string `json:"country"`
 }
 
-// socksHTTPClient builds an http.Client that dials out through the managed
-// SOCKS proxy. Mirrors tor.socksHTTPClient.
+// socksHTTPClient builds an http.Client that dials out through the default
+// instance's SOCKS proxy. Mirrors tor.socksHTTPClient.
 func socksHTTPClient(timeout time.Duration) (*http.Client, error) {
-	dialer, err := proxy.SOCKS5("tcp", fmt.Sprintf("127.0.0.1:%d", SocksPort), nil, proxy.Direct)
+	return socksHTTPClientOn(SocksPort, timeout)
+}
+
+// socksHTTPClientOn is socksHTTPClient for the proxy on any loopback port, which is what a country tunnel has.
+func socksHTTPClientOn(port int, timeout time.Duration) (*http.Client, error) {
+	dialer, err := proxy.SOCKS5("tcp", fmt.Sprintf("127.0.0.1:%d", port), nil, proxy.Direct)
 	if err != nil {
 		return nil, err
 	}
@@ -131,27 +139,36 @@ func CurrentExit(ctx context.Context) (ExitInfo, error) {
 // ctx ends, whichever comes first. Split out from CurrentExit so the
 // retry/timing policy is testable without a real SOCKS proxy behind it.
 func retryExit(ctx context.Context, budget, interval time.Duration, fn func() (ExitInfo, error)) (ExitInfo, error) {
+	return retry(ctx, budget, interval, fn)
+}
+
+// retry is retryExit for any result, which is also what the latency probe of a country needs.
+func retry[T any](ctx context.Context, budget, interval time.Duration, fn func() (T, error)) (T, error) {
+	var zero T
 	deadline := time.Now().Add(budget)
 	for {
-		info, err := fn()
+		value, err := fn()
 		if err == nil {
-			return info, nil
+			return value, nil
 		}
 		if !time.Now().Before(deadline) {
-			return ExitInfo{}, err
+			return zero, err
 		}
 		select {
 		case <-ctx.Done():
-			return ExitInfo{}, ctx.Err()
+			return zero, ctx.Err()
 		case <-time.After(interval):
 		}
 	}
 }
 
+// exitURL answers with the address and country a request came from; a variable so tests can point it at a server of their own.
+var exitURL = "https://ipinfo.io/json"
+
 // fetchExit makes one attempt -- split out so CurrentExit's retry loop
 // doesn't have to duplicate the request/decode logic.
 func fetchExit(ctx context.Context, client *http.Client) (ExitInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://ipinfo.io/json", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, exitURL, nil)
 	if err != nil {
 		return ExitInfo{}, err
 	}

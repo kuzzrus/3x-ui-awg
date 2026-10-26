@@ -25,6 +25,7 @@ var (
 // procLogWriter forwards the child's stdout/stderr into the panel log a line
 // at a time. Structured notices go to NoticesPath instead; this only ever carries an early startup failure.
 type procLogWriter struct {
+	tag      string // "" for the default instance, "[DE]" for a country, so the panel log says whose line it is
 	mu       sync.Mutex
 	buf      string
 	lastLine string
@@ -64,7 +65,7 @@ func (w *procLogWriter) emitLocked(line string) {
 		return
 	}
 	w.lastLine = trimmed
-	logger.Infof("psiphon: %s", trimmed)
+	logger.Infof("psiphon%s: %s", w.tag, trimmed)
 }
 
 func (w *procLogWriter) LastLine() string {
@@ -73,22 +74,22 @@ func (w *procLogWriter) LastLine() string {
 	return w.lastLine
 }
 
-// commandArgs builds the invocation, resolving every path to an absolute one
-// since the panel's working directory is not guaranteed to be configDir().
-func commandArgs() (string, []string, error) {
+// commandArgs builds the invocation of the instance sp describes, resolving every
+// path to an absolute one since the panel's working directory is not guaranteed to be configDir().
+func commandArgs(sp spec) (string, []string, error) {
 	bin, err := filepath.Abs(BinPath())
 	if err != nil {
 		return "", nil, fmt.Errorf("resolving the Psiphon binary path: %w", err)
 	}
-	cfg, err := filepath.Abs(ConfigPath())
+	cfg, err := filepath.Abs(sp.config)
 	if err != nil {
 		return "", nil, fmt.Errorf("resolving the Psiphon config path: %w", err)
 	}
-	data, err := filepath.Abs(dataDir())
+	data, err := filepath.Abs(sp.data)
 	if err != nil {
 		return "", nil, fmt.Errorf("resolving the Psiphon data directory: %w", err)
 	}
-	notices, err := filepath.Abs(NoticesPath())
+	notices, err := filepath.Abs(sp.notices)
 	if err != nil {
 		return "", nil, fmt.Errorf("resolving the Psiphon notices path: %w", err)
 	}
@@ -99,8 +100,10 @@ func commandArgs() (string, []string, error) {
 	}, nil
 }
 
-// Process wraps the single Psiphon ConsoleClient invocation.
+// Process wraps one Psiphon ConsoleClient invocation.
 type Process struct {
+	spec            spec
+	tag             string
 	mu              sync.RWMutex
 	cmd             *exec.Cmd
 	done            chan struct{}
@@ -109,7 +112,9 @@ type Process struct {
 	intentionalStop atomic.Bool
 }
 
-func newProcess() *Process { return &Process{logWriter: &procLogWriter{}} }
+func newProcess(sp spec, tag string) *Process {
+	return &Process{spec: sp, tag: tag, logWriter: &procLogWriter{tag: tag}}
+}
 
 // IsRunning reports whether the Psiphon process is currently running.
 func (p *Process) IsRunning() bool {
@@ -148,7 +153,7 @@ func (p *Process) Start() error {
 	if p.IsRunning() {
 		return errors.New("Psiphon is already running")
 	}
-	bin, args, err := commandArgs()
+	bin, args, err := commandArgs(p.spec)
 	if err != nil {
 		return err
 	}
@@ -180,7 +185,7 @@ func (p *Process) wait(cmd *exec.Cmd, done chan struct{}) {
 	if err == nil || p.intentionalStop.Load() {
 		return
 	}
-	logger.Errorf("psiphon: process exited: %v", err)
+	logger.Errorf("psiphon%s: process exited: %v", p.tag, err)
 	p.mu.Lock()
 	p.exitErr = err
 	p.mu.Unlock()
@@ -214,7 +219,7 @@ func (p *Process) Stop() error {
 		return nil
 	}
 
-	logger.Warning("psiphon: did not stop after SIGTERM, killing process")
+	logger.Warningf("psiphon%s: did not stop after SIGTERM, killing process", p.tag)
 	if err := cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		return err
 	}
