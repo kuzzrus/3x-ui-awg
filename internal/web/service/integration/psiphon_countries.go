@@ -28,7 +28,8 @@ type tunnelOps struct {
 	state  func(region string) psiphon.InstanceState
 	probe  func(ctx context.Context, port int) psiphon.ProbeResult
 	// restore and restoreDefault are the starts of the restore at boot: nobody is there to see a failure, so
-	// the supervisor retries it.
+	// the supervisor retries it. prepare registers a tunnel first, so that a shutdown can stop a start in flight.
+	prepare        func(c psiphon.Country) error
 	restore        func(c psiphon.Country) error
 	restoreDefault func() error
 }
@@ -39,6 +40,7 @@ var tunnels = tunnelOps{
 	remove:         func(region string) error { return psiphon.GetManager().RemoveCountry(region) },
 	state:          func(region string) psiphon.InstanceState { return psiphon.GetManager().CountryState(region) },
 	probe:          psiphon.Probe,
+	prepare:        func(c psiphon.Country) error { return psiphon.GetManager().PrepareCountry(c) },
 	restore:        func(c psiphon.Country) error { return psiphon.GetManager().StartCountrySupervised(c) },
 	restoreDefault: func() error { return psiphon.GetManager().StartSupervised() },
 }
@@ -345,8 +347,8 @@ func (s *PsiphonService) ProbeCountries(region string) ([]CountryProbe, error) {
 	return results, nil
 }
 
-// autoStartCountries brings back at boot the countries that were running before the panel stopped. It runs
-// beside the rest of the start: a country waits seconds for its listener, and nothing else waits for it.
+// autoStartCountries brings back at boot the countries that were running before the panel stopped. They are
+// registered here and started in the background, so that a shutdown stops a start in flight, not orphans it.
 func (s *PsiphonService) autoStartCountries() {
 	list, err := s.loadCountries()
 	if err != nil {
@@ -362,13 +364,16 @@ func (s *PsiphonService) autoStartCountries() {
 	if len(want) == 0 {
 		return
 	}
-	if !psiphon.IsInstalled() || !psiphon.IsConfigured() {
-		logger.Warning("psiphon: countries are enabled but Psiphon is not installed or has no config yet, staying down")
-		return
-	}
-	for i, err := range forEach(want, func(_ int, c storedCountry) error { return s.startOne(c.Region, tunnels.restore) }) {
-		if err != nil {
-			logger.Warningf("psiphon[%s]: failed to auto-start on boot, will retry: %v", want[i].Region, err)
+	for _, c := range want {
+		if err := tunnels.prepare(countryOf(c)); err != nil {
+			logger.Warningf("psiphon[%s]: %v", c.Region, err)
 		}
 	}
+	go func() {
+		for i, err := range forEach(want, func(_ int, c storedCountry) error { return s.startOne(c.Region, tunnels.restore) }) {
+			if err != nil {
+				logger.Warningf("psiphon[%s]: failed to auto-start on boot, will retry: %v", want[i].Region, err)
+			}
+		}
+	}()
 }

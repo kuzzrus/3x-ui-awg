@@ -23,6 +23,7 @@ type answeringTunnels struct {
 	running         map[string]bool
 	started         []string
 	stopped         []string
+	prepared        []string
 	restored        []string
 	restoredDefault int
 }
@@ -64,6 +65,12 @@ func useTunnels(t *testing.T, failing map[string]error) *answeringTunnels {
 		},
 		probe: func(_ context.Context, port int) psiphon.ProbeResult {
 			return psiphon.ProbeResult{LatencyMs: int64(port % 1000), IP: "203.0.113.7", Country: "DE"}
+		},
+		prepare: func(c psiphon.Country) error {
+			fake.mu.Lock()
+			defer fake.mu.Unlock()
+			fake.prepared = append(fake.prepared, c.Region)
+			return nil
 		},
 		restore: func(c psiphon.Country) error {
 			fake.mu.Lock()
@@ -434,6 +441,18 @@ func installedPsiphon(t *testing.T) {
 	}
 }
 
+// waitUntil waits for cond, which a start in the background needs a moment to make true.
+func waitUntil(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("gave up waiting for %s", what)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func TestTheRestoreAtBootStartsTheTunnelsUnderSupervision(t *testing.T) {
 	fake := useTunnels(t, nil)
 	installedPsiphon(t)
@@ -454,6 +473,13 @@ func TestTheRestoreAtBootStartsTheTunnelsUnderSupervision(t *testing.T) {
 	svc.autoStartCountries()
 	svc.autoStartDefault()
 
+	waitUntil(t, "the restore of the country", func() bool {
+		fake.mu.Lock()
+		defer fake.mu.Unlock()
+		return len(fake.restored) > 0
+	})
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
 	if !slices.Equal(fake.restored, []string{"DE"}) {
 		t.Fatalf("restored %v, want only the country that was running", fake.restored)
 	}
@@ -462,6 +488,38 @@ func TestTheRestoreAtBootStartsTheTunnelsUnderSupervision(t *testing.T) {
 	}
 	if fake.restoredDefault != 1 {
 		t.Fatalf("the default tunnel was restored %d times, want once", fake.restoredDefault)
+	}
+}
+
+// The restore hands the starts over to the background, but registers the tunnels first: a shutdown can stop only
+// what the manager knows, and a start waits seconds for its listener.
+func TestTheRestoreAtBootRegistersItsTunnelsBeforeItStartsThem(t *testing.T) {
+	fake := useTunnels(t, nil)
+	svc := &PsiphonService{}
+	if err := svc.AddCountry("DE"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.setEnabled(map[string]bool{"DE": true}); err != nil {
+		t.Fatal(err)
+	}
+	starting := newGate(t)
+	tunnels.restore = func(psiphon.Country) error {
+		starting.hold()
+		return nil
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		svc.autoStartCountries()
+	}()
+	await(t, starting.reached, "the start to begin")
+	await(t, done, "the restore to hand the start over")
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if !slices.Equal(fake.prepared, []string{"DE"}) {
+		t.Fatalf("prepared %v, want DE before its process exists: a shutdown cannot stop a tunnel the manager does not know", fake.prepared)
 	}
 }
 

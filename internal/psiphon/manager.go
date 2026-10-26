@@ -167,6 +167,13 @@ func (m *Manager) StartCountry(c Country) error {
 	return in.start(time.Now())
 }
 
+// PrepareCountry registers the tunnel of c without starting it, so that StopAll can stop a start still waiting
+// for its listener instead of leaving its process behind with the panel gone.
+func (m *Manager) PrepareCountry(c Country) error {
+	_, err := m.countryInstance(c)
+	return err
+}
+
 // StartCountrySupervised is StartCountry for the restore at boot: a failure is retried by the supervisor.
 func (m *Manager) StartCountrySupervised(c Country) error {
 	in, err := m.countryInstance(c)
@@ -210,11 +217,19 @@ func (m *Manager) CountryState(region string) InstanceState {
 	return InstanceState{}
 }
 
-// forgetCountries drops every country from the manager, for an uninstall that has stopped them and removed their files.
+// forgetCountries drops every country from the manager and stops what it drops, so that one which registered after
+// an uninstall took its snapshot does not keep a process that nothing can stop.
 func (m *Manager) forgetCountries() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	slots := make([]*countrySlot, 0, len(m.countries))
+	for _, slot := range m.countries {
+		slots = append(slots, slot)
+	}
 	clear(m.countries)
+	m.mu.Unlock()
+	for _, slot := range slots {
+		_ = slot.inst.stop()
+	}
 }
 
 // RestartCountries restarts the country tunnels that are running, which is how a new base config reaches them.

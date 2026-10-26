@@ -346,6 +346,82 @@ func TestAStopByTheOperatorEndsTheStoryOfAFailedStart(t *testing.T) {
 	}
 }
 
+func TestASupervisorLookThatPanicsBeforeItStartsAnythingLeavesNothingLocked(t *testing.T) {
+	useFakeCore(t)
+	m := newTestManager(t)
+	// A process with no log writer: reading how it ended panics, with the lock of the instance taken.
+	in := &instance{tag: "[XX]", spec: func() (spec, error) { return spec{}, nil }, proc: &Process{}}
+	in.life.wanted = true
+	m.mu.Lock()
+	m.countries["XX"] = &countrySlot{country: Country{Region: "XX", Port: 19113}, inst: in}
+	m.mu.Unlock()
+
+	m.checkAll(time.Now())
+	m.checkAll(time.Now())
+
+	free := make(chan struct{})
+	go func() {
+		in.isRunning()
+		close(free)
+	}()
+	select {
+	case <-free:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a look that panicked left the lock of the instance held")
+	}
+}
+
+func TestForgettingTheCountriesStopsTheirProcesses(t *testing.T) {
+	useFakeCore(t)
+	holdFree := func(port int) {
+		if !portFree(port) {
+			t.Skipf("port %d is not free on this host", port)
+		}
+	}
+	holdFree(19114)
+	m := newTestManager(t)
+	if err := m.StartCountry(Country{Region: "DE", Port: 19114}); err != nil {
+		t.Fatalf("StartCountry: %v", err)
+	}
+	in := m.existingCountry("DE")
+	t.Cleanup(func() { _ = in.stop() })
+
+	m.forgetCountries()
+
+	eventually(t, "the port to close", func() bool { return !listening(19114) })
+	if m.existingCountry("DE") != nil {
+		t.Fatal("the country is still known to the manager")
+	}
+}
+
+func TestAStopByTheOperatorStartsTheBackOffOver(t *testing.T) {
+	useFakeCore(t)
+	shortenSupervision(t, time.Hour, time.Hour)
+	holdPort(t, 19115)
+	m := newTestManager(t)
+	c := Country{Region: "DE", Port: 19115}
+	if err := m.StartCountrySupervised(c); err == nil {
+		t.Fatal("the start on a held port was reported as a success")
+	}
+	m.checkAll(time.Now().Add(2 * time.Hour)) // the retry fails as well, so the wait doubles
+	in := m.existingCountry("DE")
+	in.mu.Lock()
+	grown := in.life.delay
+	in.mu.Unlock()
+	if grown <= time.Hour {
+		t.Fatalf("setup: the wait is %v after two failures, want it grown", grown)
+	}
+
+	if err := m.StopCountry("DE"); err != nil {
+		t.Fatal(err)
+	}
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	if in.life.delay != 0 || !in.life.retryAt.IsZero() {
+		t.Fatalf("after a stop the wait is %v and the next try %v, want a clean slate for the next start", in.life.delay, in.life.retryAt)
+	}
+}
+
 func TestRestartCountriesGivesThemTheNewBaseConfig(t *testing.T) {
 	useFakeCore(t)
 	if !portFree(19107) {

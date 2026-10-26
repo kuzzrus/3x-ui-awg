@@ -195,7 +195,8 @@ func (in *instance) stop() error {
 func (in *instance) stopLocked() error {
 	in.mu.Lock()
 	in.life.wanted = false
-	in.life.lastErr = "" // a stop by the operator ends the story of an earlier failure
+	// A stop by the operator ends the story of an earlier failure: its reason and its back-off.
+	in.life.lastErr, in.life.delay, in.life.retryAt = "", 0, time.Time{}
 	proc := in.proc
 	in.proc = nil
 	in.mu.Unlock()
@@ -239,31 +240,44 @@ func (in *instance) restart(now time.Time) error {
 	return nil
 }
 
+// downLocked reports whether the tunnel should be running and is not. The caller holds in.mu.
+func (in *instance) downLocked() bool {
+	return in.life.wanted && (in.proc == nil || !in.proc.IsRunning())
+}
+
+func (in *instance) down() bool {
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	return in.downLocked()
+}
+
+// due accounts for the end of a process that should be running and says whether its back-off allows a new start.
+// The lock is released by a defer, so a look that panics leaves none held.
+func (in *instance) due(now time.Time) bool {
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	if !in.downLocked() {
+		return false
+	}
+	reason := ""
+	if in.proc != nil {
+		reason = in.proc.GetResult()
+	}
+	in.life.noteDown(now, reason)
+	return !now.Before(in.life.retryAt)
+}
+
 // check is one look of the supervisor: a tunnel that should be running and is not is started again, as soon as
 // its back-off allows.
 func (in *instance) check(now time.Time) {
-	in.mu.Lock()
-	down := in.life.wanted && (in.proc == nil || !in.proc.IsRunning())
-	if down {
-		reason := ""
-		if in.proc != nil {
-			reason = in.proc.GetResult()
-		}
-		in.life.noteDown(now, reason)
-	}
-	due := down && !now.Before(in.life.retryAt)
-	in.mu.Unlock()
-	if !due {
+	if !in.due(now) {
 		return
 	}
 
 	in.lifecycle.Lock()
 	defer in.lifecycle.Unlock()
 	// An operator may have stopped or started it while this waited for the lock.
-	in.mu.Lock()
-	still := in.life.wanted && (in.proc == nil || !in.proc.IsRunning())
-	in.mu.Unlock()
-	if !still {
+	if !in.down() {
 		return
 	}
 	started, err := in.startLocked()

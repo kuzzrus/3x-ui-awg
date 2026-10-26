@@ -55,7 +55,7 @@ func (s *PsiphonService) Status() (PsiphonStatus, error) {
 // that restarts a tunnel that dies; it never errors, like AdGuardService.AutoStart.
 func (s *PsiphonService) AutoStart() {
 	psiphon.GetManager().Supervise()
-	go s.autoStartCountries()
+	s.autoStartCountries()
 	s.autoStartDefault()
 }
 
