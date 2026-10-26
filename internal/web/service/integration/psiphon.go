@@ -72,8 +72,8 @@ func (s *PsiphonService) autoStartDefault() {
 		logger.Warning("psiphon: enabled but no config uploaded yet, staying down")
 		return
 	}
-	if err := psiphon.GetManager().Start(); err != nil {
-		logger.Warningf("psiphon: failed to auto-start on boot: %v", err)
+	if err := tunnels.restoreDefault(); err != nil {
+		logger.Warningf("psiphon: failed to auto-start on boot, will retry: %v", err)
 	}
 }
 

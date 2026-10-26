@@ -263,6 +263,89 @@ func TestStartFailureIsKeptForTheStatusAndNotRetriedByTheSupervisor(t *testing.T
 	}
 }
 
+func TestABootStartThatFailedIsRetriedByTheSupervisor(t *testing.T) {
+	cases := map[string]struct {
+		port    int
+		start   func(*Manager) error
+		running func(*Manager) bool
+	}{
+		"default": {
+			SocksPort,
+			func(m *Manager) error { return m.StartSupervised() },
+			func(m *Manager) bool { return m.IsRunning() },
+		},
+		"country": {
+			19110,
+			func(m *Manager) error { return m.StartCountrySupervised(Country{Region: "DE", Port: 19110}) },
+			func(m *Manager) bool { return m.CountryState("DE").Running },
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			useFakeCore(t)
+			shortenSupervision(t, time.Hour, time.Hour)
+			holder, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(tc.port)))
+			if err != nil {
+				t.Skipf("port %d is not free on this host: %v", tc.port, err)
+			}
+			defer holder.Close()
+			m := newTestManager(t)
+
+			if err := tc.start(m); err == nil {
+				t.Fatal("the start on a held port was reported as a success")
+			}
+			if err := holder.Close(); err != nil {
+				t.Fatal(err)
+			}
+			m.checkAll(time.Now())
+			if tc.running(m) {
+				t.Fatal("the start was retried before its back-off was over")
+			}
+			m.checkAll(time.Now().Add(2 * time.Hour))
+			if !tc.running(m) {
+				t.Fatal("a boot start that failed was never retried: the tunnel stays down although it should run")
+			}
+		})
+	}
+}
+
+func TestASupervisorLookThatPanicsDoesNotEndThePanel(t *testing.T) {
+	useFakeCore(t)
+	m := newTestManager(t)
+	in := &instance{tag: "[XX]", spec: func() (spec, error) { panic("a bug in a look") }}
+	in.life.wanted = true
+	m.mu.Lock()
+	m.countries["XX"] = &countrySlot{country: Country{Region: "XX", Port: 19111}, inst: in}
+	m.mu.Unlock()
+
+	// Twice: a look that left its lock held would stop the second one.
+	m.checkAll(time.Now())
+	m.checkAll(time.Now())
+}
+
+func TestAStopByTheOperatorEndsTheStoryOfAFailedStart(t *testing.T) {
+	useFakeCore(t)
+	holdPort(t, 19112)
+	m := newTestManager(t)
+	if err := m.StartCountrySupervised(Country{Region: "DE", Port: 19112}); err == nil {
+		t.Fatal("the start on a held port was reported as a success")
+	}
+	if m.CountryState("DE").Error == "" {
+		t.Fatal("the failed start left no reason for the row to show")
+	}
+
+	if err := m.StopCountry("DE"); err != nil {
+		t.Fatal(err)
+	}
+	if st := m.CountryState("DE"); st.Error != "" {
+		t.Fatalf("state %+v after the stop, want the old failure forgotten: a stopped country is not a failed one", st)
+	}
+	m.checkAll(time.Now().Add(time.Hour))
+	if m.CountryState("DE").Running {
+		t.Fatal("the supervisor started a country that was stopped on purpose")
+	}
+}
+
 func TestRestartCountriesGivesThemTheNewBaseConfig(t *testing.T) {
 	useFakeCore(t)
 	if !portFree(19107) {

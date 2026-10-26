@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
+	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 )
 
 // SocksPort is the fixed loopback port the default Psiphon process listens
@@ -80,6 +81,9 @@ func newManager() *Manager {
 // Start launches the default Psiphon process if it is not already running, waiting until its
 // SOCKS listener accepts connections. A no-op, not an error, when already up.
 func (m *Manager) Start() error { return m.def.start(time.Now()) }
+
+// StartSupervised is Start for the restore at boot: a failure is retried by the supervisor.
+func (m *Manager) StartSupervised() error { return m.def.startSupervised(time.Now()) }
 
 // Stop stops the default Psiphon process if it is running. A no-op, not an error, when already
 // stopped, for the same symmetry reason as Start.
@@ -161,6 +165,15 @@ func (m *Manager) StartCountry(c Country) error {
 		return err
 	}
 	return in.start(time.Now())
+}
+
+// StartCountrySupervised is StartCountry for the restore at boot: a failure is retried by the supervisor.
+func (m *Manager) StartCountrySupervised(c Country) error {
+	in, err := m.countryInstance(c)
+	if err != nil {
+		return err
+	}
+	return in.startSupervised(time.Now())
 }
 
 // StopCountry stops the tunnel of a region and keeps it down. A no-op for one that was never started.
@@ -255,8 +268,16 @@ func (m *Manager) checkAll(now time.Time) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer recoverLook(in.tag)
 			in.check(now)
 		}()
 	}
 	wg.Wait()
+}
+
+// recoverLook logs a panic of one look instead of ending the panel with it: the supervisor has no job runner.
+func recoverLook(tag string) {
+	if r := recover(); r != nil {
+		logger.Errorf("psiphon%s: the supervisor recovered from a panic: %v", tag, r)
+	}
 }

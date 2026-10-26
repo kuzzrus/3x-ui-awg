@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -17,11 +18,13 @@ import (
 // answeringTunnels stands in for the Psiphon manager for the length of a test: starts fail for the regions in
 // failing, and every call is written down.
 type answeringTunnels struct {
-	mu      sync.Mutex
-	failing map[string]error
-	running map[string]bool
-	started []string
-	stopped []string
+	mu              sync.Mutex
+	failing         map[string]error
+	running         map[string]bool
+	started         []string
+	stopped         []string
+	restored        []string
+	restoredDefault int
 }
 
 func useTunnels(t *testing.T, failing map[string]error) *answeringTunnels {
@@ -61,6 +64,19 @@ func useTunnels(t *testing.T, failing map[string]error) *answeringTunnels {
 		},
 		probe: func(_ context.Context, port int) psiphon.ProbeResult {
 			return psiphon.ProbeResult{LatencyMs: int64(port % 1000), IP: "203.0.113.7", Country: "DE"}
+		},
+		restore: func(c psiphon.Country) error {
+			fake.mu.Lock()
+			defer fake.mu.Unlock()
+			fake.running[c.Region] = true
+			fake.restored = append(fake.restored, c.Region)
+			return nil
+		},
+		restoreDefault: func() error {
+			fake.mu.Lock()
+			defer fake.mu.Unlock()
+			fake.restoredDefault++
+			return nil
 		},
 	}
 	return fake
@@ -390,6 +406,62 @@ func TestARemovalAndAStopWaitForAStartUnderWay(t *testing.T) {
 				t.Fatalf("order %v, want %v: the later request overtook the start", order, want)
 			}
 		})
+	}
+}
+
+func TestRemoveCountryDoesNotKeepALockForARegionItRefuses(t *testing.T) {
+	useTunnels(t, nil)
+	if err := (&PsiphonService{}).RemoveCountry("../.."); err == nil {
+		t.Fatal("RemoveCountry took a path for a region")
+	}
+	if _, held := regionLocks.Load("../.."); held {
+		t.Fatal("a refused region left a lock behind: any string a request sends grows the map for the life of the panel")
+	}
+}
+
+// installedPsiphon gives the package a bin folder with a binary and a config in it, which is all the restore at
+// boot looks for before it starts anything.
+func installedPsiphon(t *testing.T) {
+	t.Helper()
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+	if err := os.MkdirAll(psiphon.Dir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{psiphon.BinPath(), psiphon.ConfigPath()} {
+		if err := os.WriteFile(path, []byte("x"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestTheRestoreAtBootStartsTheTunnelsUnderSupervision(t *testing.T) {
+	fake := useTunnels(t, nil)
+	installedPsiphon(t)
+	svc := &PsiphonService{}
+	for _, region := range []string{"DE", "US"} {
+		if err := svc.AddCountry(region); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// DE was running when the panel stopped, US was not; the default tunnel was switched on.
+	if err := svc.setEnabled(map[string]bool{"DE": true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetPsiphonEnable(true); err != nil {
+		t.Fatal(err)
+	}
+
+	svc.autoStartCountries()
+	svc.autoStartDefault()
+
+	if !slices.Equal(fake.restored, []string{"DE"}) {
+		t.Fatalf("restored %v, want only the country that was running", fake.restored)
+	}
+	if len(fake.started) != 0 {
+		t.Fatalf("started %v with the start that the supervisor would not retry after a failure", fake.started)
+	}
+	if fake.restoredDefault != 1 {
+		t.Fatalf("the default tunnel was restored %d times, want once", fake.restoredDefault)
 	}
 }
 

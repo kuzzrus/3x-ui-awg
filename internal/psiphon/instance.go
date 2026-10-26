@@ -164,6 +164,27 @@ func (in *instance) start(now time.Time) error {
 	return nil
 }
 
+// startSupervised is start for a restore at boot: it records that the tunnel should run before it tries, so a
+// failure nobody was there to see is retried by the supervisor.
+func (in *instance) startSupervised(now time.Time) error {
+	in.lifecycle.Lock()
+	defer in.lifecycle.Unlock()
+	in.mu.Lock()
+	in.life.wanted = true
+	in.mu.Unlock()
+	started, err := in.startLocked()
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	if err != nil {
+		in.life.failed(now, err)
+		return err
+	}
+	if started {
+		in.life.started(now)
+	}
+	return nil
+}
+
 // stop takes the tunnel down and records that it is meant to stay down. A no-op when it is down already.
 func (in *instance) stop() error {
 	in.lifecycle.Lock()
@@ -174,6 +195,7 @@ func (in *instance) stop() error {
 func (in *instance) stopLocked() error {
 	in.mu.Lock()
 	in.life.wanted = false
+	in.life.lastErr = "" // a stop by the operator ends the story of an earlier failure
 	proc := in.proc
 	in.proc = nil
 	in.mu.Unlock()
