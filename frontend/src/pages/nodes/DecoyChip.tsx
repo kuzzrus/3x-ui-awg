@@ -60,7 +60,10 @@ export default function DecoyChip({ node, detailed = false }: DecoyChipProps) {
   return (
     <span className="node-decoy">
       <Tooltip title={tip}>
-        <Tag color={standing.color} icon={standing.busy ? <LoadingOutlined /> : undefined}>
+        <Tag
+          color={standing.color}
+          icon={standing.busy ? <LoadingOutlined aria-hidden /> : undefined}
+        >
           {t('pages.nodes.agent.decoyChip')}: {word}
         </Tag>
       </Tooltip>

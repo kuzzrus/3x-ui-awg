@@ -268,13 +268,13 @@ export default function PsiphonModal({
             <div style={{ display: 'flex', gap: 8 }}>
               <Button
                 type="primary"
-                icon={<DownloadOutlined />}
+                icon={<DownloadOutlined aria-hidden />}
                 loading={loading}
                 onClick={install}
               >
                 {t('pages.xray.psiphon.installButton')}
               </Button>
-              <Button icon={<ReloadOutlined />} loading={loading} onClick={fetchStatus}>
+              <Button icon={<ReloadOutlined aria-hidden />} loading={loading} onClick={fetchStatus}>
                 {t('refresh')}
               </Button>
             </div>
@@ -286,13 +286,13 @@ export default function PsiphonModal({
             <div style={{ display: 'flex', gap: 8 }}>
               <Button
                 type="primary"
-                icon={<UploadOutlined />}
+                icon={<UploadOutlined aria-hidden />}
                 loading={loading}
                 onClick={uploadConfig}
               >
                 {t('pages.xray.psiphon.uploadConfigButton')}
               </Button>
-              <Button icon={<ReloadOutlined />} loading={loading} onClick={fetchStatus}>
+              <Button icon={<ReloadOutlined aria-hidden />} loading={loading} onClick={fetchStatus}>
                 {t('refresh')}
               </Button>
             </div>
@@ -306,13 +306,18 @@ export default function PsiphonModal({
                 <Tag color="orange">{t('pages.xray.psiphon.stoppedState')}</Tag>
               )}
               {status?.running ? (
-                <Button danger icon={<PauseCircleOutlined />} loading={loading} onClick={stop}>
+                <Button
+                  danger
+                  icon={<PauseCircleOutlined aria-hidden />}
+                  loading={loading}
+                  onClick={stop}
+                >
                   {t('pages.xray.psiphon.stopButton')}
                 </Button>
               ) : (
                 <Button
                   type="primary"
-                  icon={<PlayCircleOutlined />}
+                  icon={<PlayCircleOutlined aria-hidden />}
                   loading={loading}
                   onClick={start}
                 >
@@ -320,12 +325,16 @@ export default function PsiphonModal({
                 </Button>
               )}
               <Button
-                icon={<UploadOutlined />}
+                icon={<UploadOutlined aria-hidden />}
                 loading={loading}
                 onClick={uploadConfig}
                 title={t('pages.xray.psiphon.uploadConfigButton')}
               />
-              <Button aria-label={t('refresh')} icon={<ReloadOutlined />} onClick={fetchStatus} />
+              <Button
+                aria-label={t('refresh')}
+                icon={<ReloadOutlined aria-hidden />}
+                onClick={fetchStatus}
+              />
               <Popconfirm
                 title={t('pages.xray.psiphon.uninstallConfirm')}
                 okText={t('delete')}
@@ -333,7 +342,7 @@ export default function PsiphonModal({
                 cancelText={t('cancel')}
                 onConfirm={uninstall}
               >
-                <Button danger icon={<DeleteOutlined />} loading={loading}>
+                <Button danger icon={<DeleteOutlined aria-hidden />} loading={loading}>
                   {t('pages.xray.psiphon.uninstallButton')}
                 </Button>
               </Popconfirm>
@@ -353,6 +362,7 @@ export default function PsiphonModal({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <Select
                     showSearch
+                    aria-label={t('pages.xray.psiphon.egressRegionTitle')}
                     style={{ minWidth: 220 }}
                     value={selectedRegion}
                     options={regionOptions}
@@ -362,13 +372,17 @@ export default function PsiphonModal({
                   <Button type="primary" loading={verifyLoading} onClick={applyRegion}>
                     {t('pages.xray.psiphon.applyRegionButton')}
                   </Button>
-                  <Button icon={<GlobalOutlined />} loading={verifyLoading} onClick={verify}>
+                  <Button
+                    icon={<GlobalOutlined aria-hidden />}
+                    loading={verifyLoading}
+                    onClick={verify}
+                  >
                     {t('pages.xray.psiphon.verifyButton')}
                   </Button>
                 </div>
                 <div style={{ marginTop: 8 }}>
                   {status.tunnel.connected ? (
-                    <Tag icon={<CheckCircleOutlined />} color="green">
+                    <Tag icon={<CheckCircleOutlined aria-hidden />} color="green">
                       {t('pages.xray.psiphon.tunnelConnected')}
                       {status.tunnel.serverRegion ? ` (${status.tunnel.serverRegion})` : ''}
                     </Tag>

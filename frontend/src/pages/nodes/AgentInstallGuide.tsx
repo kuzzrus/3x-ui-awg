@@ -56,7 +56,7 @@ export default function AgentInstallGuide({ pairing }: AgentInstallGuideProps) {
         onFocus={(e) => e.target.select()}
       />
       <Button
-        icon={<CopyOutlined />}
+        icon={<CopyOutlined aria-hidden />}
         style={{ marginTop: 8 }}
         onClick={() => copy(pairing?.bundle ?? '')}
       >
@@ -73,9 +73,14 @@ export default function AgentInstallGuide({ pairing }: AgentInstallGuideProps) {
           <Space orientation="vertical" size={4} style={{ width: '100%' }}>
             <span>{t('pages.nodes.agent.stepRun')}</span>
             <Space.Compact style={{ width: '100%' }}>
-              <Input readOnly value={AGENT_INSTALL_COMMAND} className="agent-bundle-text" />
+              <Input
+                readOnly
+                value={AGENT_INSTALL_COMMAND}
+                className="agent-bundle-text"
+                aria-label={t('pages.nodes.agent.stepRun')}
+              />
               <Button
-                icon={<CopyOutlined />}
+                icon={<CopyOutlined aria-hidden />}
                 aria-label={t('pages.nodes.agent.copyCommand')}
                 onClick={() => copy(AGENT_INSTALL_COMMAND)}
               />

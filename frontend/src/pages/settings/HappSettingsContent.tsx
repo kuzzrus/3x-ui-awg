@@ -80,7 +80,7 @@ export default function HappSettingsContent({
           {
             key: 'routing',
             label: catTabLabel(
-              <BranchesOutlined />,
+              <BranchesOutlined aria-hidden />,
               t('pages.settings.subHappGroupRouting'),
               isMobile,
             ),
@@ -163,7 +163,10 @@ export default function HappSettingsContent({
                       title={t('pages.settings.subHappVisualBuilder')}
                       description={t('pages.settings.subHappVisualBuilderDesc')}
                     >
-                      <Button icon={<BuildOutlined />} onClick={() => setIsModalOpen(true)}>
+                      <Button
+                        icon={<BuildOutlined aria-hidden />}
+                        onClick={() => setIsModalOpen(true)}
+                      >
                         {t('pages.settings.subHappVisualBuilder')}
                       </Button>
                     </SettingListItem>
@@ -211,7 +214,7 @@ export default function HappSettingsContent({
           {
             key: 'appearance',
             label: catTabLabel(
-              <DesktopOutlined />,
+              <DesktopOutlined aria-hidden />,
               t('pages.settings.subHappGroupThemes'),
               isMobile,
             ),
@@ -313,6 +316,7 @@ export default function HappSettingsContent({
                 >
                   <Space orientation="vertical" style={{ width: '100%' }}>
                     <Input
+                      aria-label={t('pages.settings.subHappColorProfile')}
                       value={allSetting.subHappColorProfile}
                       placeholder='{"serverRowBackgroundColor":"#21003D67"} or resetcolors'
                       onChange={(e) => updateSetting({ subHappColorProfile: e.target.value })}
@@ -355,7 +359,7 @@ export default function HappSettingsContent({
           {
             key: 'network',
             label: catTabLabel(
-              <ThunderboltOutlined />,
+              <ThunderboltOutlined aria-hidden />,
               t('pages.settings.subHappGroupNetwork'),
               isMobile,
             ),
@@ -522,7 +526,7 @@ export default function HappSettingsContent({
           {
             key: 'failover',
             label: catTabLabel(
-              <CloudSyncOutlined />,
+              <CloudSyncOutlined aria-hidden />,
               t('pages.settings.subHappGroupFailover'),
               isMobile,
             ),

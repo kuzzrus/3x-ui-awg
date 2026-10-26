@@ -37,7 +37,13 @@ export default function FrontProxyPathRoutesCard({
       className="mt-12"
       title={t('pages.settings.frontProxy.pathRoutes.title') || 'Path routing'}
       extra={
-        <Button type="primary" ghost size="small" icon={<PlusOutlined />} onClick={addRoute}>
+        <Button
+          type="primary"
+          ghost
+          size="small"
+          icon={<PlusOutlined aria-hidden />}
+          onClick={addRoute}
+        >
           {t('pages.settings.frontProxy.pathRoutes.add') || 'Add route'}
         </Button>
       }
@@ -77,6 +83,7 @@ export default function FrontProxyPathRoutesCard({
               />
               <Input
                 prefix="/"
+                aria-label={t('pages.settings.frontProxy.pathRoutes.pathPlaceholder')}
                 placeholder={
                   t('pages.settings.frontProxy.pathRoutes.pathPlaceholder') || 'cdn-path'
                 }
@@ -88,20 +95,20 @@ export default function FrontProxyPathRoutesCard({
                 disabled={idx === 0}
                 onClick={() => moveRoute(idx, -1)}
                 title={t('pages.inbounds.form.moveUp')}
-                icon={<ArrowUpOutlined />}
+                icon={<ArrowUpOutlined aria-hidden />}
               />
               <Button
                 aria-label={t('pages.inbounds.form.moveDown')}
                 disabled={idx === routes.length - 1}
                 onClick={() => moveRoute(idx, 1)}
                 title={t('pages.inbounds.form.moveDown')}
-                icon={<ArrowDownOutlined />}
+                icon={<ArrowDownOutlined aria-hidden />}
               />
               <Button
                 aria-label={t('delete')}
                 danger
                 onClick={() => removeRoute(idx)}
-                icon={<DeleteOutlined />}
+                icon={<DeleteOutlined aria-hidden />}
               />
             </Space.Compact>
           </Card>

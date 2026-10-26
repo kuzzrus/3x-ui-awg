@@ -35,7 +35,7 @@ export default function SidecarChips({ node, detailed = false }: SidecarChipsPro
             <Tooltip title={message || stateLabel}>
               <Tag
                 color={STATE_COLORS[state]}
-                icon={state === 'installing' ? <LoadingOutlined /> : undefined}
+                icon={state === 'installing' ? <LoadingOutlined aria-hidden /> : undefined}
               >
                 {label}: {stateLabel}
               </Tag>

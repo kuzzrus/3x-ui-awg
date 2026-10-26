@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/amneziawg"
+	"github.com/mhsanaei/3x-ui/v3/internal/amneziawgkern"
 	"github.com/mhsanaei/3x-ui/v3/internal/amneziawgnet"
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
@@ -192,9 +193,13 @@ func storedAmneziaWGServerKeys(oldSettings string) (priv, pub string) {
 // valid server block, generating one (fresh obfuscation params + keypair) on
 // first save and validating a manually-edited one so a bad entry can't bring
 // the interface down on the next apply. A no-op for every other protocol.
-func (s *InboundService) normalizeAmneziaWGSettings(inbound *model.Inbound, oldSettings string) error {
+func (s *InboundService) normalizeAmneziaWGSettings(inbound *model.Inbound, old *model.Inbound) error {
 	if inbound.Protocol != model.AmneziaWG {
 		return nil
+	}
+	oldSettings := ""
+	if old != nil {
+		oldSettings = old.Settings
 	}
 
 	trimmed := strings.TrimSpace(inbound.Settings)
@@ -361,6 +366,35 @@ func (s *InboundService) normalizeAmneziaWGSettings(inbound *model.Inbound, oldS
 		return err
 	}
 	inbound.Settings = string(bs)
+
+	// Host readiness gates only a save that starts the kernel datapath: a host that
+	// later loses its module must still let the admin edit, disable or switch it.
+	if parsed.Server.KernelMode && inbound.NodeID == nil {
+		inst, ok := amneziawg.InstanceFromInbound(inbound)
+		if !ok {
+			inst = amneziawg.Instance{
+				Listen:           inbound.Listen,
+				IPv6Enabled:      parsed.Server.IPv6Enabled,
+				RouteThroughXray: parsed.Server.RouteThroughXray,
+			}
+			for _, client := range parsed.Clients {
+				if client.Enable {
+					inst.Peers = append(inst.Peers, amneziawg.Peer{
+						AllowedIPs:     client.AllowedIPs,
+						ForwardedPorts: client.ForwardedPorts,
+					})
+				}
+			}
+		}
+		check := amneziawgkern.ValidateInstanceFeatures
+		wasRunningKernel := old != nil && old.Enable && amneziawgKernelModeSettings(old.Settings)
+		if inbound.Enable && !wasRunningKernel {
+			check = amneziawgkern.Preflight
+		}
+		if err := check(inst, inst.RouteThroughXray); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -447,6 +481,9 @@ func (s *InboundService) checkForwardedPortsConflict(ctx portConflictContext, fo
 		var socksPort int
 		switch ib.Protocol {
 		case model.AmneziaWG:
+			if amneziawgKernelMode(ib) {
+				continue
+			}
 			socksPort = amneziawgnet.SOCKSPortForInbound(ib.Id)
 		case model.TUIC:
 			socksPort = tuic.SOCKSPortForInbound(ib.Id)
@@ -466,7 +503,8 @@ func (s *InboundService) checkForwardedPortsConflict(ctx portConflictContext, fo
 
 // GetAmneziaWGDiagnostics returns a live diagnostics snapshot for inbound
 // id: interface up/down, listen port, and per-client handshake/traffic
-// state, read entirely from data amneziawgnet.Manager already tracks --
+// state, read from whichever datapath serves the inbound (the embedded
+// manager's own Device, or the interface of a kernel-mode inbound) --
 // gathering it can never itself change anything. Returns an error only
 // when id doesn't name an AmneziaWG inbound at all; an inbound that simply
 // isn't running right now (disabled, no enabled clients, or reconcile
@@ -485,5 +523,5 @@ func (s *InboundService) GetAmneziaWGDiagnostics(id int) (amneziawgnet.Diagnosti
 	if !ok {
 		return amneziawgnet.Diagnostics{}, nil
 	}
-	return amneziawgnet.Diagnose(inst.Id, inst.Peers), nil
+	return diagnoseAmneziaWG(inst), nil
 }

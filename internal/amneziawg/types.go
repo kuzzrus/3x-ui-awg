@@ -1,8 +1,5 @@
-// Package amneziawg manages native AmneziaWG interfaces (via awg-quick/awg,
-// the AmneziaWG DKMS kernel module's userspace tools) as sidecars to the
-// panel, the same way internal/mtproto manages mtg processes: one inbound
-// row maps to one desired Instance, and a Manager reconciles the running
-// interfaces toward whatever the database currently wants.
+// Package amneziawg holds AmneziaWG's DB-backed shapes and derives an Instance from an inbound row, with no OS
+// dependency; internal/amneziawgnet (embedded, default) and internal/amneziawgkern (opt-in kernel module) run it.
 package amneziawg
 
 import "github.com/mhsanaei/3x-ui/v3/internal/database/model"
@@ -81,6 +78,10 @@ type Instance struct {
 	Address []string
 	MTU     int
 
+	// Obfuscation is the whole parameter set, the 3.x device-wide fields
+	// included (internal/amneziawgkern renders it as one block). The flat
+	// copies below are what internal/amneziawgnet's DeviceOptions are built
+	// from; InstanceFromInbound fills both from the same ServerSettings.
 	Obfuscation Obfuscation20
 
 	// HeaderProtectionKey and ContentPaddingAddition are AmneziaWG 3.0's
@@ -164,10 +165,15 @@ type Instance struct {
 	// has no equivalent opt-in at all -- every peer's traffic already goes
 	// through Xray's own SOCKS5 inbound unconditionally, since there's no
 	// other way for decapsulated gVisor traffic to reach the real internet
-	// -- so this field is now vestigial: read from existing stored settings
-	// for backward compatibility, but not acted on by anything. Slated for
-	// removal alongside the frontend toggle in a follow-up.
+	// -- so it ignores this field. The kernel datapath
+	// (internal/amneziawgkern) cannot route into Xray at all: its preflight
+	// refuses a kernel-mode inbound while this is set, and a value that was
+	// persisted anyway leaves its NAT and FORWARD rules out.
 	RouteThroughXray bool
+
+	// KernelMode selects internal/amneziawgkern over internal/amneziawgnet as
+	// this inbound's datapath. See ServerSettings.KernelMode.
+	KernelMode bool
 }
 
 // ServerSettings is the "server" block of an AmneziaWG inbound's Settings
@@ -184,18 +190,18 @@ type ServerSettings struct {
 
 	// PrimaryDNS/SecondaryDNS seed the DNS line of downloadable client
 	// configs; the server's own interface never sets one (see BuildClientConfig).
-	PrimaryDNS   string `json:"primaryDns,omitempty"`
-	SecondaryDNS string `json:"secondaryDns,omitempty"`
+	// Blank is meaningful, so no omitempty: a dropped key resurrects frontend defaults.
+	PrimaryDNS   string `json:"primaryDns"`
+	SecondaryDNS string `json:"secondaryDns"`
 
 	// ExternalInterface, IPv6Enabled, and IPv6ExternalInterface are live
 	// again as of Phase 3.5 -- see the matching fields on Instance for what
 	// they gate (internal/amneziawgnet's IPv6-address-alias mechanism).
 	// IPv6Subnet was never actually vestigial either: InstanceFromInbound
 	// already consumes it (via serverAddressV6) to build the server's own
-	// tunnel address, same as always. Only RouteThroughXray, below, remains
-	// genuinely vestigial as of the hard cutover to the embedded path
-	// (internal/amneziawgnet) -- read from existing stored settings for
-	// backward compatibility, but not acted on by anything.
+	// tunnel address, same as always. RouteThroughXray, below, is acted on
+	// only by the kernel datapath, as a refusal (see Instance.RouteThroughXray);
+	// the embedded path (internal/amneziawgnet) ignores it.
 	ExternalInterface string `json:"externalInterface,omitempty"`
 
 	IPv6Enabled           bool   `json:"ipv6Enabled,omitempty"`
@@ -203,6 +209,10 @@ type ServerSettings struct {
 	IPv6ExternalInterface string `json:"ipv6ExternalInterface,omitempty"`
 
 	RouteThroughXray bool `json:"routeThroughXray,omitempty"`
+
+	// KernelMode runs this inbound on the AmneziaWG kernel module (internal/amneziawgkern)
+	// instead of the embedded amneziawg-go + gVisor stack.
+	KernelMode bool `json:"kernelMode,omitempty"`
 
 	// Obfuscation20's fields, repeated flat (not embedded) rather than
 	// nested under their own key: encoding/json would happily inline an
@@ -283,6 +293,24 @@ func (s ServerSettings) Obfuscation() Obfuscation20 {
 		H1: s.H1, H2: s.H2, H3: s.H3, H4: s.H4,
 		I1: s.I1, I2: s.I2, I3: s.I3, I4: s.I4, I5: s.I5,
 	}
+}
+
+// fullObfuscation is Obfuscation() plus the 3.x device-wide fields, which the
+// wire format keeps flat beside it. It is the shape upstream's
+// internal/amneziawgkern renders as one block, and what Instance.Obfuscation
+// holds; the validators keep taking the 2.0-only Obfuscation().
+func (s ServerSettings) fullObfuscation() Obfuscation20 {
+	o := s.Obfuscation()
+	o.HeaderProtectionKey = s.HeaderProtectionKey
+	o.ContentPaddingAddition = s.ContentPaddingAddition
+	o.RekeyAfterTime = s.RekeyAfterTime
+	o.RekeyTimeout = s.RekeyTimeout
+	o.RejectAfterTime = s.RejectAfterTime
+	o.KeepaliveTimeout = s.KeepaliveTimeout
+	o.MaxHandshakeAttempts = s.MaxHandshakeAttempts
+	o.RandomTrailers = s.RandomTrailers
+	o.DisableCookies = s.DisableCookies
+	return o
 }
 
 // InboundSettings is the full Settings JSON shape stored on an AmneziaWG

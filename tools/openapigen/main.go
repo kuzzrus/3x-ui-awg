@@ -51,7 +51,11 @@ func run(root, outDir string) error {
 					{Field: "StreamSettings", Kind: KindAny},
 					{Field: "Sniffing", Kind: KindAny},
 				},
+				"Client": {
+					{Field: "KeepAlive", Type: TypeRef{Kind: KindUnion, Variants: []TypeRef{{Kind: KindInt}, {Kind: KindString}}}},
+				},
 				"ClientRecord": {
+					{Field: "KeepAlive", Type: TypeRef{Kind: KindUnion, Variants: []TypeRef{{Kind: KindInt}, {Kind: KindString}}}},
 					{Field: "Reverse", Kind: KindAny},
 				},
 				"InboundClientIps": {
@@ -126,8 +130,17 @@ func run(root, outDir string) error {
 			StructAllow: setOf("ApiTokenView", "PanelUpdateStatus"),
 		},
 		{
+			Path:        resolveRel(root, "internal/web/controller"),
+			StructAllow: setOf("TgBotCapabilities"),
+		},
+		{
 			Path:        resolveRel(root, "internal/amneziawg"),
 			StructAllow: setOf("ServerSettings"),
+		},
+		{
+			Path:        resolveRel(root, "internal/amneziawgkern"),
+			StructAllow: setOf("Readiness", "Blocker"),
+			AliasAllow:  setOf("BlockerCode"),
 		},
 		{
 			Path:        resolveRel(root, "internal/tuic"),

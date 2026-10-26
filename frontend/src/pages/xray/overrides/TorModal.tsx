@@ -182,13 +182,13 @@ export default function TorModal({
             <div style={{ display: 'flex', gap: 8 }}>
               <Button
                 type="primary"
-                icon={<DownloadOutlined />}
+                icon={<DownloadOutlined aria-hidden />}
                 loading={loading}
                 onClick={install}
               >
                 {t('pages.xray.tor.installButton')}
               </Button>
-              <Button icon={<ReloadOutlined />} loading={loading} onClick={fetchStatus}>
+              <Button icon={<ReloadOutlined aria-hidden />} loading={loading} onClick={fetchStatus}>
                 {t('refresh')}
               </Button>
             </div>
@@ -214,20 +214,29 @@ export default function TorModal({
                 <Tag color="orange">{t('pages.xray.tor.stoppedState')}</Tag>
               )}
               {status?.running ? (
-                <Button danger icon={<PauseCircleOutlined />} loading={loading} onClick={stop}>
+                <Button
+                  danger
+                  icon={<PauseCircleOutlined aria-hidden />}
+                  loading={loading}
+                  onClick={stop}
+                >
                   {t('pages.xray.tor.stopButton')}
                 </Button>
               ) : (
                 <Button
                   type="primary"
-                  icon={<PlayCircleOutlined />}
+                  icon={<PlayCircleOutlined aria-hidden />}
                   loading={loading}
                   onClick={start}
                 >
                   {t('pages.xray.tor.startButton')}
                 </Button>
               )}
-              <Button aria-label={t('refresh')} icon={<ReloadOutlined />} onClick={fetchStatus} />
+              <Button
+                aria-label={t('refresh')}
+                icon={<ReloadOutlined aria-hidden />}
+                onClick={fetchStatus}
+              />
               <Popconfirm
                 title={t('pages.xray.tor.uninstallConfirm')}
                 okText={t('delete')}
@@ -235,7 +244,7 @@ export default function TorModal({
                 cancelText={t('cancel')}
                 onConfirm={uninstall}
               >
-                <Button danger icon={<DeleteOutlined />} loading={loading}>
+                <Button danger icon={<DeleteOutlined aria-hidden />} loading={loading}>
                   {t('pages.xray.tor.uninstallButton')}
                 </Button>
               </Popconfirm>
@@ -248,10 +257,18 @@ export default function TorModal({
               <>
                 <Divider className="my-10">{t('pages.xray.tor.exitIpTitle')}</Divider>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <Button icon={<GlobalOutlined />} loading={ipLoading} onClick={checkIp}>
+                  <Button
+                    icon={<GlobalOutlined aria-hidden />}
+                    loading={ipLoading}
+                    onClick={checkIp}
+                  >
                     {t('pages.xray.tor.checkIpButton')}
                   </Button>
-                  <Button icon={<SwapOutlined />} loading={loading} onClick={newIdentity}>
+                  <Button
+                    icon={<SwapOutlined aria-hidden />}
+                    loading={loading}
+                    onClick={newIdentity}
+                  >
                     {t('pages.xray.tor.newIdentityButton')}
                   </Button>
                   {exitIp && <Tag color={exitIp.isTor ? 'green' : 'red'}>{exitIp.ip}</Tag>}

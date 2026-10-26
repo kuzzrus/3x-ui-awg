@@ -67,6 +67,9 @@ const (
 // Status represents comprehensive system and application status information.
 // It includes CPU, memory, disk, network statistics, and Xray process status.
 type Status struct {
+	ResourceScope      string   `json:"resourceScope,omitempty"`
+	UnavailableMetrics []string `json:"unavailableMetrics,omitempty"`
+
 	T           time.Time `json:"-"`
 	Cpu         float64   `json:"cpu"`
 	CpuCores    int       `json:"cpuCores"`
@@ -144,13 +147,17 @@ type Release struct {
 // ServerService provides business logic for server monitoring and management.
 // It handles system status collection, IP detection, and application statistics.
 type ServerService struct {
+	lxcMetrics sys.LXCReader
+
 	xrayService        XrayService
 	inboundService     InboundService
 	settingService     SettingService
 	cachedIPv4         string
 	cachedIPv6         string
-	noIPv6             bool
-	resolvingIPs       bool
+	nextIPv4Lookup     time.Time
+	nextIPv6Lookup     time.Time
+	ipv6RetryInterval  time.Duration
+	publicIPLookupDone chan struct{}
 	mu                 sync.Mutex
 	lastCPUTimes       cpu.TimesStat
 	hasLastCPUSample   bool
@@ -359,7 +366,7 @@ func (s *ServerService) GetDefaultLogOutboundTags() (freedoms, blackholes []stri
 // Kept for back-compat with the original /panel/api/server/cpuHistory/:bucket route;
 // the response key is "cpu" (not "v") so legacy consumers parse unchanged.
 func (s *ServerService) AggregateCpuHistory(bucketSeconds int, maxPoints int) []map[string]any {
-	out := systemMetrics.aggregate("cpu", bucketSeconds, maxPoints)
+	out := systemMetrics.aggregate(s.systemMetricKey("cpu"), bucketSeconds, maxPoints)
 	for _, p := range out {
 		p["cpu"] = p["v"]
 		delete(p, "v")
@@ -371,7 +378,7 @@ func (s *ServerService) AggregateCpuHistory(bucketSeconds int, maxPoints int) []
 // known system metric (see SystemMetricKeys). Output points have keys
 // {"t": unixSec, "v": value}; the caller decides how to format the value.
 func (s *ServerService) AggregateSystemMetric(metric string, bucketSeconds int, maxPoints int) []map[string]any {
-	return systemMetrics.aggregate(metric, bucketSeconds, maxPoints)
+	return systemMetrics.aggregate(s.systemMetricKey(metric), bucketSeconds, maxPoints)
 }
 
 type LogEntry struct {
@@ -451,35 +458,41 @@ var publicIPv6Services = []string{
 	"https://6.ident.me",
 }
 
-// resolvePublicIPs caches the public IPv4/IPv6 addresses on first use. The
-// lookups run outside s.mu so a stalling service cannot block a status sample.
+const (
+	publicIPRefreshInterval = 5 * time.Minute
+	publicIPRetryInterval   = time.Minute
+)
+
+// resolvePublicIPs waits for the initial lookup so cold backups can use it.
+// Warm callers use cached addresses while a refresh runs in the background.
 func (s *ServerService) resolvePublicIPs() {
-	s.mu.Lock()
-	wantIPv4 := s.cachedIPv4 == ""
-	wantIPv6 := s.cachedIPv6 == "" && !s.noIPv6
-	s.mu.Unlock()
-	if !wantIPv4 && !wantIPv6 {
-		return
+	ipv4, ipv6 := s.publicIPs()
+	if done := s.resolvePublicIPsInBackground(); done != nil && ipv4 == "" && ipv6 == "" {
+		<-done
 	}
+}
 
-	var ipv4, ipv6 string
-	if wantIPv4 {
-		ipv4 = firstPublicIP(publicIPv4Services)
+// refreshedPublicIP retains a known address through temporary lookup failures.
+func refreshedPublicIP(cached, fetched string, now time.Time) (string, time.Time) {
+	if fetched != "" && fetched != "N/A" {
+		return fetched, now.Add(publicIPRefreshInterval)
 	}
-	if wantIPv6 {
-		ipv6 = firstPublicIP(publicIPv6Services)
+	if cached == "" {
+		cached = "N/A"
 	}
+	return cached, now.Add(publicIPRetryInterval)
+}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if wantIPv4 && s.cachedIPv4 == "" {
-		s.cachedIPv4 = ipv4
-	}
-	if wantIPv6 && s.cachedIPv6 == "" {
-		s.cachedIPv6 = ipv6
-	}
-	if s.cachedIPv6 == "N/A" {
-		s.noIPv6 = true
+func nextPublicIPv6RetryInterval(previous time.Duration) time.Duration {
+	switch {
+	case previous < time.Minute:
+		return time.Minute
+	case previous < 2*time.Minute:
+		return 2 * time.Minute
+	case previous < 5*time.Minute:
+		return 5 * time.Minute
+	default:
+		return 15 * time.Minute
 	}
 }
 
@@ -496,26 +509,53 @@ func firstPublicIP(services []string) string {
 	return ip
 }
 
-// resolvePublicIPsInBackground keeps a status sample off the lookup path: a box
-// with no IPv6 route spends 3s per service, and the sample is what nodes report.
-func (s *ServerService) resolvePublicIPsInBackground() {
+// resolvePublicIPsInBackground shares one lookup without blocking status samples.
+// Each address family has its own deadline; cached values stay readable.
+func (s *ServerService) resolvePublicIPsInBackground() <-chan struct{} {
 	s.mu.Lock()
-	settled := s.cachedIPv4 != "" && (s.cachedIPv6 != "" || s.noIPv6)
-	if s.resolvingIPs || settled {
+	if done := s.publicIPLookupDone; done != nil {
 		s.mu.Unlock()
-		return
+		return done
 	}
-	s.resolvingIPs = true
+	now := time.Now()
+	wantIPv4 := !now.Before(s.nextIPv4Lookup)
+	wantIPv6 := !now.Before(s.nextIPv6Lookup)
+	if !wantIPv4 && !wantIPv6 {
+		s.mu.Unlock()
+		return nil
+	}
+	done := make(chan struct{})
+	s.publicIPLookupDone = done
 	s.mu.Unlock()
 
 	go func() {
-		defer func() {
-			s.mu.Lock()
-			s.resolvingIPs = false
-			s.mu.Unlock()
-		}()
-		s.resolvePublicIPs()
+		var ipv4, ipv6 string
+		if wantIPv4 {
+			ipv4 = firstPublicIP(publicIPv4Services)
+		}
+		if wantIPv6 {
+			ipv6 = firstPublicIP(publicIPv6Services)
+		}
+
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		now := time.Now()
+		if wantIPv4 {
+			s.cachedIPv4, s.nextIPv4Lookup = refreshedPublicIP(s.cachedIPv4, ipv4, now)
+		}
+		if wantIPv6 {
+			s.cachedIPv6, s.nextIPv6Lookup = refreshedPublicIP(s.cachedIPv6, ipv6, now)
+			if ipv6 != "" && ipv6 != "N/A" {
+				s.ipv6RetryInterval = 0
+			} else {
+				s.ipv6RetryInterval = nextPublicIPv6RetryInterval(s.ipv6RetryInterval)
+				s.nextIPv6Lookup = now.Add(s.ipv6RetryInterval)
+			}
+		}
+		s.publicIPLookupDone = nil
+		close(done)
 	}()
+	return done
 }
 
 func (s *ServerService) publicIPs() (ipv4 string, ipv6 string) {
@@ -530,53 +570,61 @@ func (s *ServerService) GetStatus(lastStatus *Status) *Status {
 		T: now,
 	}
 
-	// CPU stats
-	util, err := s.sampleCPUUtilization()
-	if err != nil {
-		logger.Warning("get cpu percent failed:", err)
+	scoped, scopeErr := s.lxcMetrics.Read(now)
+	if scopeErr != nil {
+		logger.Warning("get scoped metrics failed:", scopeErr)
+	}
+	if scoped != nil {
+		applyLXCStats(status, scoped)
 	} else {
-		status.Cpu = util
-	}
-
-	status.CpuCores, err = cpu.Counts(false)
-	if err != nil {
-		logger.Warning("get cpu cores count failed:", err)
-	}
-
-	status.LogicalPro = runtime.NumCPU()
-
-	if status.CpuSpeedMhz = s.cachedCpuSpeedMhz; s.cachedCpuSpeedMhz == 0 && time.Since(s.lastCpuInfoAttempt) > 5*time.Minute {
-		s.lastCpuInfoAttempt = time.Now()
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			cpuInfos, err := cpu.Info()
-			if err != nil {
-				logger.Warning("get cpu info failed:", err)
-				return
-			}
-			if len(cpuInfos) > 0 {
-				s.cachedCpuSpeedMhz = cpuInfos[0].Mhz
-				status.CpuSpeedMhz = s.cachedCpuSpeedMhz
-			} else {
-				logger.Warning("could not find cpu info")
-			}
-		}()
-		select {
-		case <-done:
-		case <-time.After(1500 * time.Millisecond):
-			logger.Warning("cpu info query timed out; will retry later")
+		// CPU stats
+		util, err := s.sampleCPUUtilization()
+		if err != nil {
+			logger.Warning("get cpu percent failed:", err)
+		} else {
+			status.Cpu = util
 		}
-	} else if s.cachedCpuSpeedMhz != 0 {
-		status.CpuSpeedMhz = s.cachedCpuSpeedMhz
-	}
 
-	// Uptime
-	upTime, err := host.Uptime()
-	if err != nil {
-		logger.Warning("get uptime failed:", err)
-	} else {
-		status.Uptime = upTime
+		status.CpuCores, err = cpu.Counts(false)
+		if err != nil {
+			logger.Warning("get cpu cores count failed:", err)
+		}
+
+		status.LogicalPro = runtime.NumCPU()
+
+		if status.CpuSpeedMhz = s.cachedCpuSpeedMhz; s.cachedCpuSpeedMhz == 0 && time.Since(s.lastCpuInfoAttempt) > 5*time.Minute {
+			s.lastCpuInfoAttempt = time.Now()
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				cpuInfos, err := cpu.Info()
+				if err != nil {
+					logger.Warning("get cpu info failed:", err)
+					return
+				}
+				if len(cpuInfos) > 0 {
+					s.cachedCpuSpeedMhz = cpuInfos[0].Mhz
+					status.CpuSpeedMhz = s.cachedCpuSpeedMhz
+				} else {
+					logger.Warning("could not find cpu info")
+				}
+			}()
+			select {
+			case <-done:
+			case <-time.After(1500 * time.Millisecond):
+				logger.Warning("cpu info query timed out; will retry later")
+			}
+		} else if s.cachedCpuSpeedMhz != 0 {
+			status.CpuSpeedMhz = s.cachedCpuSpeedMhz
+		}
+
+		// Uptime
+		upTime, err := host.Uptime()
+		if err != nil {
+			logger.Warning("get uptime failed:", err)
+		} else {
+			status.Uptime = upTime
+		}
 	}
 
 	// Memory stats
@@ -588,12 +636,14 @@ func (s *ServerService) GetStatus(lastStatus *Status) *Status {
 		status.Mem.Total = memInfo.Total
 	}
 
-	swapInfo, err := mem.SwapMemory()
-	if err != nil {
-		logger.Warning("get swap memory failed:", err)
-	} else {
-		status.Swap.Current = swapInfo.Used
-		status.Swap.Total = swapInfo.Total
+	if scoped == nil {
+		swapInfo, err := mem.SwapMemory()
+		if err != nil {
+			logger.Warning("get swap memory failed:", err)
+		} else {
+			status.Swap.Current = swapInfo.Used
+			status.Swap.Total = swapInfo.Total
+		}
 	}
 
 	// Disk stats
@@ -711,7 +761,7 @@ func (s *ServerService) GetStatus(lastStatus *Status) *Status {
 		logger.Warning("count amneziawg inbounds failed:", err)
 	}
 	status.AmneziaWG.Configured = amneziawgCount > 0
-	status.AmneziaWG.Running = amneziawgnet.GetManager().HasRunning()
+	status.AmneziaWG.Running = amneziawgRunning()
 
 	status.PanelVersion = config.GetPanelVersion()
 	if guid, err := s.settingService.GetPanelGuid(); err == nil {
@@ -739,7 +789,7 @@ func (s *ServerService) GetStatus(lastStatus *Status) *Status {
 // AppendCpuSample is preserved for callers that only have the CPU number.
 // New callers should prefer AppendStatusSample which writes the full set.
 func (s *ServerService) AppendCpuSample(t time.Time, v float64) {
-	systemMetrics.append("cpu", t, v)
+	systemMetrics.append(s.systemMetricKey("cpu"), t, v)
 }
 
 // AppendStatusSample writes one tick of every metric we keep — CPU, memory
@@ -750,14 +800,14 @@ func (s *ServerService) AppendStatusSample(t time.Time, status *Status) {
 	if status == nil {
 		return
 	}
-	systemMetrics.append("cpu", t, status.Cpu)
+	appendScopedMetric(status, "cpu", t, status.Cpu)
 	if status.Mem.Total > 0 {
 		systemMetrics.append("mem", t, float64(status.Mem.Current)*100.0/float64(status.Mem.Total))
 	}
 	if status.Swap.Total > 0 {
-		systemMetrics.append("swap", t, float64(status.Swap.Current)*100.0/float64(status.Swap.Total))
+		appendScopedMetric(status, "swap", t, float64(status.Swap.Current)*100.0/float64(status.Swap.Total))
 	} else {
-		systemMetrics.append("swap", t, 0)
+		appendScopedMetric(status, "swap", t, 0)
 	}
 	systemMetrics.append("netUp", t, float64(status.NetIO.Up))
 	systemMetrics.append("netDown", t, float64(status.NetIO.Down))
@@ -1335,9 +1385,9 @@ func parseAccessLogFields(line string) LogEntry {
 	return entry
 }
 
-// PeerActivity is one peer's live embedded-Device-reported state, the
-// counterpart of an Xray access-log entry: a tunnel logs no requests, only
-// handshakes and bytes.
+// PeerActivity is one peer's live state as reported by the datapath serving
+// its inbound, the counterpart of an Xray access-log entry: a tunnel logs no
+// requests, only handshakes and bytes.
 type PeerActivity struct {
 	Interface  string `json:"interface" example:"awg1"`
 	Tag        string `json:"tag" example:"inbound-51820"`
@@ -1358,9 +1408,9 @@ type PeerActivity struct {
 const amneziawgOnlineWindow = 180 * time.Second
 
 // AmneziaWGLogs is what the overview's AmneziaWG log view renders: the live
-// per-peer activity of every running embedded interface, plus the panel's
-// own recent AmneziaWG lifecycle log lines that explain a peer being absent
-// from Peers at all.
+// per-peer activity of every running AmneziaWG interface, on either datapath,
+// plus the panel's own recent AmneziaWG lifecycle log lines that explain a
+// peer being absent from Peers at all.
 type AmneziaWGLogs struct {
 	Peers   []PeerActivity `json:"peers"`
 	Events  []string       `json:"events" example:"[\"2025/01/01 12:00:00 amneziawg: started interface awg1 for inbound 1\"]"`
@@ -1395,16 +1445,10 @@ func amneziawgEmailIndex(inbounds []*model.Inbound) map[string]string {
 }
 
 // amneziawgEventMarker selects the panel's own AmneziaWG log lines: every
-// logger call in internal/amneziawg, internal/amneziawgnet and their jobs
-// prefixes its message with it.
+// logger call in internal/amneziawg, internal/amneziawgnet,
+// internal/amneziawgkern and their jobs prefixes its message with it.
 const amneziawgEventMarker = "amneziawg"
 
-// amneziawgLogActivity gathers live PeerActivity rows across every enabled,
-// non-node-hosted AmneziaWG inbound, newest handshake first. An inbound
-// amneziawgnet has no running Device for yet (not reconciled, disabled,
-// errored) contributes no rows -- not reported as an error, since the
-// caller (GetAmneziaWGLogs) already has a device-agnostic Running flag from
-// amneziawgnet.GetManager().HasRunning() for that.
 // clampUint64ToInt64 saturates at math.MaxInt64 instead of wrapping negative,
 // for a live uint64 byte counter (amneziawgnet's own UAPI-dump snapshot, not
 // a DB-accumulated total) going into an int64 API field -- unreachable in
@@ -1417,7 +1461,17 @@ func clampUint64ToInt64(v uint64) int64 {
 	return int64(v)
 }
 
+// amneziawgLogActivity gathers live PeerActivity rows across every enabled,
+// non-node-hosted AmneziaWG inbound, newest handshake first, from whichever
+// datapath serves each one. An inbound whose datapath is not running (not
+// reconciled, disabled, errored) contributes no rows -- not reported as an
+// error, since the caller (GetAmneziaWGLogs) already has a device-agnostic
+// Running flag for that.
 func amneziawgLogActivity() []PeerActivity {
+	return amneziawgLogActivityWith(diagnoseAmneziaWG)
+}
+
+func amneziawgLogActivityWith(diagnose func(amneziawg.Instance) amneziawgnet.Diagnostics) []PeerActivity {
 	var inbounds []*model.Inbound
 	if err := database.GetDB().
 		Where("protocol = ? AND enable = ? AND node_id IS NULL", model.AmneziaWG, true).
@@ -1433,7 +1487,7 @@ func amneziawgLogActivity() []PeerActivity {
 		if !ok {
 			continue
 		}
-		diag := amneziawgnet.Diagnose(inbound.Id, inst.Peers)
+		diag := diagnose(inst)
 		if !diag.Running {
 			continue
 		}
@@ -1445,7 +1499,7 @@ func amneziawgLogActivity() []PeerActivity {
 				online = now.Sub(cd.LastHandshake) < amneziawgOnlineWindow
 			}
 			out = append(out, PeerActivity{
-				Interface:  inst.InterfaceName,
+				Interface:  amneziawgInterfaceName(inst),
 				Tag:        inbound.Tag,
 				InboundId:  inbound.Id,
 				Email:      cd.Email,
@@ -1477,7 +1531,11 @@ func (s *ServerService) GetAmneziaWGLogs(count string, filter string) *AmneziaWG
 	}
 	needle := strings.ToLower(strings.TrimSpace(filter))
 
-	logs := &AmneziaWGLogs{Peers: []PeerActivity{}, Events: []string{}, Running: amneziawgnet.GetManager().HasRunning()}
+	logs := &AmneziaWGLogs{
+		Peers:   []PeerActivity{},
+		Events:  []string{},
+		Running: amneziawgRunning(),
+	}
 
 	for _, peer := range amneziawgLogActivity() {
 		if len(logs.Peers) >= limit {

@@ -96,12 +96,7 @@ describe('generateAwgObfuscation', () => {
 describe('AmneziawgServerSchema parity with generated ServerSettings', () => {
   it('declares exactly the generated key set', () => {
     const handwritten = Object.keys(AmneziawgServerSchema.shape).sort();
-    // routeThroughXray is deliberately absent -- see AmneziawgServerSchema's
-    // own doc comment: vestigial on the Go side too, omitted so stripping
-    // unknown keys quietly drops it from stored settings on the next save.
-    const generated = Object.keys(ServerSettingsSchema.shape)
-      .filter((key) => key !== 'routeThroughXray')
-      .sort();
+    const generated = Object.keys(ServerSettingsSchema.shape).sort();
     expect(handwritten).toEqual(generated);
   });
 });

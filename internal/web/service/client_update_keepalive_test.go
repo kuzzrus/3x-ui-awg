@@ -46,8 +46,8 @@ func seedKeepAliveClient(t *testing.T, email string, keepAlive int) (*model.Inbo
 	return ib, lookupClientRecord(t, email).Id
 }
 
-// Before KeepAlive became a pointer, an explicit 0 was indistinguishable
-// from "omitted" and got silently restored from the stored value instead.
+// Carrying forward on a zero incoming keepalive was a 0 -> 0 no-op while no UI
+// could set the field; once the client form could, "0 disables it" was unreachable.
 func TestUpdateCanClearKeepAliveOnAnExistingClient(t *testing.T) {
 	setupBulkDB(t)
 	inboundSvc := &InboundService{}
@@ -71,13 +71,13 @@ func TestUpdateCanClearKeepAliveOnAnExistingClient(t *testing.T) {
 	if got := inboundKeepAlive(t, inboundSvc, ib.Id, "ka@x"); got != 0 {
 		t.Fatalf("inbound keepAlive after an explicit 0 = %d, want 0", got)
 	}
-	if got := lookupClientRecord(t, "ka@x").KeepAlive; got != 0 {
-		t.Fatalf("stored wg_keep_alive after an explicit 0 = %d, want 0", got)
+	if got := lookupClientRecord(t, "ka@x").KeepAlive.String(); got != "0" {
+		t.Fatalf("stored wg_keep_alive after an explicit 0 = %s, want 0", got)
 	}
 }
 
-// The other half of the contract: omitting keepAlive (e.g. a metadata-only
-// edit) must leave the stored value alone, via UpdateInboundClient's nil check.
+// The other half of the contract: a payload that never mentions keepAlive (a
+// metadata-only edit from the bot or the API) leaves the stored value alone.
 func TestUpdateWithoutKeepAlivePreservesTheStoredValue(t *testing.T) {
 	setupBulkDB(t)
 	inboundSvc := &InboundService{}
@@ -97,8 +97,8 @@ func TestUpdateWithoutKeepAlivePreservesTheStoredValue(t *testing.T) {
 	if got := inboundKeepAlive(t, inboundSvc, ib.Id, "ka@x"); got != 25 {
 		t.Fatalf("inbound keepAlive after an edit that omitted it = %d, want 25", got)
 	}
-	if got := lookupClientRecord(t, "ka@x").KeepAlive; got != 25 {
-		t.Fatalf("stored wg_keep_alive after an edit that omitted it = %d, want 25", got)
+	if got := lookupClientRecord(t, "ka@x").KeepAlive.String(); got != "25" {
+		t.Fatalf("stored wg_keep_alive after an edit that omitted it = %s, want 25", got)
 	}
 }
 
@@ -114,7 +114,7 @@ func TestUpdateWithoutInboundPreservesKeepAliveOnMetadataOnlyEdit(t *testing.T) 
 		UUID:       "33333333-3333-3333-3333-333333333333",
 		SubID:      "ka-noib@x",
 		AllowedIPs: "10.0.0.6/32",
-		KeepAlive:  30,
+		KeepAlive:  "30",
 	}
 	if err := database.GetDB().Create(rec).Error; err != nil {
 		t.Fatalf("create record: %v", err)
@@ -127,7 +127,7 @@ func TestUpdateWithoutInboundPreservesKeepAliveOnMetadataOnlyEdit(t *testing.T) 
 		t.Fatalf("Update: %v", err)
 	}
 
-	if got := lookupClientRecord(t, "ka-noib@x").KeepAlive; got != 30 {
-		t.Fatalf("stored wg_keep_alive after a no-inbound metadata-only edit = %d, want 30", got)
+	if got := lookupClientRecord(t, "ka-noib@x").KeepAlive; got != "30" {
+		t.Fatalf("stored keepAlive after a no-inbound metadata-only edit = %q, want 30", got)
 	}
 }

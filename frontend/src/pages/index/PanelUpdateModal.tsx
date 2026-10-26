@@ -151,7 +151,12 @@ export default function PanelUpdateModal({
         <div className="version-list">
           <div className="version-list-item">
             <span>{t('pages.index.devChannel')}</span>
-            <Switch checked={!!devChannelEnable} loading={channelBusy} onChange={handleChannel} />
+            <Switch
+              aria-label={t('pages.index.devChannel')}
+              checked={!!devChannelEnable}
+              loading={channelBusy}
+              onChange={handleChannel}
+            />
           </div>
         </div>
 
@@ -216,7 +221,7 @@ export default function PanelUpdateModal({
             type="primary"
             disabled={!info.updateAvailable}
             onClick={updatePanel}
-            icon={<CloudDownloadOutlined />}
+            icon={<CloudDownloadOutlined aria-hidden />}
           >
             {t('pages.index.updatePanel')}
           </Button>

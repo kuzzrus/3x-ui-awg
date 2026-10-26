@@ -28,11 +28,12 @@ interface AwgDiagnosticsModalProps {
   inboundId: number;
 }
 
-// Read-only snapshot of one embedded AmneziaWG inbound's live state --
-// interface up/down, listen port, and each configured client's real
-// handshake/traffic status straight from the running amneziawg-go Device's
-// own UAPI dump. Fetched fresh every time the modal opens (no polling --
-// this is a point-in-time check, not a live dashboard).
+// Read-only snapshot of one AmneziaWG inbound's live state -- interface
+// up/down, listen port, and each configured client's real handshake/traffic
+// status, read from the datapath serving the inbound (the embedded
+// amneziawg-go Device's own UAPI dump, or `awg show` for a kernel-mode
+// inbound). Fetched fresh every time the modal opens (no polling -- this is
+// a point-in-time check, not a live dashboard).
 export default function AwgDiagnosticsModal({
   open,
   onClose,

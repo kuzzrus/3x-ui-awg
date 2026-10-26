@@ -183,11 +183,11 @@ export default function WireproxyModal({
                 cancelText={t('cancel')}
                 onConfirm={install}
               >
-                <Button type="primary" icon={<DownloadOutlined />} loading={loading}>
+                <Button type="primary" icon={<DownloadOutlined aria-hidden />} loading={loading}>
                   {t('pages.xray.wireproxy.installButton')}
                 </Button>
               </Popconfirm>
-              <Button icon={<ReloadOutlined />} loading={loading} onClick={fetchStatus}>
+              <Button icon={<ReloadOutlined aria-hidden />} loading={loading} onClick={fetchStatus}>
                 {t('refresh')}
               </Button>
             </div>
@@ -201,23 +201,32 @@ export default function WireproxyModal({
                 <Tag color="orange">{t('pages.xray.wireproxy.stoppedState')}</Tag>
               )}
               {status?.service.active ? (
-                <Button danger icon={<PauseCircleOutlined />} loading={loading} onClick={stop}>
+                <Button
+                  danger
+                  icon={<PauseCircleOutlined aria-hidden />}
+                  loading={loading}
+                  onClick={stop}
+                >
                   {t('pages.xray.wireproxy.stopButton')}
                 </Button>
               ) : (
                 <Button
                   type="primary"
-                  icon={<PlayCircleOutlined />}
+                  icon={<PlayCircleOutlined aria-hidden />}
                   loading={loading}
                   onClick={start}
                 >
                   {t('pages.xray.wireproxy.startButton')}
                 </Button>
               )}
-              <Button icon={<SyncOutlined />} loading={repairLoading} onClick={repair}>
+              <Button icon={<SyncOutlined aria-hidden />} loading={repairLoading} onClick={repair}>
                 {t('pages.xray.wireproxy.repairButton')}
               </Button>
-              <Button aria-label={t('refresh')} icon={<ReloadOutlined />} onClick={fetchStatus} />
+              <Button
+                aria-label={t('refresh')}
+                icon={<ReloadOutlined aria-hidden />}
+                onClick={fetchStatus}
+              />
               <Popconfirm
                 title={t('pages.xray.wireproxy.uninstallConfirm')}
                 okText={t('delete')}
@@ -225,7 +234,7 @@ export default function WireproxyModal({
                 cancelText={t('cancel')}
                 onConfirm={uninstall}
               >
-                <Button danger icon={<DeleteOutlined />} loading={loading}>
+                <Button danger icon={<DeleteOutlined aria-hidden />} loading={loading}>
                   {t('pages.xray.wireproxy.uninstallButton')}
                 </Button>
               </Popconfirm>
@@ -241,7 +250,7 @@ export default function WireproxyModal({
                   flexWrap: 'wrap',
                 }}
               >
-                <Tag icon={<WarningOutlined />} color="red">
+                <Tag icon={<WarningOutlined aria-hidden />} color="red">
                   {t('pages.xray.wireproxy.routingDanger')}
                 </Tag>
                 <Button danger size="small" loading={loading} onClick={fixRouting}>

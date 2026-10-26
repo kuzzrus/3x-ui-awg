@@ -104,13 +104,18 @@ export default function QrPanel({
           {remark}
         </Tag>
         <Tooltip title={t('copy')}>
-          <Button size="small" icon={<CopyOutlined />} aria-label={t('copy')} onClick={copy} />
+          <Button
+            size="small"
+            icon={<CopyOutlined aria-hidden />}
+            aria-label={t('copy')}
+            onClick={copy}
+          />
         </Tooltip>
         {renderQr && (
           <Tooltip title={t('downloadImage')}>
             <Button
               size="small"
-              icon={<PictureOutlined />}
+              icon={<PictureOutlined aria-hidden />}
               aria-label={t('downloadImage')}
               onClick={downloadImage}
             />
@@ -120,7 +125,7 @@ export default function QrPanel({
           <Tooltip title={t('download')}>
             <Button
               size="small"
-              icon={<DownloadOutlined />}
+              icon={<DownloadOutlined aria-hidden />}
               aria-label={t('download')}
               onClick={download}
             />
