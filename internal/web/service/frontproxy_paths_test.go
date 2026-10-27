@@ -2,6 +2,7 @@ package service
 
 import (
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 
@@ -88,6 +89,32 @@ func TestFrontProxyPathServiceSetAllReplacesWholeList(t *testing.T) {
 	}
 }
 
+// The routes of the paths may not sit where the proxy sends a request to the panel or to a subscription: the base path, and the
+// paths of the raw, JSON and Clash subscriptions.
+func TestSecretPathsAreThePanelAndTheThreeSubscriptions(t *testing.T) {
+	setupFrontProxyPathDB(t)
+	settings := &SettingService{}
+	for key, value := range map[string]string{
+		"webBasePath":  "/panel-x/",
+		"subPath":      "/sub-x/",
+		"subJsonPath":  "/json-x/",
+		"subClashPath": "/clash-x/",
+	} {
+		if err := settings.setString(key, value); err != nil {
+			t.Fatalf("set %s: %v", key, err)
+		}
+	}
+
+	got, err := SecretPaths(settings)
+	if err != nil {
+		t.Fatalf("SecretPaths: %v", err)
+	}
+	want := []string{"/panel-x/", "/sub-x/", "/json-x/", "/clash-x/"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("SecretPaths = %v, want %v", got, want)
+	}
+}
+
 func TestFrontProxyPathServiceSetAllRejectsInvalidRows(t *testing.T) {
 	setupFrontProxyPathDB(t)
 	ib := mustCreateInbound(t, &model.Inbound{Listen: "127.0.0.1", Port: 1111, Enable: true, Protocol: model.VLESS})
@@ -102,11 +129,13 @@ func TestFrontProxyPathServiceSetAllRejectsInvalidRows(t *testing.T) {
 		{"duplicate path", []FrontProxyPathInput{{ChildId: ib.Id, Path: "/x"}, {ChildId: ib.Id, Path: "/x"}}},
 		{"collides with panel base path", []FrontProxyPathInput{{ChildId: ib.Id, Path: "/panel-secret/inner"}}},
 		{"collides with sub path exactly", []FrontProxyPathInput{{ChildId: ib.Id, Path: "/sub-secret"}}},
+		{"collides with the JSON subscription path", []FrontProxyPathInput{{ChildId: ib.Id, Path: "/json-secret/ws"}}},
+		{"collides with the Clash subscription path", []FrontProxyPathInput{{ChildId: ib.Id, Path: "/clash-secret"}}},
 		{"collides with reserved api/v1", []FrontProxyPathInput{{ChildId: ib.Id, Path: "/api/v1/foo"}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := svc.SetAll(tc.items, "/panel-secret/", "/sub-secret/"); err == nil {
+			if err := svc.SetAll(tc.items, "/panel-secret/", "/sub-secret/", "/json-secret/", "/clash-secret/"); err == nil {
 				t.Errorf("SetAll accepted %+v, want a validation error", tc.items)
 			}
 		})

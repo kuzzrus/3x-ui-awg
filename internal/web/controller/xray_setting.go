@@ -555,17 +555,12 @@ func (a *XraySettingController) setFrontProxyPathRoutes(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
-	basePath, err := a.SettingService.GetBasePath()
+	secretPaths, err := service.SecretPaths(&a.SettingService)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
-	subPath, err := a.SettingService.GetSubPath()
-	if err != nil {
-		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
-	}
-	if err := a.FrontProxyPathService.SetAll(b.Routes, basePath, subPath); err != nil {
+	if err := a.FrontProxyPathService.SetAll(b.Routes, secretPaths...); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
