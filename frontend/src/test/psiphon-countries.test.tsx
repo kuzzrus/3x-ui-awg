@@ -4,16 +4,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { XraySettingsValue } from '@/hooks/useXraySetting';
 import PsiphonCountries from '@/pages/xray/overrides/PsiphonCountries';
+import type { PsiphonRegion } from '@/pages/xray/overrides/psiphon-regions';
 import { HttpUtil, Msg } from '@/utils';
 
-import { chooseSelectOption, renderWithProviders } from './test-utils';
+import { chooseSelectOption, listSelectOptions, renderWithProviders } from './test-utils';
 
-const REGIONS = [
+const REGIONS: PsiphonRegion[] = [
   { code: 'DE', name: 'Germany' },
   { code: 'US', name: 'United States' },
   { code: 'FR', name: 'France' },
   { code: 'JP', name: 'Japan' },
 ];
+
+const UNKNOWN_HINT = /the regions where Psiphon has servers are marked here/;
 
 interface TestCountry {
   region: string;
@@ -54,14 +57,20 @@ function template(extra: Record<string, unknown> = {}): XraySettingsValue {
 
 type Mutate = (mutator: (tt: XraySettingsValue) => void) => void;
 
+interface HarnessProps {
+  initial: XraySettingsValue;
+  onTemplate: (tt: XraySettingsValue) => void;
+  regions?: PsiphonRegion[];
+  onTunnelConnected?: () => void;
+}
+
 // What XrayPage does: run the mutator on a copy of the template and render again with the result.
 function Harness({
   initial,
   onTemplate,
-}: {
-  initial: XraySettingsValue;
-  onTemplate: (tt: XraySettingsValue) => void;
-}) {
+  regions = REGIONS,
+  onTunnelConnected = () => {},
+}: HarnessProps) {
   const [tt, setTt] = useState(initial);
   const onMutateTemplate: Mutate = (mutator) => {
     const next = JSON.parse(JSON.stringify(tt)) as XraySettingsValue;
@@ -72,18 +81,23 @@ function Harness({
   return (
     <PsiphonCountries
       open
-      regions={REGIONS}
+      regions={regions}
       templateSettings={tt}
       onMutateTemplate={onMutateTemplate}
+      onTunnelConnected={onTunnelConnected}
     />
   );
 }
 
 // Renders the countries on a template and returns it as it stands after what the component did to it.
-function renderCountries(view: ReturnType<typeof listOf>, initial: XraySettingsValue = template()) {
+function renderCountries(
+  view: ReturnType<typeof listOf>,
+  initial: XraySettingsValue = template(),
+  props: Partial<HarnessProps> = {},
+) {
   vi.spyOn(HttpUtil, 'get').mockResolvedValue(new Msg(true, '', view));
   let current = initial;
-  renderWithProviders(<Harness initial={initial} onTemplate={(tt) => (current = tt)} />);
+  renderWithProviders(<Harness initial={initial} onTemplate={(tt) => (current = tt)} {...props} />);
   return { template: () => current };
 }
 
@@ -530,5 +544,123 @@ describe('PsiphonCountries', () => {
     );
     expect(await screen.findByText(/62 ms · 172\.104\.225\.141 \(DE\)/)).toBeTruthy();
     expect(screen.queryByText('No answer')).toBeNull();
+  });
+
+  describe('once a tunnel has said which regions have servers', () => {
+    const TOLD: PsiphonRegion[] = [
+      { code: 'AQ', name: 'Antarctica', available: false },
+      { code: 'DE', name: 'Germany', available: true },
+      { code: 'US', name: 'United States', available: true },
+    ];
+    const addButton = () => screen.getByRole('button', { name: /^Add$/ }) as HTMLButtonElement;
+
+    it('lists the regions with servers first and the others last, marked', async () => {
+      renderCountries(listOf(), template(), { regions: TOLD });
+      await screen.findByText('0 of 6');
+
+      expect(listSelectOptions('psiphon-add-country')).toEqual([
+        'Germany (DE)',
+        'United States (US)',
+        'Antarctica (AQ) — no servers',
+      ]);
+    });
+
+    it('does not let a region without servers be picked', async () => {
+      renderCountries(listOf(), template(), { regions: TOLD });
+      await screen.findByText('0 of 6');
+
+      chooseSelectOption('psiphon-add-country', 'Antarctica (AQ) — no servers');
+      expect(addButton().disabled).toBe(true);
+
+      chooseSelectOption('psiphon-add-country', 'Germany (DE)');
+      expect(addButton().disabled).toBe(false);
+    });
+
+    it('leaves out the hint that says they are not known yet', async () => {
+      renderCountries(listOf(), template(), { regions: TOLD });
+      await screen.findByText('0 of 6');
+
+      expect(screen.queryByText(UNKNOWN_HINT)).toBeNull();
+    });
+  });
+
+  it('says that the regions are not marked yet while no tunnel has told which have servers', async () => {
+    renderCountries(listOf());
+    await screen.findByText('0 of 6');
+
+    expect(screen.getByText(UNKNOWN_HINT)).toBeTruthy();
+    expect(listSelectOptions('psiphon-add-country')).toEqual([
+      'Germany (DE)',
+      'United States (US)',
+      'France (FR)',
+      'Japan (JP)',
+    ]);
+  });
+
+  it('says nothing of the regions before the list has been read', async () => {
+    renderCountries(listOf(), template(), { regions: [] });
+    await screen.findByText('0 of 6');
+
+    expect(screen.queryByText(UNKNOWN_HINT)).toBeNull();
+  });
+
+  it('tells the window when one more tunnel has connected, since it has then told which regions have servers', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.spyOn(HttpUtil, 'get')
+      .mockResolvedValueOnce(new Msg(true, '', listOf(connecting('DE', 19101))))
+      .mockResolvedValue(new Msg(true, '', listOf(connected('DE', 19101))));
+    const onTunnelConnected = vi.fn();
+    renderWithProviders(
+      <Harness initial={template()} onTemplate={() => {}} onTunnelConnected={onTunnelConnected} />,
+    );
+    await screen.findByText('Connecting');
+    expect(onTunnelConnected).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3100);
+    });
+    await screen.findByText('Connected (DE)');
+    expect(onTunnelConnected).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells the window of a tunnel that comes back up, not of one that goes down', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.spyOn(HttpUtil, 'get')
+      .mockResolvedValueOnce(
+        new Msg(true, '', listOf(connected('DE', 19101), connecting('US', 19102))),
+      )
+      .mockResolvedValueOnce(
+        new Msg(true, '', listOf(connecting('DE', 19101), connecting('US', 19102))),
+      )
+      .mockResolvedValue(
+        new Msg(true, '', listOf(connected('DE', 19101), connecting('US', 19102))),
+      );
+    const onTunnelConnected = vi.fn();
+    renderWithProviders(
+      <Harness initial={template()} onTemplate={() => {}} onTunnelConnected={onTunnelConnected} />,
+    );
+    await screen.findByText('Connected (DE)');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3100);
+    });
+    await waitFor(() => expect(within(rowOf('Germany (DE)')).getByText('Connecting')).toBeTruthy());
+    expect(onTunnelConnected).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3100);
+    });
+    await waitFor(() =>
+      expect(within(rowOf('Germany (DE)')).getByText('Connected (DE)')).toBeTruthy(),
+    );
+    expect(onTunnelConnected).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not tell the window of a tunnel that was up already when the list came', async () => {
+    const onTunnelConnected = vi.fn();
+    renderCountries(listOf(connected('DE', 19101)), template(), { onTunnelConnected });
+
+    await screen.findByText('Connected (DE)');
+    expect(onTunnelConnected).not.toHaveBeenCalled();
   });
 });

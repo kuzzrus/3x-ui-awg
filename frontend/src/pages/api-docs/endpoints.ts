@@ -2483,7 +2483,11 @@ export const sections: readonly Section[] = [
         method: 'GET',
         path: '/panel/api/xray/psiphon/regions',
         summary:
-          'List ISO 3166-1 codes (states plus common territories) for the egress-region picker (not a Psiphon-curated subset -- see the psiphon/:action region action to actually apply and verify one).',
+          'List ISO 3166-1 codes (states plus common territories) for the egress-region picker, marked with where Psiphon has servers.',
+        description:
+          'Once a Psiphon tunnel has connected, each entry carries available: whether Psiphon has servers there, read from the notices of a tunnel. The last list is kept for when no tunnel is up. Before any tunnel has said, available is left out, which means any. Use the psiphon/:action region action to actually apply and verify one.',
+        response:
+          '{\n  "success": true,\n  "obj": [\n    { "code": "AT", "name": "Austria", "available": true },\n    { "code": "AQ", "name": "Antarctica", "available": false }\n  ]\n}',
       },
       {
         method: 'GET',

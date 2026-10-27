@@ -1,6 +1,7 @@
 package integration
 
-// isoCountries backs AvailableRegions -- see its doc comment for why this is the full ISO list.
+// isoCountries is the full ISO 3166-1 list behind the picker, not a curated subset: Psiphon publishes no list of its regions, so
+// Regions marks the ones a tunnel has reported and Verify says whether one works.
 var isoCountries = []Region{
 	{"AD", "Andorra"},
 	{"AE", "United Arab Emirates"},

@@ -2906,6 +2906,8 @@
         "stopAllButton": "Stop all",
         "removeCountryButton": "Remove the country",
         "removeCountryConfirm": "Remove {region}? Its tunnel stops, its files are deleted and its outbound is taken out of the config.",
+        "regionNoServers": "no servers",
+        "regionsUnknownHint": "Once a tunnel has connected, the regions where Psiphon has servers are marked here, and the others are greyed out.",
         "outboundOffConfirm": "Remove the outbound psiphon-{region}?",
         "balancerRemoveConfirm": "Delete psiphon-balancer?",
         "countryOutboundSwitch": "Outbound psiphon-{region}",

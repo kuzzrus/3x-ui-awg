@@ -407,10 +407,10 @@ func (a *XraySettingController) psiphonCountry(c *gin.Context) {
 	jsonObj(c, view, err)
 }
 
-// psiphonRegions lists the ISO 3166-1 alpha-2 codes the region picker offers.
-// Static reference data, so a plain GET, unlike the other Psiphon operations.
+// psiphonRegions lists the ISO 3166-1 alpha-2 codes the region picker offers, each marked by whether Psiphon has servers there once
+// a tunnel has said so. A plain GET: it reads the notices of the tunnels and the last list kept.
 func (a *XraySettingController) psiphonRegions(c *gin.Context) {
-	jsonObj(c, integration.AvailableRegions(), nil)
+	jsonObj(c, a.PsiphonService.Regions(), nil)
 }
 
 // psiphonConfigUpload replaces the admin-supplied psiphon.config. Multipart

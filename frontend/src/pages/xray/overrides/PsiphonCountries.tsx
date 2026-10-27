@@ -26,6 +26,8 @@ import {
 import type { DeletionImpact } from '@/pages/xray/reference-cleanup';
 import { HttpUtil } from '@/utils';
 
+import { regionPickerOptions, regionsKnown, type PsiphonRegion } from './psiphon-regions';
+
 interface TunnelStatus {
   connected: boolean;
   tunnelCount: number;
@@ -56,16 +58,13 @@ interface ProbeResult {
   error?: string;
 }
 
-export interface PsiphonRegion {
-  code: string;
-  name: string;
-}
-
 interface PsiphonCountriesProps {
   open: boolean;
   regions: PsiphonRegion[];
   templateSettings: XraySettingsValue | null;
   onMutateTemplate: (mutator: (tt: XraySettingsValue) => void) => void;
+  // Called when one more tunnel has connected: it has told which regions have servers, so the window reads that list again.
+  onTunnelConnected: () => void;
 }
 
 const COUNTRIES_URL = '/panel/api/xray/psiphon/countries';
@@ -104,6 +103,7 @@ export default function PsiphonCountries({
   regions,
   templateSettings,
   onMutateTemplate,
+  onTunnelConnected,
 }: PsiphonCountriesProps) {
   const { t } = useTranslation();
   const [messageApi, messageContextHolder] = message.useMessage();
@@ -137,6 +137,20 @@ export default function PsiphonCountries({
     const timer = setInterval(() => void refresh(), POLL_MS);
     return () => clearInterval(timer);
   }, [open, settling, refresh]);
+
+  // A tunnel that has just connected has told which regions have servers; the first list read says nothing of that, since
+  // the tunnels in it were up before.
+  const connectedCount = (view?.countries ?? []).filter(
+    (c) => c.running && c.tunnel.connected,
+  ).length;
+  const connectedBefore = useRef<number | null>(null);
+  useEffect(() => {
+    if (!view) return;
+    if (connectedBefore.current !== null && connectedCount > connectedBefore.current) {
+      onTunnelConnected();
+    }
+    connectedBefore.current = connectedCount;
+  }, [view, connectedCount, onTunnelConnected]);
 
   // One action on the list. The answer carries the list also when the action failed, so a country that did not
   // start shows why in its row.
@@ -315,9 +329,10 @@ export default function PsiphonCountries({
   }
 
   const added = new Set((view?.countries ?? []).map((c) => c.region));
-  const options = regions
-    .filter((r) => !added.has(r.code))
-    .map((r) => ({ value: r.code, label: `${r.name} (${r.code})` }));
+  const options = regionPickerOptions(
+    regions.filter((r) => !added.has(r.code)),
+    t('pages.xray.psiphon.regionNoServers'),
+  );
   const nameOf = (code: string) => regions.find((r) => r.code === code)?.name ?? code;
   const full = !!view && view.countries.length >= view.max;
   const anyRunning = !!view?.countries.some((c) => c.running);
@@ -510,6 +525,11 @@ export default function PsiphonCountries({
           </span>
         )}
       </div>
+      {regions.length > 0 && !regionsKnown(regions) && (
+        <Typography.Paragraph type="secondary" style={{ marginTop: 8, fontSize: 12 }}>
+          {t('pages.xray.psiphon.regionsUnknownHint')}
+        </Typography.Paragraph>
+      )}
 
       <Table<Country>
         style={{ marginTop: 12 }}

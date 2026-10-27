@@ -1,7 +1,7 @@
 /* oxlint-disable react/set-state-in-effect -- same fetch-on-open/sync-from-response
    shape as TorModal.tsx: both setState calls react to a real external input (the
    open prop flipping, a status response landing), at modal-open frequency, not a hot path. */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Button, Divider, Modal, Popconfirm, Select, Tag, Typography, message } from 'antd';
 import {
@@ -21,6 +21,7 @@ import { applyDeletionByTags, planDeletionByTags } from '@/pages/xray/reference-
 import { HttpUtil } from '@/utils';
 
 import PsiphonCountries, { BALANCER_TAG, COUNTRY_PREFIX } from './PsiphonCountries';
+import { regionPickerOptions, type PsiphonRegion } from './psiphon-regions';
 
 interface PsiphonModalProps {
   open: boolean;
@@ -54,11 +55,6 @@ interface ExitInfo {
   country: string;
 }
 
-interface Region {
-  code: string;
-  name: string;
-}
-
 const PSIPHON_TAG = 'psiphon';
 
 export default function PsiphonModal({
@@ -73,7 +69,7 @@ export default function PsiphonModal({
   const [messageApi, messageContextHolder] = message.useMessage();
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<PsiphonStatus | null>(null);
-  const [regions, setRegions] = useState<Region[]>([]);
+  const [regions, setRegions] = useState<PsiphonRegion[]>([]);
   const [selectedRegion, setSelectedRegion] = useState<string>('');
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [exitInfo, setExitInfo] = useState<ExitInfo | null>(null);
@@ -117,14 +113,17 @@ export default function PsiphonModal({
     setExitInfo(null);
   }, [open, fetchStatus]);
 
-  const regionsFetched = useRef(false);
+  const loadRegions = useCallback(async () => {
+    const msg = await HttpUtil.get<PsiphonRegion[]>('/panel/api/xray/psiphon/regions');
+    if (msg?.success && msg.obj) setRegions(msg.obj);
+  }, []);
+
+  // A tunnel tells which regions have servers once it is up, so the list is read again when the window opens and when the
+  // default tunnel has connected; the countries ask for it when one of theirs has.
+  const connected = status?.tunnel.connected;
   useEffect(() => {
-    if (!open || regionsFetched.current) return;
-    regionsFetched.current = true;
-    HttpUtil.get<Region[]>('/panel/api/xray/psiphon/regions').then((msg) => {
-      if (msg?.success && msg.obj) setRegions(msg.obj);
-    });
-  }, [open]);
+    if (open) void loadRegions();
+  }, [open, connected, loadRegions]);
 
   useEffect(() => {
     if (status?.tunnel.serverRegion) setSelectedRegion(status.tunnel.serverRegion);
@@ -274,7 +273,7 @@ export default function PsiphonModal({
   const regionOptions = useMemo(
     () => [
       { value: '', label: t('pages.xray.psiphon.egressRegionAuto') },
-      ...regions.map((r) => ({ value: r.code, label: `${r.name} (${r.code})` })),
+      ...regionPickerOptions(regions, t('pages.xray.psiphon.regionNoServers')),
     ],
     [regions, t],
   );
@@ -398,6 +397,7 @@ export default function PsiphonModal({
                 <Divider className="my-10">{t('pages.xray.psiphon.egressRegionTitle')}</Divider>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <Select
+                    id="psiphon-egress-region"
                     showSearch
                     aria-label={t('pages.xray.psiphon.egressRegionTitle')}
                     style={{ minWidth: 220 }}
@@ -464,6 +464,7 @@ export default function PsiphonModal({
               regions={regions}
               templateSettings={templateSettings}
               onMutateTemplate={onMutateTemplate}
+              onTunnelConnected={loadRegions}
             />
           </>
         )}
