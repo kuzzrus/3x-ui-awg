@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
@@ -29,6 +30,32 @@ type FrontProxyPathInput struct {
 // request time too; this is the earlier, friendlier rejection.
 var reservedPathPrefixes = []string{"api/v1"}
 
+// secretPathReader is the part of the settings that names the secret paths.
+type secretPathReader interface {
+	GetBasePath() (string, error)
+	GetSubPath() (string, error)
+	GetSubJsonPath() (string, error)
+	GetSubClashPath() (string, error)
+}
+
+// SecretPaths are the paths the reverse proxy keeps for the panel: its base path and the paths of the three subscriptions.
+func SecretPaths(settings secretPathReader) ([]string, error) {
+	var paths []string
+	for _, read := range []func() (string, error){
+		settings.GetBasePath,
+		settings.GetSubPath,
+		settings.GetSubJsonPath,
+		settings.GetSubClashPath,
+	} {
+		path, err := read()
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, path)
+	}
+	return paths, nil
+}
+
 // GetAll returns every configured path route, in resolution order.
 func (s *FrontProxyPathService) GetAll() ([]model.FrontProxyPathRoute, error) {
 	var rows []model.FrontProxyPathRoute
@@ -39,10 +66,11 @@ func (s *FrontProxyPathService) GetAll() ([]model.FrontProxyPathRoute, error) {
 	return rows, nil
 }
 
-// SetAll atomically replaces the whole path-route list.
-func (s *FrontProxyPathService) SetAll(items []FrontProxyPathInput, panelBasePath, subPath string) error {
+// SetAll atomically replaces the whole path-route list. A route may not sit on, under or over any of secretPaths, the base
+// path of the panel and the paths of the subscriptions, whether or not a subscription is on: turning one on would cover the route.
+func (s *FrontProxyPathService) SetAll(items []FrontProxyPathInput, secretPaths ...string) error {
 	seenPaths := make(map[string]struct{}, len(items))
-	reserved := append([]string{panelBasePath, subPath}, reservedPathPrefixes...)
+	reserved := append(slices.Clone(secretPaths), reservedPathPrefixes...)
 	for i, it := range items {
 		p := normalizePath(it.Path)
 		if p == "" {

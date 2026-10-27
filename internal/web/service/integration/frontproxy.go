@@ -116,6 +116,22 @@ func (s *FrontProxyService) Options() (frontproxy.Options, error) {
 	if err != nil {
 		return frontproxy.Options{}, err
 	}
+	subJsonEnable, err := s.GetSubJsonEnable()
+	if err != nil {
+		return frontproxy.Options{}, err
+	}
+	subJsonPath, err := s.GetSubJsonPath()
+	if err != nil {
+		return frontproxy.Options{}, err
+	}
+	subClashEnable, err := s.GetSubClashEnable()
+	if err != nil {
+		return frontproxy.Options{}, err
+	}
+	subClashPath, err := s.GetSubClashPath()
+	if err != nil {
+		return frontproxy.Options{}, err
+	}
 
 	decoy, err := s.decoyConfig()
 	if err != nil {
@@ -136,6 +152,10 @@ func (s *FrontProxyService) Options() (frontproxy.Options, error) {
 			SubPath:            subPath,
 			SubPort:            subPort,
 			SubEnabled:         subEnable,
+			SubJsonPath:        subJsonPath,
+			SubJsonEnabled:     subJsonEnable,
+			SubClashPath:       subClashPath,
+			SubClashEnabled:    subClashEnable,
 			UpstreamTLS:        s.upstreamServesTLS(),
 			TproxyCapabilities: tproxyCapabilities,
 			TproxyTarget:       tproxyTarget,

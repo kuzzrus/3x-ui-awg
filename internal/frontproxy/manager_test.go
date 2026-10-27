@@ -63,6 +63,26 @@ func TestHandlerDispatchesToEachUpstream(t *testing.T) {
 	}
 }
 
+// A JSON subscription reaches the subscription server through the proxy, not the decoy.
+func TestHandlerCarriesTheJSONSubscriptionToTheSubscriptionServer(t *testing.T) {
+	subPort := upstreamOn(t, "SUB")
+	h := newHandler(Config{
+		PanelBasePath:  "/secretpanel/",
+		PanelPort:      upstreamOn(t, "PANEL"),
+		SubPath:        "/secretsub/",
+		SubPort:        subPort,
+		SubEnabled:     true,
+		SubJsonPath:    "/secretjson/",
+		SubJsonEnabled: true,
+	}, DecoyConfig{Mode: DecoyTemplate, Template: "parked"})
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/secretjson/token123", nil))
+	if !strings.Contains(rec.Body.String(), "SUB /secretjson/token123") {
+		t.Errorf("/secretjson/token123 -> %q, want the subscription server to answer", rec.Body.String())
+	}
+}
+
 // The hop to the panel is plaintext loopback while the real client arrived
 // over TLS; without this header the panel would build http:// links.
 func TestHandlerMarksForwardedProtoHTTPS(t *testing.T) {

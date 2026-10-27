@@ -37,6 +37,12 @@ type Config struct {
 	SubPath       string
 	SubPort       int
 	SubEnabled    bool
+	// SubJsonPath and SubClashPath are the paths of the JSON and Clash subscriptions, which the subscription server
+	// serves beside SubPath, each only while it is switched on.
+	SubJsonPath     string
+	SubJsonEnabled  bool
+	SubClashPath    string
+	SubClashEnabled bool
 	// UpstreamTLS is set when the panel and subscription listeners serve TLS
 	// themselves, which they do whenever certificate files are configured.
 	UpstreamTLS bool
@@ -78,7 +84,7 @@ const tproxyAPIPrefix = "api/v1"
 // resolveTarget picks the destination for one request path and query. Sub is
 // checked before panel; tproxy last, right before the decoy fallback.
 func (c Config) resolveTarget(path, rawQuery string) Route {
-	if c.SubEnabled && matchesPrefix(path, c.SubPath) {
+	if c.SubEnabled && c.matchesSubscription(path) {
 		return RouteSub
 	}
 	if matchesPrefix(path, c.PanelBasePath) {
@@ -88,6 +94,14 @@ func (c Config) resolveTarget(path, rawQuery string) Route {
 		return RouteTproxy
 	}
 	return RouteDecoy
+}
+
+// matchesSubscription reports whether path is under the raw subscription path, or under the JSON or Clash one while
+// that is switched on: the subscription server answers all three.
+func (c Config) matchesSubscription(path string) bool {
+	return matchesPrefix(path, c.SubPath) ||
+		(c.SubJsonEnabled && matchesPrefix(path, c.SubJsonPath)) ||
+		(c.SubClashEnabled && matchesPrefix(path, c.SubClashPath))
 }
 
 // resolvePathTarget checks the admin-configured path list -- called by
