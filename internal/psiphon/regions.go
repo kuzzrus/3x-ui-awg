@@ -40,7 +40,7 @@ func SeenRegions() RegionsSeen {
 }
 
 // seenRegionsIn reads the last AvailableEgressRegions notice of the log at path: the regions the process has servers for. The notice
-// is sent when the list of servers is loaded and again when it changes, so the last is the one that stands.
+// is sent when the list of servers is loaded, and a newer one may follow, so the last is the one that stands.
 func seenRegionsIn(path string) (RegionsSeen, error) {
 	f, err := os.Open(path)
 	if err != nil {
