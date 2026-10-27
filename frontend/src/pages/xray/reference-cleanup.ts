@@ -1,6 +1,7 @@
 import type { XraySettingsValue } from '@/hooks/useXraySetting';
 import type { BalancerObject, RuleObject } from '@/schemas/routing';
 import { NODES_SELECTOR, syncObservatories } from './balancers/balancer-helpers';
+import { balancerTagFromLoopback, removeBalancerLoopback } from './balancers/balancer-loopback';
 
 /**
  * Reference cleanup for the Xray-config blob: when an outbound or balancer is
@@ -26,7 +27,7 @@ export interface RuleImpact {
 
 export interface BalancerImpact {
   tag: string;
-  reason: 'selectorEmptied';
+  reason: 'selectorEmptied' | 'fallbackCleared';
 }
 
 export interface DeletionImpact {
@@ -67,6 +68,10 @@ function ruleLabel(rule: RuleObject, index: number): string {
   const tag = typeof rule.ruleTag === 'string' ? rule.ruleTag.trim() : '';
   return tag || `#${index + 1}`;
 }
+
+// An entry without a tag is named by its position, as a rule without a ruleTag is.
+const nameOf = (tag: unknown, index: number): string =>
+  typeof tag === 'string' && tag !== '' ? tag : `#${index + 1}`;
 
 const hasNodes = (b: BalancerObject): boolean => (b.nodeMembers?.nodeIds?.length ?? 0) > 0;
 
@@ -123,6 +128,34 @@ function ruleImpacts(
   return impacts;
 }
 
+// A balancer loses its fallback when it is a removed outbound or the loopback of a removed one.
+function losesFallback(
+  b: BalancerObject,
+  removedOutbounds: Set<string>,
+  removedBalancers: Set<string>,
+): boolean {
+  const fallback = typeof b?.fallbackTag === 'string' ? b.fallbackTag : '';
+  if (removedOutbounds.has(fallback)) return true;
+  const target = balancerTagFromLoopback(fallback);
+  return target !== null && removedBalancers.has(target);
+}
+
+/** Balancers that survive but lose their fallback, which `applyCleanup` clears. */
+function balancersLosingFallback(
+  tt: XraySettingsValue,
+  removedOutbounds: Set<string>,
+  removedBalancers: Set<string>,
+): BalancerImpact[] {
+  const losing: BalancerImpact[] = [];
+  balancerList(tt).forEach((b, index) => {
+    if (!b || removedBalancers.has(b.tag)) return;
+    if (losesFallback(b, removedOutbounds, removedBalancers)) {
+      losing.push({ tag: nameOf(b.tag, index), reason: 'fallbackCleared' });
+    }
+  });
+  return losing;
+}
+
 function applyCleanup(
   tt: XraySettingsValue,
   removedOutbounds: Set<string>,
@@ -154,7 +187,7 @@ function applyCleanup(
           balancer.selector = [NODES_SELECTOR];
         }
       }
-      if (typeof balancer.fallbackTag === 'string' && removedOutbounds.has(balancer.fallbackTag)) {
+      if (losesFallback(balancer, removedOutbounds, removedBalancers)) {
         balancer.fallbackTag = '';
       }
       survivors.push(balancer);
@@ -178,6 +211,9 @@ function applyCleanup(
       }
     }
   }
+
+  // The panel hides loopbacks, so the cascade has to take a removed balancer's along with it.
+  for (const tag of removedBalancers) removeBalancerLoopback(tt, tag);
 
   syncObservatories(tt);
 }
@@ -206,7 +242,7 @@ export function planBalancerDeletion(tt: XraySettingsValue, index: number): Dele
   const obs = observersRemovedBy(tt, removedOutbounds, removedBalancers);
   return {
     rules: ruleImpacts(tt, removedOutbounds, removedBalancers),
-    balancers: [],
+    balancers: balancersLosingFallback(tt, removedOutbounds, removedBalancers),
     observatory: obs.observatory,
     burst: obs.burst,
   };
@@ -231,7 +267,10 @@ export function planOutboundDeletion(tt: XraySettingsValue, index: number): Dele
   const obs = observersRemovedBy(tt, removedOutbounds, removedBalancers);
   return {
     rules: ruleImpacts(tt, removedOutbounds, removedBalancers),
-    balancers: cascaded.map((bTag) => ({ tag: bTag, reason: 'selectorEmptied' as const })),
+    balancers: [
+      ...cascaded.map((bTag) => ({ tag: bTag, reason: 'selectorEmptied' as const })),
+      ...balancersLosingFallback(tt, removedOutbounds, removedBalancers),
+    ],
     observatory: obs.observatory,
     burst: obs.burst,
   };

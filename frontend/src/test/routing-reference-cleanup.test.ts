@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  cleanupOrphanedBalancerLoopbacks,
+  ensureMissingBalancerLoopbacks,
+} from '@/pages/xray/balancers/balancer-loopback';
+import {
   applyBalancerDeletion,
   applyOutboundDeletion,
   planBalancerDeletion,
@@ -10,6 +14,27 @@ import type { XraySettingsValue } from '@/hooks/useXraySetting';
 
 function tpl(parts: Record<string, unknown>): XraySettingsValue {
   return parts as unknown as XraySettingsValue;
+}
+
+const loopbackOutbound = (target: string) => ({
+  tag: `_bl_${target}`,
+  protocol: 'loopback',
+  settings: { inboundTag: `_bl_${target}` },
+});
+
+const loopbackRule = (target: string) => ({
+  type: 'field',
+  inboundTag: [`_bl_${target}`],
+  balancerTag: target,
+});
+
+// Rules whose balancerTag names no balancer: Xray refuses such a config
+// ("balancer <tag> not found") and the core does not start.
+function danglingBalancerTags(tt: XraySettingsValue): string[] {
+  const known = new Set((tt.routing?.balancers ?? []).map((b) => b?.tag));
+  return (tt.routing?.rules ?? [])
+    .map((r) => r?.balancerTag)
+    .filter((tag): tag is string => typeof tag === 'string' && tag !== '' && !known.has(tag));
 }
 
 function dialerProxyOf(tt: XraySettingsValue, tag: string): string | undefined {
@@ -203,10 +228,29 @@ describe('outbound deletion', () => {
         balancers: [{ tag: 'pool', selector: ['proxy-us', 'proxy-uk'], fallbackTag: 'proxy-us' }],
       },
     });
+    expect(planOutboundDeletion(tt, 0).balancers).toEqual([
+      { tag: 'pool', reason: 'fallbackCleared' },
+    ]);
     applyOutboundDeletion(tt, 0);
     expect(tt.routing!.balancers![0].selector).toEqual(['proxy-uk']);
     expect(tt.routing!.balancers![0].fallbackTag).toBe('');
     expect(dialerProxyOf(tt, 'chain')).toBeUndefined();
+  });
+
+  it('names a balancer without a tag by its position when it loses its fallback', () => {
+    const tt = tpl({
+      outbounds: [{ tag: 'proxy-us' }],
+      routing: {
+        rules: [],
+        balancers: [
+          { tag: 'pool', selector: ['keep-me'] },
+          { tag: '', selector: ['keep-me'], fallbackTag: 'proxy-us' },
+        ],
+      },
+    });
+    expect(planOutboundDeletion(tt, 0).balancers).toEqual([
+      { tag: '#2', reason: 'fallbackCleared' },
+    ]);
   });
 
   it('never cascade-removes a tagless balancer (an empty tag must not match others)', () => {
@@ -462,5 +506,112 @@ describe('balancer deletion', () => {
     expect(planBalancerDeletion(tt, 0).rules).toEqual([]);
     applyBalancerDeletion(tt, 0);
     expect(tt.routing!.rules).toHaveLength(1);
+  });
+
+  it('removes its loopback and clears the fallback of a balancer that still used it', () => {
+    const tt = tpl({
+      outbounds: [loopbackOutbound('b1')],
+      routing: {
+        rules: [loopbackRule('b1')],
+        balancers: [
+          { tag: 'b1', selector: ['a'] },
+          { tag: 'b2', selector: ['c'], fallbackTag: '_bl_b1' },
+        ],
+      },
+    });
+    expect(planBalancerDeletion(tt, 0).balancers).toEqual([
+      { tag: 'b2', reason: 'fallbackCleared' },
+    ]);
+    applyBalancerDeletion(tt, 0);
+    expect(tt.outbounds).toEqual([]);
+    expect(tt.routing!.rules).toEqual([]);
+    expect(tt.routing!.balancers).toEqual([{ tag: 'b2', selector: ['c'], fallbackTag: '' }]);
+  });
+});
+
+describe('an outbound deletion that cascade-removes a balancer another one falls back to', () => {
+  const fallbackTemplate = (extra: Record<string, unknown> = {}) =>
+    tpl({
+      outbounds: [{ tag: 'a' }, { tag: 'c' }, loopbackOutbound('b1')],
+      routing: {
+        rules: [loopbackRule('b1')],
+        balancers: [
+          { tag: 'b1', selector: ['a'] },
+          { tag: 'b2', selector: ['c'], fallbackTag: '_bl_b1' },
+        ],
+      },
+      ...extra,
+    });
+
+  it('removes the loopback of the removed balancer and clears the fallback that used it', () => {
+    const tt = fallbackTemplate();
+    applyOutboundDeletion(tt, 0);
+    expect(tt.outbounds).toEqual([{ tag: 'c' }]);
+    expect(tt.routing!.rules).toEqual([]);
+    expect(tt.routing!.balancers).toEqual([{ tag: 'b2', selector: ['c'], fallbackTag: '' }]);
+  });
+
+  it('leaves no rule for the save-time loopback repair to point at the removed balancer', () => {
+    const tt = fallbackTemplate();
+    applyOutboundDeletion(tt, 0);
+    // The two repairs XrayPage.onSaveAll runs on the template before it is saved.
+    ensureMissingBalancerLoopbacks(tt);
+    cleanupOrphanedBalancerLoopbacks(tt);
+    expect(danglingBalancerTags(tt)).toEqual([]);
+  });
+
+  it('lists the balancer whose fallback is cleared after the balancer that goes', () => {
+    expect(planOutboundDeletion(fallbackTemplate(), 0).balancers).toEqual([
+      { tag: 'b1', reason: 'selectorEmptied' },
+      { tag: 'b2', reason: 'fallbackCleared' },
+    ]);
+  });
+
+  it('keeps the loopback and the fallback of a balancer that stays', () => {
+    const tt = tpl({
+      outbounds: [{ tag: 'a' }, { tag: 'c' }, loopbackOutbound('b1'), loopbackOutbound('b3')],
+      routing: {
+        rules: [loopbackRule('b1'), loopbackRule('b3')],
+        balancers: [
+          { tag: 'b1', selector: ['a'] },
+          { tag: 'b3', selector: ['c'] },
+          { tag: 'b4', selector: ['c'], fallbackTag: '_bl_b3' },
+        ],
+      },
+    });
+    expect(planOutboundDeletion(tt, 0).balancers).toEqual([
+      { tag: 'b1', reason: 'selectorEmptied' },
+    ]);
+    applyOutboundDeletion(tt, 0);
+    expect(tt.outbounds).toEqual([{ tag: 'c' }, loopbackOutbound('b3')]);
+    expect(tt.routing!.rules).toEqual([loopbackRule('b3')]);
+    expect(tt.routing!.balancers![1].fallbackTag).toBe('_bl_b3');
+  });
+
+  it('has no fallback to clear when the balancer that used it is removed as well', () => {
+    const tt = tpl({
+      outbounds: [{ tag: 'a' }, loopbackOutbound('b1')],
+      routing: {
+        rules: [loopbackRule('b1')],
+        balancers: [
+          { tag: 'b1', selector: ['a'] },
+          { tag: 'b2', selector: ['a'], fallbackTag: '_bl_b1' },
+        ],
+      },
+    });
+    expect(planOutboundDeletion(tt, 0).balancers).toEqual([
+      { tag: 'b1', reason: 'selectorEmptied' },
+      { tag: 'b2', reason: 'selectorEmptied' },
+    ]);
+    applyOutboundDeletion(tt, 0);
+    expect(tt.outbounds).toEqual([]);
+    expect(tt.routing!.balancers).toEqual([]);
+  });
+
+  it('drops the burst observer that only the cleared fallback required', () => {
+    const tt = fallbackTemplate({ burstObservatory: { subjectSelector: ['c'] } });
+    expect(planOutboundDeletion(tt, 0).burst).toBe(true);
+    applyOutboundDeletion(tt, 0);
+    expect(tt.burstObservatory).toBeUndefined();
   });
 });
