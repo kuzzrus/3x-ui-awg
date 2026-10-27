@@ -62,6 +62,16 @@ interface Region {
 
 const PSIPHON_TAG = 'psiphon';
 
+// An uninstall cannot refuse the way the Balancers tab does, so a balancer that falls back to the balancer of Psiphon
+// loses its fallback, and the loopback goes, before a save could make its rule again. The plan starts from this too.
+function releasePsiphonBalancer(tt: XraySettingsValue) {
+  const fallbackTag = loopbackTagFor(BALANCER_TAG);
+  for (const b of tt.routing?.balancers ?? []) {
+    if (b.fallbackTag === fallbackTag) b.fallbackTag = '';
+  }
+  removeBalancerLoopback(tt, BALANCER_TAG);
+}
+
 export default function PsiphonModal({
   open,
   templateSettings,
@@ -93,19 +103,18 @@ export default function PsiphonModal({
         .filter((tag) => tag === PSIPHON_TAG || tag.startsWith(COUNTRY_PREFIX)),
     [templateSettings?.outbounds],
   );
-  const uninstallImpact = templateSettings
-    ? planDeletionByTags(templateSettings, psiphonTags, [BALANCER_TAG])
-    : null;
+  // Planned only while the confirmation can be shown: the window is mounted with the whole page, and the plan copies
+  // the template.
+  const uninstallImpact = useMemo(() => {
+    if (!open || !status?.installed || !templateSettings) return null;
+    const dry = JSON.parse(JSON.stringify(templateSettings)) as XraySettingsValue;
+    releasePsiphonBalancer(dry);
+    return planDeletionByTags(dry, psiphonTags, [BALANCER_TAG]);
+  }, [open, status?.installed, templateSettings, psiphonTags]);
 
   function dropPsiphonFromTemplate() {
     onMutateTemplate((tt) => {
-      // An uninstall cannot refuse the way the Balancers tab does, so a balancer that falls back to this one loses
-      // its fallback, before the loopback goes and a save could make its rule again.
-      const fallbackTag = loopbackTagFor(BALANCER_TAG);
-      for (const b of tt.routing?.balancers ?? []) {
-        if (b.fallbackTag === fallbackTag) b.fallbackTag = '';
-      }
-      removeBalancerLoopback(tt, BALANCER_TAG);
+      releasePsiphonBalancer(tt);
       applyDeletionByTags(tt, psiphonTags, [BALANCER_TAG]);
     });
   }

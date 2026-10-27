@@ -2850,7 +2850,7 @@
         "installed": "Psiphon installed",
         "installFailed": "Failed to install Psiphon",
         "uninstallButton": "Uninstall",
-        "uninstallConfirm": "Stop Psiphon and remove the binary, config, data and the country tunnels from this host? Its outbounds and the balancer are taken out of the editor.",
+        "uninstallConfirm": "Stop Psiphon and remove the binary, config, data and the country tunnels from this host? Its outbounds and the balancer are taken out of the editor, and an outbound chained through one of them goes out directly.",
         "uninstalled": "Psiphon uninstalled",
         "uninstallFailed": "Failed to uninstall Psiphon",
         "notConfigured": "No config uploaded",

@@ -121,4 +121,37 @@ describe('uninstalling Psiphon from its window', () => {
     ]);
     expect(after.routing?.rules?.map((r) => r.domain)).toEqual([['c.example']]);
   });
+
+  it('plans from the template as the uninstall will leave it: the burst monitor goes, the loopback rule is not listed', async () => {
+    // The fallback to the balancer of Psiphon is what keeps the burst monitor, and the loopback rule is the panel's own.
+    const tt = {
+      outbounds: [
+        { tag: 'psiphon', protocol: 'socks' },
+        { tag: 'direct', protocol: 'freedom' },
+        {
+          tag: '_bl_psiphon-balancer',
+          protocol: 'loopback',
+          settings: { inboundTag: '_bl_psiphon-balancer' },
+        },
+      ],
+      routing: {
+        rules: [
+          { type: 'field', inboundTag: ['_bl_psiphon-balancer'], balancerTag: 'psiphon-balancer' },
+        ],
+        balancers: [
+          { tag: 'psiphon-balancer', selector: ['psiphon-'], strategy: { type: 'leastPing' } },
+          { tag: 'main', selector: ['direct'], fallbackTag: '_bl_psiphon-balancer' },
+        ],
+      },
+      burstObservatory: { subjectSelector: ['direct', 'psiphon-'] },
+    } as unknown as XraySettingsValue;
+
+    const { template: after, popover } = await uninstall(tt);
+
+    expect(
+      within(popover).getByText(/last balancer using the Burst Observatory, so it will be removed/),
+    ).toBeTruthy();
+    expect(within(popover).queryByText(/^Rule /)).toBeNull();
+    expect(after.burstObservatory).toBeUndefined();
+  });
 });
