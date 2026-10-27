@@ -149,7 +149,13 @@ that were running come back with it.
 A tunnel that dies on its own is started again: at once if it had been up for a minute,
 otherwise after 30 seconds, then after longer waits up to five minutes, and its row says
 **Restarting** meanwhile. One you stopped stays stopped, and a country whose start you saw
-fail says **Failed** and is not tried again until you start it. Agent nodes run only the default tunnel for now.
+fail says **Failed** and is not tried again until you start it. Agent nodes run only the default tunnel for now, so on a node a rule that sends traffic to a
+country outbound or to the balancer meets a refused connection and the traffic is dropped, as
+with any helper program that a node does not run.
+
+Uninstalling Psiphon removes the country tunnels and takes everything of Psiphon out of the
+editor: the outbounds, the balancer, and the rules that lead only to them. The confirmation
+lists what goes before it asks.
 
 ## Outbound subscriptions (server pools)
 

@@ -2729,7 +2729,7 @@
         "installed": "Psiphon установлен",
         "installFailed": "Не удалось установить Psiphon",
         "uninstallButton": "Удалить",
-        "uninstallConfirm": "Остановить Psiphon и удалить бинарник, конфиг и данные с этого хоста?",
+        "uninstallConfirm": "Остановить Psiphon и удалить с этого хоста бинарник, конфиг, данные и туннели стран? Его исходящие и балансировщик уйдут из редактора.",
         "uninstalled": "Psiphon удалён",
         "uninstallFailed": "Не удалось удалить Psiphon",
         "notConfigured": "Конфиг не загружен",

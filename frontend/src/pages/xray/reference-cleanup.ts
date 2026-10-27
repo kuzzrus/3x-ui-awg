@@ -276,6 +276,39 @@ export function planOutboundDeletion(tt: XraySettingsValue, index: number): Dele
   };
 }
 
+/** The plan for several outbounds and balancers at once: one cascade, with the rule labels of the template as it stands. */
+export function planDeletionByTags(
+  tt: XraySettingsValue,
+  outboundTags: string[],
+  balancerTags: string[] = [],
+): DeletionImpact {
+  const removedOutbounds = new Set(outboundTags.filter(Boolean));
+  const named = new Set(balancerTags.filter(Boolean));
+  const cascaded = balancersEmptiedBy(tt, removedOutbounds).filter((tag) => !named.has(tag));
+  const removedBalancers = new Set([...named, ...cascaded]);
+  const obs = observersRemovedBy(tt, removedOutbounds, removedBalancers);
+  return {
+    ...emptyImpact(),
+    rules: ruleImpacts(tt, removedOutbounds, removedBalancers),
+    balancers: cascaded.map((tag) => ({ tag, reason: 'selectorEmptied' as const })),
+    observatory: obs.observatory,
+    burst: obs.burst,
+  };
+}
+
+export function applyDeletionByTags(
+  tt: XraySettingsValue,
+  outboundTags: string[],
+  balancerTags: string[] = [],
+): void {
+  const removedOutbounds = new Set(outboundTags.filter(Boolean));
+  const removedBalancers = new Set([
+    ...balancerTags.filter(Boolean),
+    ...balancersEmptiedBy(tt, removedOutbounds),
+  ]);
+  applyCleanup(tt, removedOutbounds, removedBalancers);
+}
+
 export function applyOutboundDeletion(tt: XraySettingsValue, index: number): void {
   const tag = outboundTagAt(tt, index);
   if (!tag) {

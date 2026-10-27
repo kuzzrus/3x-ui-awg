@@ -567,7 +567,9 @@ says so; a tag or archive given explicitly is never swapped.
 17. **Psiphon through several countries at once**. Done on the panel's own host: up to six country tunnels beside the
     default one, a probe of each, a `leastPing` balancer and a supervisor that starts a tunnel again when it dies. Later: the
     same on an agent node, which runs one program that the master names `psiphon`; it needs the list of countries in the helper
-    settings, and the master has to keep working with an agent that knows only the one tunnel.
+    settings, and the master has to keep working with an agent that knows only the one tunnel. Until then the config an agent
+    gets still holds the country outbounds of the master, which a node has nothing behind: its traffic to them is refused, and
+    the node's page could say so, as it does for an outbound that its config lacks.
 18. **Nodes in the Xray balancer**. Done for the panel's own core: a balancer of the template sends traffic out through
     nodes. Later: an agent node that forwards to other nodes, which needs the outbounds in its config.
 

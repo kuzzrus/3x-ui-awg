@@ -16,9 +16,12 @@ import {
 } from '@ant-design/icons';
 
 import type { XraySettingsValue } from '@/hooks/useXraySetting';
+import { loopbackTagFor, removeBalancerLoopback } from '@/pages/xray/balancers/balancer-loopback';
+import DeletionImpactList from '@/pages/xray/DeletionImpactList';
+import { applyDeletionByTags, planDeletionByTags } from '@/pages/xray/reference-cleanup';
 import { HttpUtil } from '@/utils';
 
-import PsiphonCountries from './PsiphonCountries';
+import PsiphonCountries, { BALANCER_TAG, COUNTRY_PREFIX } from './PsiphonCountries';
 
 interface PsiphonModalProps {
   open: boolean;
@@ -82,6 +85,31 @@ export default function PsiphonModal({
     return list.findIndex((o) => o?.tag === PSIPHON_TAG);
   }, [templateSettings?.outbounds]);
 
+  // Everything of Psiphon in the template: the default outbound, those of the countries, and the balancer over them.
+  const psiphonTags = useMemo(
+    () =>
+      (templateSettings?.outbounds ?? [])
+        .map((o) => (typeof o?.tag === 'string' ? o.tag : ''))
+        .filter((tag) => tag === PSIPHON_TAG || tag.startsWith(COUNTRY_PREFIX)),
+    [templateSettings?.outbounds],
+  );
+  const uninstallImpact = templateSettings
+    ? planDeletionByTags(templateSettings, psiphonTags, [BALANCER_TAG])
+    : null;
+
+  function dropPsiphonFromTemplate() {
+    onMutateTemplate((tt) => {
+      // An uninstall cannot refuse the way the Balancers tab does, so a balancer that falls back to this one loses
+      // its fallback, before the loopback goes and a save could make its rule again.
+      const fallbackTag = loopbackTagFor(BALANCER_TAG);
+      for (const b of tt.routing?.balancers ?? []) {
+        if (b.fallbackTag === fallbackTag) b.fallbackTag = '';
+      }
+      removeBalancerLoopback(tt, BALANCER_TAG);
+      applyDeletionByTags(tt, psiphonTags, [BALANCER_TAG]);
+    });
+  }
+
   const fetchStatus = useCallback(async () => {
     const msg = await HttpUtil.post<PsiphonStatus>('/panel/api/xray/psiphon/status');
     if (msg?.success && msg.obj) setStatus(msg.obj);
@@ -127,7 +155,7 @@ export default function PsiphonModal({
       const msg = await HttpUtil.post('/panel/api/xray/psiphon/uninstall');
       if (msg?.success) {
         messageApi.success(t('pages.xray.psiphon.uninstalled'));
-        if (psiphonOutboundIndex >= 0) onRemoveOutbound(PSIPHON_TAG);
+        dropPsiphonFromTemplate();
       } else {
         messageApi.error(msg?.msg || t('pages.xray.psiphon.uninstallFailed'));
       }
@@ -349,6 +377,7 @@ export default function PsiphonModal({
               />
               <Popconfirm
                 title={t('pages.xray.psiphon.uninstallConfirm')}
+                description={uninstallImpact && <DeletionImpactList impact={uninstallImpact} />}
                 okText={t('delete')}
                 okType="danger"
                 cancelText={t('cancel')}

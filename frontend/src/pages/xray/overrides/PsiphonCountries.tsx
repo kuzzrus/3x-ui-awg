@@ -1,6 +1,6 @@
 /* oxlint-disable react/set-state-in-effect -- same fetch-on-open shape as PsiphonModal.tsx: the state is set
    when a response lands, at modal-open frequency and on a slow poll while a tunnel connects, not on a hot path. */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Modal, Select, Switch, Table, Tag, Tooltip, Typography, message } from 'antd';
 import type { TableColumnsType } from 'antd';
@@ -72,8 +72,8 @@ const COUNTRIES_URL = '/panel/api/xray/psiphon/countries';
 
 // Every country outbound is called psiphon-<CC>, so one prefix selects them all: for the balancer below, and
 // apart from the default outbound, which is plain "psiphon".
-const COUNTRY_PREFIX = 'psiphon-';
-const BALANCER_TAG = 'psiphon-balancer';
+export const COUNTRY_PREFIX = 'psiphon-';
+export const BALANCER_TAG = 'psiphon-balancer';
 // How often the list is read again while a tunnel is still coming up.
 const POLL_MS = 3000;
 
@@ -113,9 +113,13 @@ export default function PsiphonCountries({
   const [probing, setProbing] = useState<string[]>([]);
   const [pick, setPick] = useState<string | undefined>();
 
+  // Counts the actions, so that an answer which left before one finished is not taken for the newer list.
+  const generation = useRef(0);
+
   const refresh = useCallback(async () => {
+    const asked = generation.current;
     const msg = await HttpUtil.get<CountriesView>(COUNTRIES_URL);
-    if (msg?.success && msg.obj) setView(msg.obj);
+    if (asked === generation.current && msg?.success && msg.obj) setView(msg.obj);
   }, []);
 
   useEffect(() => {
@@ -137,6 +141,7 @@ export default function PsiphonCountries({
   // start shows why in its row.
   async function act(key: string, action: string, region?: string): Promise<boolean> {
     setBusy(key);
+    generation.current++;
     try {
       const msg = await HttpUtil.post<CountriesView>(
         `${COUNTRIES_URL}/${action}`,
@@ -149,6 +154,7 @@ export default function PsiphonCountries({
       }
       return true;
     } finally {
+      generation.current++;
       setBusy('');
     }
   }
@@ -265,7 +271,7 @@ export default function PsiphonCountries({
 
   function addBalancer() {
     onMutateTemplate((tt) => {
-      if (!tt.routing) return;
+      if (!tt.routing) tt.routing = { rules: [], balancers: [] };
       if (!Array.isArray(tt.routing.balancers)) tt.routing.balancers = [];
       if (tt.routing.balancers.some((b) => b?.tag === BALANCER_TAG)) return;
       tt.routing.balancers.push({

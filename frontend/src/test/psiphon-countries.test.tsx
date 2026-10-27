@@ -382,6 +382,54 @@ describe('PsiphonCountries', () => {
     expect((after.routing as unknown as { rules: unknown[] }).rules).toEqual([]);
   });
 
+  it('does not put a removed country back when an older answer lands late', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let late: (answer: Msg<unknown>) => void = () => {};
+    const get = vi
+      .spyOn(HttpUtil, 'get')
+      .mockResolvedValueOnce(new Msg(true, '', listOf(connecting('DE', 19101))))
+      .mockImplementationOnce(
+        () =>
+          new Promise<Msg<unknown>>((resolve) => {
+            late = resolve;
+          }),
+      );
+    const post = vi.spyOn(HttpUtil, 'post').mockResolvedValue(new Msg(true, '', listOf()));
+    renderWithProviders(<Harness initial={template()} onTemplate={() => {}} />);
+    await screen.findByText('Connecting');
+
+    // The poll leaves, and its answer is held back while the country is removed.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3100);
+    });
+    expect(get).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove the country' }));
+    fireEvent.click(within(await dialog()).getByRole('button', { name: 'Delete' }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith('/panel/api/xray/psiphon/countries/remove', {
+        region: 'DE',
+      }),
+    );
+    await screen.findByText('0 of 6');
+
+    await act(async () => {
+      late(new Msg(true, '', listOf(connecting('DE', 19101))));
+    });
+    expect(screen.getByText('0 of 6')).toBeTruthy();
+    expect(screen.queryByText('Germany (DE)')).toBeNull();
+  });
+
+  it('makes the routing the balancer needs when the template has none', async () => {
+    const bare = { outbounds: [] } as unknown as XraySettingsValue;
+    const result = renderCountries(listOf(connected('DE', 19101)), bare);
+    await screen.findByText('Germany (DE)');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add the balancer' }));
+
+    const routing = result.template().routing as unknown as { balancers: { tag: string }[] };
+    expect(routing.balancers.map((b) => b.tag)).toEqual(['psiphon-balancer']);
+  });
+
   it('reads the list again while a tunnel waits for the supervisor, and shows it up again', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const waiting: TestCountry = {

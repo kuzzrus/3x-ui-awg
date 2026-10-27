@@ -6,8 +6,10 @@ import {
 } from '@/pages/xray/balancers/balancer-loopback';
 import {
   applyBalancerDeletion,
+  applyDeletionByTags,
   applyOutboundDeletion,
   planBalancerDeletion,
+  planDeletionByTags,
   planOutboundDeletion,
 } from '@/pages/xray/reference-cleanup';
 import type { XraySettingsValue } from '@/hooks/useXraySetting';
@@ -613,5 +615,91 @@ describe('an outbound deletion that cascade-removes a balancer another one falls
     expect(planOutboundDeletion(tt, 0).burst).toBe(true);
     applyOutboundDeletion(tt, 0);
     expect(tt.burstObservatory).toBeUndefined();
+  });
+});
+
+describe('deletion by tags', () => {
+  const psiphon = () =>
+    tpl({
+      outbounds: [
+        { tag: 'psiphon' },
+        { tag: 'psiphon-DE' },
+        { tag: 'psiphon-US' },
+        { tag: 'direct' },
+      ],
+      routing: {
+        rules: [
+          { type: 'field', domain: ['a.example'], outboundTag: 'psiphon-DE' },
+          { type: 'field', domain: ['b.example'], balancerTag: 'psiphon-balancer' },
+          { type: 'field', domain: ['c.example'], outboundTag: 'psiphon', balancerTag: 'main' },
+          { type: 'field', domain: ['d.example'], outboundTag: 'direct' },
+        ],
+        balancers: [
+          { tag: 'psiphon-balancer', selector: ['psiphon-'], strategy: { type: 'leastPing' } },
+          { tag: 'main', selector: ['direct'] },
+        ],
+      },
+      observatory: { subjectSelector: ['psiphon-'] },
+    });
+
+  it('removes several outbounds and a balancer in one cascade and repairs the rules of all of them', () => {
+    const tt = psiphon();
+    applyDeletionByTags(tt, ['psiphon', 'psiphon-DE', 'psiphon-US'], ['psiphon-balancer']);
+
+    expect((tt.outbounds ?? []).map((o) => o?.tag)).toEqual(['direct']);
+    expect(tt.routing!.balancers!.map((b) => b.tag)).toEqual(['main']);
+    // The first two lose their only destination, the third keeps its balancer, the last is not theirs.
+    expect(tt.routing!.rules!.map((r) => r.domain)).toEqual([['c.example'], ['d.example']]);
+    expect(tt.routing!.rules![0].outboundTag).toBeUndefined();
+    expect(tt.observatory).toBeUndefined();
+  });
+
+  it('plans what it applies, and changes nothing while it plans', () => {
+    const tt = psiphon();
+    const before = JSON.stringify(tt);
+    const impact = planDeletionByTags(
+      tt,
+      ['psiphon', 'psiphon-DE', 'psiphon-US'],
+      ['psiphon-balancer'],
+    );
+
+    expect(impact.rules.map((r) => [r.index, r.fate])).toEqual([
+      [0, 'removed'],
+      [1, 'removed'],
+      [2, 'modified'],
+    ]);
+    expect(impact.rules[2].keeps).toBe('main');
+    expect(impact.balancers).toEqual([]);
+    expect(impact.observatory).toBe(true);
+    expect(JSON.stringify(tt)).toBe(before);
+  });
+
+  it('reports a balancer the removed outbounds empty, but not one the caller named', () => {
+    const make = () =>
+      tpl({
+        outbounds: [{ tag: 'a' }, { tag: 'b' }],
+        routing: {
+          rules: [],
+          balancers: [
+            { tag: 'pool', selector: ['a', 'b'] },
+            { tag: 'named', selector: ['a'] },
+          ],
+        },
+      });
+    expect(planDeletionByTags(make(), ['a', 'b'], ['named']).balancers).toEqual([
+      { tag: 'pool', reason: 'selectorEmptied' },
+    ]);
+    const tt = make();
+    applyDeletionByTags(tt, ['a', 'b'], ['named']);
+    expect(tt.routing!.balancers).toEqual([]);
+  });
+
+  it('does the same for one outbound as the deletion by index', () => {
+    const byIndex = psiphon();
+    const byTag = psiphon();
+    expect(planDeletionByTags(byTag, ['psiphon-DE'])).toEqual(planOutboundDeletion(byIndex, 1));
+    applyOutboundDeletion(byIndex, 1);
+    applyDeletionByTags(byTag, ['psiphon-DE']);
+    expect(byTag).toEqual(byIndex);
   });
 });
