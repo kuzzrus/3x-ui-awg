@@ -16,7 +16,6 @@ import {
 } from '@ant-design/icons';
 
 import type { XraySettingsValue } from '@/hooks/useXraySetting';
-import { loopbackTagFor, removeBalancerLoopback } from '@/pages/xray/balancers/balancer-loopback';
 import DeletionImpactList from '@/pages/xray/DeletionImpactList';
 import { applyDeletionByTags, planDeletionByTags } from '@/pages/xray/reference-cleanup';
 import { HttpUtil } from '@/utils';
@@ -62,16 +61,6 @@ interface Region {
 
 const PSIPHON_TAG = 'psiphon';
 
-// An uninstall cannot refuse the way the Balancers tab does, so a balancer that falls back to the balancer of Psiphon
-// loses its fallback, and the loopback goes, before a save could make its rule again. The plan starts from this too.
-function releasePsiphonBalancer(tt: XraySettingsValue) {
-  const fallbackTag = loopbackTagFor(BALANCER_TAG);
-  for (const b of tt.routing?.balancers ?? []) {
-    if (b.fallbackTag === fallbackTag) b.fallbackTag = '';
-  }
-  removeBalancerLoopback(tt, BALANCER_TAG);
-}
-
 export default function PsiphonModal({
   open,
   templateSettings,
@@ -104,19 +93,17 @@ export default function PsiphonModal({
     [templateSettings?.outbounds],
   );
   // Planned only while the confirmation can be shown: the window is mounted with the whole page, and the plan copies
-  // the template.
-  const uninstallImpact = useMemo(() => {
-    if (!open || !status?.installed || !templateSettings) return null;
-    const dry = JSON.parse(JSON.stringify(templateSettings)) as XraySettingsValue;
-    releasePsiphonBalancer(dry);
-    return planDeletionByTags(dry, psiphonTags, [BALANCER_TAG]);
-  }, [open, status?.installed, templateSettings, psiphonTags]);
+  // the template. The cleanup lets go of the fallbacks to the balancer and of its loopback by itself.
+  const uninstallImpact = useMemo(
+    () =>
+      open && status?.installed && templateSettings
+        ? planDeletionByTags(templateSettings, psiphonTags, [BALANCER_TAG])
+        : null,
+    [open, status?.installed, templateSettings, psiphonTags],
+  );
 
   function dropPsiphonFromTemplate() {
-    onMutateTemplate((tt) => {
-      releasePsiphonBalancer(tt);
-      applyDeletionByTags(tt, psiphonTags, [BALANCER_TAG]);
-    });
+    onMutateTemplate((tt) => applyDeletionByTags(tt, psiphonTags, [BALANCER_TAG]));
   }
 
   const fetchStatus = useCallback(async () => {

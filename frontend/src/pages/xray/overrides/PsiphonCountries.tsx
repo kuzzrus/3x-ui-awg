@@ -15,7 +15,7 @@ import {
 
 import type { XraySettingsValue } from '@/hooks/useXraySetting';
 import { syncObservatories } from '@/pages/xray/balancers/balancer-helpers';
-import { loopbackTagFor, removeBalancerLoopback } from '@/pages/xray/balancers/balancer-loopback';
+import { loopbackTagFor } from '@/pages/xray/balancers/balancer-loopback';
 import DeletionImpactList from '@/pages/xray/DeletionImpactList';
 import {
   applyBalancerDeletion,
@@ -308,9 +308,7 @@ export default function PsiphonCountries({
       onOk: () =>
         onMutateTemplate((tt) => {
           const idx = tt.routing?.balancers?.findIndex((b) => b?.tag === BALANCER_TAG) ?? -1;
-          if (idx < 0) return;
-          removeBalancerLoopback(tt, BALANCER_TAG);
-          applyBalancerDeletion(tt, idx);
+          if (idx >= 0) applyBalancerDeletion(tt, idx);
         }),
     });
   }

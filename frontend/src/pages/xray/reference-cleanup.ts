@@ -1,7 +1,11 @@
 import type { XraySettingsValue } from '@/hooks/useXraySetting';
 import type { BalancerObject, RuleObject } from '@/schemas/routing';
 import { NODES_SELECTOR, syncObservatories } from './balancers/balancer-helpers';
-import { balancerTagFromLoopback, removeBalancerLoopback } from './balancers/balancer-loopback';
+import {
+  balancerTagFromLoopback,
+  isBalancerLoopbackTag,
+  removeBalancerLoopback,
+} from './balancers/balancer-loopback';
 
 /**
  * Reference cleanup for the Xray-config blob: when an outbound or balancer is
@@ -276,6 +280,12 @@ export function planOutboundDeletion(tt: XraySettingsValue, index: number): Dele
   };
 }
 
+// The rule that a loopback fallback makes is the panel's own: it goes with the loopback, and the preview does not list it.
+const isLoopbackRule = (rule: RuleObject | undefined): boolean => {
+  const inbound = rule?.inboundTag;
+  return Array.isArray(inbound) && inbound.some(isBalancerLoopbackTag);
+};
+
 /** The plan for several outbounds and balancers at once: one cascade, with the rule labels of the template as it stands. */
 export function planDeletionByTags(
   tt: XraySettingsValue,
@@ -289,8 +299,13 @@ export function planDeletionByTags(
   const obs = observersRemovedBy(tt, removedOutbounds, removedBalancers);
   return {
     ...emptyImpact(),
-    rules: ruleImpacts(tt, removedOutbounds, removedBalancers),
-    balancers: cascaded.map((tag) => ({ tag, reason: 'selectorEmptied' as const })),
+    rules: ruleImpacts(tt, removedOutbounds, removedBalancers).filter(
+      (r) => !isLoopbackRule(ruleList(tt)[r.index]),
+    ),
+    balancers: [
+      ...cascaded.map((tag) => ({ tag, reason: 'selectorEmptied' as const })),
+      ...balancersLosingFallback(tt, removedOutbounds, removedBalancers),
+    ],
     observatory: obs.observatory,
     burst: obs.burst,
   };

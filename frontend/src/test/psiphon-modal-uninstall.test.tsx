@@ -113,8 +113,9 @@ describe('uninstalling Psiphon from its window', () => {
       balancerTag: 'psiphon-balancer',
     } as never);
 
-    const { template: after } = await uninstall(tt);
+    const { template: after, popover } = await uninstall(tt);
 
+    expect(within(popover).getByText(/Balancer main — its fallback is cleared/)).toBeTruthy();
     expect((after.outbounds ?? []).map((o) => o?.tag)).toEqual(['direct']);
     expect(after.routing?.balancers).toEqual([
       { tag: 'main', selector: ['direct'], fallbackTag: '' },

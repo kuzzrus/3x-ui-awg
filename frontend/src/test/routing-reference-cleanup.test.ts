@@ -694,6 +694,31 @@ describe('deletion by tags', () => {
     expect(tt.routing!.balancers).toEqual([]);
   });
 
+  it('lists the balancer that loses its fallback, and not the loopback rule that goes with the balancer', () => {
+    const tt = tpl({
+      outbounds: [{ tag: 'direct' }, { tag: '_bl_psiphon-balancer', protocol: 'loopback' }],
+      routing: {
+        rules: [
+          { type: 'field', inboundTag: ['_bl_psiphon-balancer'], balancerTag: 'psiphon-balancer' },
+          { type: 'field', domain: ['a.example'], balancerTag: 'psiphon-balancer' },
+        ],
+        balancers: [
+          { tag: 'psiphon-balancer', selector: ['psiphon-'] },
+          { tag: 'main', selector: ['direct'], fallbackTag: '_bl_psiphon-balancer' },
+        ],
+      },
+    });
+    const impact = planDeletionByTags(tt, [], ['psiphon-balancer']);
+
+    expect(impact.balancers).toEqual([{ tag: 'main', reason: 'fallbackCleared' }]);
+    expect(impact.rules.map((r) => r.index)).toEqual([1]);
+
+    applyDeletionByTags(tt, [], ['psiphon-balancer']);
+    expect(tt.routing!.balancers).toEqual([{ tag: 'main', selector: ['direct'], fallbackTag: '' }]);
+    expect(tt.routing!.rules).toEqual([]);
+    expect((tt.outbounds ?? []).map((o) => o?.tag)).toEqual(['direct']);
+  });
+
   it('does the same for one outbound as the deletion by index', () => {
     const byIndex = psiphon();
     const byTag = psiphon();
