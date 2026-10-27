@@ -73,6 +73,55 @@ func TestResolveTargetIgnoresSubPathWhenDisabled(t *testing.T) {
 	}
 }
 
+// The subscription server answers the JSON and Clash subscriptions under paths of their own, so the proxy has to carry
+// them as well, each only while it is switched on, as the raw one.
+func TestResolveTargetRoutesTheJSONAndClashSubscriptions(t *testing.T) {
+	c := testConfig()
+	c.SubJsonPath, c.SubJsonEnabled = "/jsonq4w8e2r6/", true
+	c.SubClashPath, c.SubClashEnabled = "/clashz1x3c5v7/", true
+	cases := []struct {
+		path string
+		want Route
+	}{
+		{"/jsonq4w8e2r6/abc123", RouteSub},
+		{"/jsonq4w8e2r6", RouteSub},
+		{"/clashz1x3c5v7/abc123", RouteSub},
+		{"/pojht0vsfvseghbdnr/abc123", RouteSub},
+		{"/jsonq4w8e2r6X/abc123", RouteDecoy},
+		{"/clashz1x3c5v7-x/abc123", RouteDecoy},
+	}
+	for _, tc := range cases {
+		if got := c.resolveTarget(tc.path, ""); got != tc.want {
+			t.Errorf("resolveTarget(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+
+	c.SubJsonEnabled = false
+	if got := c.resolveTarget("/jsonq4w8e2r6/abc123", ""); got != RouteDecoy {
+		t.Errorf("JSON path with the JSON subscription off = %v, want RouteDecoy", got)
+	}
+	if got := c.resolveTarget("/clashz1x3c5v7/abc123", ""); got != RouteSub {
+		t.Errorf("Clash path with only the JSON subscription off = %v, want RouteSub", got)
+	}
+	c.SubClashEnabled = false
+	if got := c.resolveTarget("/clashz1x3c5v7/abc123", ""); got != RouteDecoy {
+		t.Errorf("Clash path with the Clash subscription off = %v, want RouteDecoy", got)
+	}
+}
+
+// With the subscription server off nothing of it is reachable, whatever the JSON and Clash switches say.
+func TestResolveTargetIgnoresTheJSONAndClashPathsWhenSubIsDisabled(t *testing.T) {
+	c := testConfig()
+	c.SubEnabled = false
+	c.SubJsonPath, c.SubJsonEnabled = "/jsonq4w8e2r6/", true
+	c.SubClashPath, c.SubClashEnabled = "/clashz1x3c5v7/", true
+	for _, path := range []string{"/jsonq4w8e2r6/abc", "/clashz1x3c5v7/abc"} {
+		if got := c.resolveTarget(path, ""); got != RouteDecoy {
+			t.Errorf("resolveTarget(%q) = %v, want RouteDecoy", path, got)
+		}
+	}
+}
+
 // A root base path cannot be distinguished from the decoy, so it must never
 // match -- otherwise every request would be swallowed by the panel route.
 func TestResolveTargetRootBasePathNeverMatches(t *testing.T) {
