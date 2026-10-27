@@ -422,6 +422,7 @@ export default function XrayPage() {
           onClose={() => setPsiphonOpen(false)}
           onAddOutbound={onAddOutbound}
           onRemoveOutbound={onRemoveOutboundByTag}
+          onMutateTemplate={mutate}
         />
         <WireproxyModal
           open={wireproxyOpen}

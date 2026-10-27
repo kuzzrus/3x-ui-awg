@@ -15,14 +15,21 @@ import {
   CheckCircleOutlined,
 } from '@ant-design/icons';
 
+import type { XraySettingsValue } from '@/hooks/useXraySetting';
+import DeletionImpactList from '@/pages/xray/DeletionImpactList';
+import { applyDeletionByTags, planDeletionByTags } from '@/pages/xray/reference-cleanup';
 import { HttpUtil } from '@/utils';
+
+import PsiphonCountries, { BALANCER_TAG, COUNTRY_PREFIX } from './PsiphonCountries';
 
 interface PsiphonModalProps {
   open: boolean;
-  templateSettings: { outbounds?: { tag?: string }[] } | null;
+  templateSettings: XraySettingsValue | null;
   onClose: () => void;
   onAddOutbound: (outbound: Record<string, unknown>) => void;
   onRemoveOutbound: (tag: string) => void;
+  // The countries add and remove outbounds and a balancer in one go, with the cleanup of what refers to them.
+  onMutateTemplate: (mutator: (tt: XraySettingsValue) => void) => void;
 }
 
 interface TunnelStatus {
@@ -60,6 +67,7 @@ export default function PsiphonModal({
   onClose,
   onAddOutbound,
   onRemoveOutbound,
+  onMutateTemplate,
 }: PsiphonModalProps) {
   const { t } = useTranslation();
   const [messageApi, messageContextHolder] = message.useMessage();
@@ -75,6 +83,28 @@ export default function PsiphonModal({
     if (!list) return -1;
     return list.findIndex((o) => o?.tag === PSIPHON_TAG);
   }, [templateSettings?.outbounds]);
+
+  // Everything of Psiphon in the template: the default outbound, those of the countries, and the balancer over them.
+  const psiphonTags = useMemo(
+    () =>
+      (templateSettings?.outbounds ?? [])
+        .map((o) => (typeof o?.tag === 'string' ? o.tag : ''))
+        .filter((tag) => tag === PSIPHON_TAG || tag.startsWith(COUNTRY_PREFIX)),
+    [templateSettings?.outbounds],
+  );
+  // Planned only while the confirmation can be shown: the window is mounted with the whole page, and the plan copies
+  // the template. The cleanup lets go of the fallbacks to the balancer and of its loopback by itself.
+  const uninstallImpact = useMemo(
+    () =>
+      open && status?.installed && templateSettings
+        ? planDeletionByTags(templateSettings, psiphonTags, [BALANCER_TAG])
+        : null,
+    [open, status?.installed, templateSettings, psiphonTags],
+  );
+
+  function dropPsiphonFromTemplate() {
+    onMutateTemplate((tt) => applyDeletionByTags(tt, psiphonTags, [BALANCER_TAG]));
+  }
 
   const fetchStatus = useCallback(async () => {
     const msg = await HttpUtil.post<PsiphonStatus>('/panel/api/xray/psiphon/status');
@@ -121,7 +151,7 @@ export default function PsiphonModal({
       const msg = await HttpUtil.post('/panel/api/xray/psiphon/uninstall');
       if (msg?.success) {
         messageApi.success(t('pages.xray.psiphon.uninstalled'));
-        if (psiphonOutboundIndex >= 0) onRemoveOutbound(PSIPHON_TAG);
+        dropPsiphonFromTemplate();
       } else {
         messageApi.error(msg?.msg || t('pages.xray.psiphon.uninstallFailed'));
       }
@@ -252,7 +282,13 @@ export default function PsiphonModal({
   return (
     <>
       {messageContextHolder}
-      <Modal open={open} title={t('pages.xray.psiphon.title')} footer={null} onCancel={onClose}>
+      <Modal
+        open={open}
+        title={t('pages.xray.psiphon.title')}
+        footer={null}
+        width={760}
+        onCancel={onClose}
+      >
         <Alert
           type="error"
           showIcon
@@ -337,6 +373,7 @@ export default function PsiphonModal({
               />
               <Popconfirm
                 title={t('pages.xray.psiphon.uninstallConfirm')}
+                description={uninstallImpact && <DeletionImpactList impact={uninstallImpact} />}
                 okText={t('delete')}
                 okType="danger"
                 cancelText={t('cancel')}
@@ -420,6 +457,14 @@ export default function PsiphonModal({
             <Typography.Paragraph type="secondary" style={{ marginTop: 12, fontSize: 12 }}>
               {t('pages.xray.psiphon.outboundHint', { port: status?.port })}
             </Typography.Paragraph>
+
+            <Divider className="my-10">{t('pages.xray.psiphon.countriesTitle')}</Divider>
+            <PsiphonCountries
+              open={open}
+              regions={regions}
+              templateSettings={templateSettings}
+              onMutateTemplate={onMutateTemplate}
+            />
           </>
         )}
       </Modal>

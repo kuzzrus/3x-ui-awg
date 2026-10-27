@@ -1,7 +1,11 @@
 import type { XraySettingsValue } from '@/hooks/useXraySetting';
 import type { BalancerObject, RuleObject } from '@/schemas/routing';
 import { NODES_SELECTOR, syncObservatories } from './balancers/balancer-helpers';
-import { balancerTagFromLoopback, removeBalancerLoopback } from './balancers/balancer-loopback';
+import {
+  balancerTagFromLoopback,
+  isBalancerLoopbackTag,
+  removeBalancerLoopback,
+} from './balancers/balancer-loopback';
 
 /**
  * Reference cleanup for the Xray-config blob: when an outbound or balancer is
@@ -274,6 +278,50 @@ export function planOutboundDeletion(tt: XraySettingsValue, index: number): Dele
     observatory: obs.observatory,
     burst: obs.burst,
   };
+}
+
+// The rule that a loopback fallback makes is the panel's own: it goes with the loopback, and the preview does not list it.
+const isLoopbackRule = (rule: RuleObject | undefined): boolean => {
+  const inbound = rule?.inboundTag;
+  return Array.isArray(inbound) && inbound.some(isBalancerLoopbackTag);
+};
+
+/** The plan for several outbounds and balancers at once: one cascade, with the rule labels of the template as it stands. */
+export function planDeletionByTags(
+  tt: XraySettingsValue,
+  outboundTags: string[],
+  balancerTags: string[] = [],
+): DeletionImpact {
+  const removedOutbounds = new Set(outboundTags.filter(Boolean));
+  const named = new Set(balancerTags.filter(Boolean));
+  const cascaded = balancersEmptiedBy(tt, removedOutbounds).filter((tag) => !named.has(tag));
+  const removedBalancers = new Set([...named, ...cascaded]);
+  const obs = observersRemovedBy(tt, removedOutbounds, removedBalancers);
+  return {
+    ...emptyImpact(),
+    rules: ruleImpacts(tt, removedOutbounds, removedBalancers).filter(
+      (r) => !isLoopbackRule(ruleList(tt)[r.index]),
+    ),
+    balancers: [
+      ...cascaded.map((tag) => ({ tag, reason: 'selectorEmptied' as const })),
+      ...balancersLosingFallback(tt, removedOutbounds, removedBalancers),
+    ],
+    observatory: obs.observatory,
+    burst: obs.burst,
+  };
+}
+
+export function applyDeletionByTags(
+  tt: XraySettingsValue,
+  outboundTags: string[],
+  balancerTags: string[] = [],
+): void {
+  const removedOutbounds = new Set(outboundTags.filter(Boolean));
+  const removedBalancers = new Set([
+    ...balancerTags.filter(Boolean),
+    ...balancersEmptiedBy(tt, removedOutbounds),
+  ]);
+  applyCleanup(tt, removedOutbounds, removedBalancers);
 }
 
 export function applyOutboundDeletion(tt: XraySettingsValue, index: number): void {
