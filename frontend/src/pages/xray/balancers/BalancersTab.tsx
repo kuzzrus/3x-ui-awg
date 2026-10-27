@@ -308,7 +308,7 @@ export default function BalancersTab({
     }
     const impact = templateSettings
       ? planBalancerDeletion(templateSettings, idx)
-      : { rules: [], balancers: [], observatory: false, burst: false };
+      : { rules: [], balancers: [], observatory: false, burst: false, chains: [] };
     modal.confirm({
       title: `${t('delete')} ${t('pages.xray.Balancers')} #${idx + 1}?`,
       content: <DeletionImpactList impact={impact} />,

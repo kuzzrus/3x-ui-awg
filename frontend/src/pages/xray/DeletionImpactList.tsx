@@ -8,6 +8,7 @@ interface DeletionImpactListProps {
 
 const BALANCER_LINE: Record<BalancerImpact['reason'], string> = {
   selectorEmptied: 'pages.xray.refCleanup.balancerRemoved',
+  selectorNarrowed: 'pages.xray.refCleanup.balancerNarrowed',
   fallbackCleared: 'pages.xray.refCleanup.balancerFallbackCleared',
 };
 
@@ -27,6 +28,9 @@ export default function DeletionImpactList({ impact }: DeletionImpactListProps) 
   }
   if (impact.observatory) lines.push(t('pages.xray.observatory.deleteAlsoObservatory'));
   if (impact.burst) lines.push(t('pages.xray.observatory.deleteAlsoBurst'));
+  for (const tag of impact.chains) {
+    lines.push(t('pages.xray.refCleanup.chainCleared', { tag }));
+  }
 
   if (lines.length === 0) return null;
 

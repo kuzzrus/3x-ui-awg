@@ -84,6 +84,7 @@ const noImpact = (): DeletionImpact => ({
   balancers: [],
   observatory: false,
   burst: false,
+  chains: [],
 });
 
 function outboundIndex(tt: XraySettingsValue | null, region: string): number {
@@ -229,7 +230,7 @@ export default function PsiphonCountries({
 
   function setCountryOutbound(country: Country, on: boolean) {
     if (!on) {
-      // Like both tabs, the switch always asks first: the preview lists the rules and balancers that go, not all that changes.
+      // Asks first like both tabs: switching back on adds only the bare outbound, so what the dialog lists does not come back.
       modal.confirm({
         title: t('pages.xray.psiphon.outboundOffConfirm', { region: country.region }),
         content: <DeletionImpactList impact={impactOfDropping(country.region)} />,

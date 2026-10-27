@@ -262,7 +262,7 @@ export default function OutboundsTab({
     const target = originalOutboundIndex(rowsRef.current, idx);
     const impact = templateSettings
       ? planOutboundDeletion(templateSettings, target)
-      : { rules: [], balancers: [], observatory: false, burst: false };
+      : { rules: [], balancers: [], observatory: false, burst: false, chains: [] };
     modal.confirm({
       title: `${t('delete')} ${t('pages.xray.Outbounds')} #${idx + 1}?`,
       content: <DeletionImpactList impact={impact} />,
