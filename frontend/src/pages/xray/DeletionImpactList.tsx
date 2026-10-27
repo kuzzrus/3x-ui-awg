@@ -1,10 +1,15 @@
 import { useTranslation } from 'react-i18next';
 
-import type { DeletionImpact } from './reference-cleanup';
+import type { BalancerImpact, DeletionImpact } from './reference-cleanup';
 
 interface DeletionImpactListProps {
   impact: DeletionImpact;
 }
+
+const BALANCER_LINE: Record<BalancerImpact['reason'], string> = {
+  selectorEmptied: 'pages.xray.refCleanup.balancerRemoved',
+  fallbackCleared: 'pages.xray.refCleanup.balancerFallbackCleared',
+};
 
 export default function DeletionImpactList({ impact }: DeletionImpactListProps) {
   const { t } = useTranslation();
@@ -18,7 +23,7 @@ export default function DeletionImpactList({ impact }: DeletionImpactListProps) 
     );
   }
   for (const balancer of impact.balancers) {
-    lines.push(t('pages.xray.refCleanup.balancerRemoved', { tag: balancer.tag }));
+    lines.push(t(BALANCER_LINE[balancer.reason], { tag: balancer.tag }));
   }
   if (impact.observatory) lines.push(t('pages.xray.observatory.deleteAlsoObservatory'));
   if (impact.burst) lines.push(t('pages.xray.observatory.deleteAlsoBurst'));

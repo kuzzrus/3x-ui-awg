@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import BalancersTab from '@/pages/xray/balancers/BalancersTab';
 import type { SetTemplate, XraySettingsValue } from '@/hooks/useXraySetting';
@@ -39,11 +39,11 @@ const template = {
   },
 } as unknown as XraySettingsValue;
 
-function renderTab() {
+function renderTab(templateSettings: XraySettingsValue = template) {
   const setTemplateSettings = vi.fn();
   renderWithProviders(
     <BalancersTab
-      templateSettings={template}
+      templateSettings={templateSettings}
       setTemplateSettings={setTemplateSettings as unknown as SetTemplate}
       clientReverseTags={[]}
       subscriptionOutboundTags={[]}
@@ -70,11 +70,29 @@ function editAndSave(tag: string) {
   fireEvent.click(save);
 }
 
-function savedTemplate(setTemplateSettings: ReturnType<typeof vi.fn>): XraySettingsValue {
+function savedTemplate(
+  setTemplateSettings: ReturnType<typeof vi.fn>,
+  from: XraySettingsValue = template,
+): XraySettingsValue {
   const update = setTemplateSettings.mock.calls[0][0] as (
     prev: XraySettingsValue | null,
   ) => XraySettingsValue;
-  return update(template);
+  return update(from);
+}
+
+async function deleteAndConfirm(tag: string) {
+  const more = rowOf(tag).querySelector<HTMLElement>('button[aria-label="more"]');
+  if (!more) throw new Error('More button not found');
+  fireEvent.click(more);
+  fireEvent.click(await screen.findByText('Delete'));
+  const ok = await waitFor(() => {
+    const button = document.querySelector<HTMLElement>(
+      '.ant-modal-confirm-btns .ant-btn-dangerous',
+    );
+    if (!button) throw new Error('The confirmation is not open');
+    return button;
+  });
+  fireEvent.click(ok);
 }
 
 describe('the balancers of the Xray template', () => {
@@ -134,5 +152,26 @@ describe('the balancers of the Xray template', () => {
       Record<string, unknown>
     >;
     expect(balancers[1]).toEqual({ tag: 'plain', selector: ['direct'], fallbackTag: '' });
+  });
+
+  it('takes the loopback of a deleted balancer along', async () => {
+    const withLoopback = {
+      outbounds: [
+        { tag: 'direct', protocol: 'freedom' },
+        { tag: '_bl_solo', protocol: 'loopback', settings: { inboundTag: '_bl_solo' } },
+      ],
+      routing: {
+        rules: [{ type: 'field', inboundTag: ['_bl_solo'], balancerTag: 'solo' }],
+        balancers: [{ tag: 'solo', selector: ['direct'] }],
+      },
+    } as unknown as XraySettingsValue;
+    const setTemplateSettings = renderTab(withLoopback);
+    await deleteAndConfirm('solo');
+
+    await waitFor(() => expect(setTemplateSettings).toHaveBeenCalledTimes(1));
+    const saved = savedTemplate(setTemplateSettings, withLoopback);
+    expect(saved.outbounds).toEqual([{ tag: 'direct', protocol: 'freedom' }]);
+    expect(saved.routing?.rules).toEqual([]);
+    expect(saved.routing?.balancers).toEqual([]);
   });
 });

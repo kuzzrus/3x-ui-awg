@@ -33,7 +33,6 @@ import {
   loopbackTagFor,
   resolveLoopbackFallback,
   ensureBalancerLoopback,
-  removeBalancerLoopback,
   removeBalancerLoopbackIfOrphaned,
   propagateBalancerTagRename,
 } from './balancer-loopback';
@@ -316,12 +315,7 @@ export default function BalancersTab({
       okText: t('delete'),
       okType: 'danger',
       cancelText: t('cancel'),
-      onOk: () =>
-        mutate((tt) => {
-          const tag = tt.routing?.balancers?.[idx]?.tag ?? '';
-          removeBalancerLoopback(tt, tag);
-          applyBalancerDeletion(tt, idx);
-        }),
+      onOk: () => mutate((tt) => applyBalancerDeletion(tt, idx)),
     });
   }
 

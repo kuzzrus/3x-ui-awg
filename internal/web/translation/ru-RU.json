@@ -2503,7 +2503,8 @@
         "header": "Удаление также обновит маршрутизацию:",
         "ruleRemoved": "Правило {label} — удалено (не осталось назначения)",
         "ruleModified": "Правило {label} — сохранено (теперь использует {keeps})",
-        "balancerRemoved": "Балансировщик {tag} — удалён (не осталось целей)"
+        "balancerRemoved": "Балансировщик {tag} — удалён (не осталось целей)",
+        "balancerFallbackCleared": "Балансировщик {tag} — его fallback очищается"
       },
       "balancer": {
         "balancerStrategy": "Стратегия",
