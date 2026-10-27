@@ -157,7 +157,8 @@ with any helper program that a node does not run.
 
 Uninstalling Psiphon removes the country tunnels and takes everything of Psiphon out of the
 editor: the outbounds, the balancer, and the rules that lead only to them. The confirmation
-lists what goes before it asks.
+lists what goes before it asks. An outbound that was chained through one of them (its
+`dialerProxy`) is no longer chained and dials directly, which the confirmation says in words.
 
 ## Outbound subscriptions (server pools)
 
