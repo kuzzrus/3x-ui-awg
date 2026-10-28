@@ -17,6 +17,7 @@ import (
 type notice struct {
 	NoticeType string          `json:"noticeType"`
 	Data       json.RawMessage `json:"data"`
+	Timestamp  string          `json:"timestamp"`
 }
 
 // TunnelStatus summarizes the process's own view of its tunnel, read from its

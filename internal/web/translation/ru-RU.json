@@ -2785,6 +2785,8 @@
         "stopAllButton": "Остановить все",
         "removeCountryButton": "Удалить страну",
         "removeCountryConfirm": "Удалить {region}? Её туннель остановится, файлы удалятся, а исходящий уйдёт из конфига.",
+        "regionNoServers": "нет серверов",
+        "regionsUnknownHint": "Когда туннель подключится, регионы, где у Psiphon есть серверы, отметятся здесь, а остальные станут серыми.",
         "outboundOffConfirm": "Убрать исходящий psiphon-{region}?",
         "balancerRemoveConfirm": "Удалить psiphon-balancer?",
         "countryOutboundSwitch": "Исходящий psiphon-{region}",

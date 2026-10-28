@@ -131,12 +131,8 @@ func (s *PsiphonService) SaveConfig(raw []byte) error {
 	return errors.Join(restarts...)
 }
 
-// AvailableRegions lists ISO 3166-1 codes (states plus common territories),
-// not a Psiphon-curated subset -- "Verify" answers "does it work," not this list.
-func AvailableRegions() []Region { return isoCountries }
-
-// Region is one entry in the picker: an ISO 3166-1 alpha-2 code and its
-// display name.
+// Region is one entry of the ISO 3166-1 list (states plus common territories) behind the picker: an alpha-2 code and its display
+// name. Which of them Psiphon has servers in is what Regions adds.
 type Region struct {
 	Code string `json:"code"`
 	Name string `json:"name"`

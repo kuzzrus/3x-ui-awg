@@ -120,6 +120,12 @@ proxy on `127.0.0.1:19060`, on a bundled config unless you upload your own `psip
 The panel starts the tunnel again after a restart and after a crash. Do not run it on a
 server located in Russia.
 
+Once a tunnel has connected, the pickers of **Egress region** and of the countries show where
+Psiphon has servers: the regions without any are greyed out, marked *no servers* and listed
+last, since a tunnel through one of them has nothing to connect to. Psiphon publishes no such
+list, so the panel reads it from the notices of its own tunnels and keeps the last one it saw
+for when none is up. Until a tunnel has said, every region is offered.
+
 ### Several countries at once
 
 Under **Countries** in the same window you can add up to six countries. Each one is a

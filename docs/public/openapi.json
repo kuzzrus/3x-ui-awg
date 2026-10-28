@@ -15670,8 +15670,9 @@
         "tags": [
           "Xray Settings"
         ],
-        "summary": "List ISO 3166-1 codes (states plus common territories) for the egress-region picker (not a Psiphon-curated subset -- see the psiphon/:action region action to actually apply and verify one).",
+        "summary": "List ISO 3166-1 codes (states plus common territories) for the egress-region picker, marked with where Psiphon has servers.",
         "operationId": "get_panel_api_xray_psiphon_regions",
+        "description": "Once a Psiphon tunnel has connected, each entry carries available: whether Psiphon has servers there, read from the notices of a tunnel. The last list is kept for when no tunnel is up. Before any tunnel has said, available is left out, which means any. Use the psiphon/:action region action to actually apply and verify one.",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -15688,6 +15689,21 @@
                     },
                     "obj": {}
                   }
+                },
+                "example": {
+                  "success": true,
+                  "obj": [
+                    {
+                      "code": "AT",
+                      "name": "Austria",
+                      "available": true
+                    },
+                    {
+                      "code": "AQ",
+                      "name": "Antarctica",
+                      "available": false
+                    }
+                  ]
                 }
               }
             }
