@@ -26,7 +26,13 @@ import {
 import type { DeletionImpact } from '@/pages/xray/reference-cleanup';
 import { HttpUtil } from '@/utils';
 
-import { regionPickerOptions, regionsKnown, type PsiphonRegion } from './psiphon-regions';
+import {
+  regionPickerOptions,
+  regionsKnown,
+  useRegionLabels,
+  type PsiphonRegion,
+  type PsiphonScanResult,
+} from './psiphon-regions';
 
 interface TunnelStatus {
   connected: boolean;
@@ -61,6 +67,8 @@ interface ProbeResult {
 interface PsiphonCountriesProps {
   open: boolean;
   regions: PsiphonRegion[];
+  // What the last scan found: the picker puts the fastest regions first and says which ones did not connect.
+  scanned?: PsiphonScanResult[];
   templateSettings: XraySettingsValue | null;
   onMutateTemplate: (mutator: (tt: XraySettingsValue) => void) => void;
   // Called when one more tunnel has connected: it has told which regions have servers, so the window reads that list again.
@@ -101,11 +109,13 @@ function outboundPort(tt: XraySettingsValue | null, region: string): number | nu
 export default function PsiphonCountries({
   open,
   regions,
+  scanned,
   templateSettings,
   onMutateTemplate,
   onTunnelConnected,
 }: PsiphonCountriesProps) {
   const { t } = useTranslation();
+  const regionLabels = useRegionLabels();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [modal, modalContextHolder] = Modal.useModal();
   const [view, setView] = useState<CountriesView | null>(null);
@@ -331,7 +341,8 @@ export default function PsiphonCountries({
   const added = new Set((view?.countries ?? []).map((c) => c.region));
   const options = regionPickerOptions(
     regions.filter((r) => !added.has(r.code)),
-    t('pages.xray.psiphon.regionNoServers'),
+    regionLabels,
+    scanned,
   );
   const nameOf = (code: string) => regions.find((r) => r.code === code)?.name ?? code;
   const full = !!view && view.countries.length >= view.max;

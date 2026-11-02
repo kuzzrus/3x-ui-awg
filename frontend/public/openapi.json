@@ -15821,6 +15821,122 @@
         }
       }
     },
+    "/panel/api/xray/psiphon/scan": {
+      "get": {
+        "tags": [
+          "Xray Settings"
+        ],
+        "summary": "Read how the scan of the Psiphon regions stands: the one that runs, or the last one that ran, which survives a panel restart.",
+        "operationId": "get_panel_api_xray_psiphon_scan",
+        "description": "A scan starts a temporary Psiphon process per region, three at a time, waits for its tunnel to connect, measures a request through it and takes it down again. results come in the order the regions finished and current lists the regions being scanned now; total is how many there are, and is 0 while the scan still asks a tunnel which regions have servers (discovering). error is why a scan could not go on at all, cancelled that it was ended by cancel or a shutdown.",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "running": false,
+                    "total": 2,
+                    "current": [],
+                    "startedAt": 1793650000,
+                    "finishedAt": 1793650044,
+                    "results": [
+                      {
+                        "region": "DE",
+                        "connected": true,
+                        "connectMs": 4210,
+                        "latencyMs": 62,
+                        "ip": "172.104.225.141",
+                        "country": "DE"
+                      },
+                      {
+                        "region": "JP",
+                        "connected": false,
+                        "error": "did not connect within 1m0s"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/xray/psiphon/scan/{action}": {
+      "post": {
+        "tags": [
+          "Xray Settings"
+        ],
+        "summary": "Start or cancel the scan of the Psiphon regions. The action parameter selects the operation.",
+        "operationId": "post_panel_api_xray_psiphon_scan_action",
+        "parameters": [
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "description": "start — begin a scan in the background and answer at once with its status; it fails while another scan runs. cancel — end the scan that runs and answer once its processes are down. Both answer the status as GET psiphon/scan does, also when they fail.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "regions": {
+                    "type": "string",
+                    "description": "For start: comma separated ISO 3166-1 alpha-2 codes in capitals. Empty means every region a tunnel has said has servers; when none has yet, the scan starts one temporary process to ask."
+                  }
+                },
+                "required": [
+                  "regions"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/panel/api/xray/naiveproxy/{action}": {
       "post": {
         "tags": [

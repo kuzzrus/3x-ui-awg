@@ -100,6 +100,12 @@ func renderCountryConfig(c Country) error {
 	if err != nil {
 		return err
 	}
+	return writeTunnelConfig(sp, c.Region)
+}
+
+// writeTunnelConfig writes the config of the tunnel sp describes: the base psiphon.config with the forced fields,
+// the port of sp and region as its egress, which is "" for the best Psiphon finds.
+func writeTunnelConfig(sp spec, region string) error {
 	raw, err := os.ReadFile(ConfigPath())
 	if err != nil {
 		return fmt.Errorf("no base config to start from -- upload a psiphon.config first: %w", err)
@@ -112,13 +118,13 @@ func renderCountryConfig(c Country) error {
 		return fmt.Errorf("cannot parse %s: expected a JSON object", ConfigPath())
 	}
 	applyForcedFields(parsed)
-	parsed["LocalSocksProxyPort"] = c.Port
-	parsed["EgressRegion"] = c.Region
-	// A legacy data store of the base config would be adopted by every country at once.
+	parsed["LocalSocksProxyPort"] = sp.port
+	parsed["EgressRegion"] = region
+	// A legacy data store of the base config would be adopted by every tunnel at once.
 	delete(parsed, "MigrateDataStoreDirectory")
 	out, err := json.MarshalIndent(parsed, "", "  ")
 	if err != nil {
-		return fmt.Errorf("re-encoding the config of %s: %w", c.Region, err)
+		return fmt.Errorf("re-encoding the config for %s: %w", sp.config, err)
 	}
 	if err := os.MkdirAll(filepath.Dir(sp.config), 0o700); err != nil {
 		return fmt.Errorf("creating %s: %w", filepath.Dir(sp.config), err)

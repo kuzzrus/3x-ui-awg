@@ -126,6 +126,21 @@ last, since a tunnel through one of them has nothing to connect to. Psiphon publ
 list, so the panel reads it from the notices of its own tunnels and keeps the last one it saw
 for when none is up. Until a tunnel has said, every region is offered.
 
+### Scanning the regions
+
+**Region scan**, in the same window, tells which regions connect from this server and how
+fast. It starts a temporary Psiphon process for each region, three at a time, waits up to a
+minute for its tunnel, times a request through it, notes the exit address and takes the process
+down again, so your own tunnels and the config are left alone. With no list of regions to go
+by yet, it first starts one temporary process to ask Psiphon which regions have servers. A
+temporary process takes about 40 MB while it runs and a scan takes a few minutes; **Cancel the
+scan** ends it at once and keeps what it had finished.
+
+The result stays in the window, also after a restart of the panel, and the pickers use it: the
+regions that answered come first, the fastest at the top with its latency, then the regions that
+were not scanned, then those that did not connect, marked *no tunnel in the last scan*. A scan
+is a measurement of one moment, so a region that failed stays selectable.
+
 ### Several countries at once
 
 Under **Countries** in the same window you can add up to six countries. Each one is a

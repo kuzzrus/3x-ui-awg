@@ -1,0 +1,350 @@
+package psiphon
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net"
+	"os"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"sync"
+	"time"
+)
+
+// The loopback ports a scan draws from: away from the default instance, from Tor and from the country tunnels.
+const (
+	scanPortFirst = 19201
+	scanPortLast  = 19299
+)
+
+// How a scan is paced. The values are variables so tests can shorten them.
+var (
+	// scanParallel caps the temporary tunnels up at once: each is a process of about 40 MB.
+	scanParallel = 3
+	// scanConnectTimeout is how long a region gets to connect; one usually takes seconds, a slow one most of a minute.
+	scanConnectTimeout = 60 * time.Second
+	// scanDiscoverTimeout is how long the tunnel that only asks which regions have servers gets to say so.
+	scanDiscoverTimeout = 45 * time.Second
+	scanPoll            = 500 * time.Millisecond
+)
+
+// ScanResult is what a scan found of one region: whether a tunnel through it came up and how long that took,
+// and what a request through it showed. Error says what did not work; a latency may still be there with it.
+type ScanResult struct {
+	Region    string `json:"region"`
+	Connected bool   `json:"connected"`
+	ConnectMs int64  `json:"connectMs,omitempty"`
+	LatencyMs int64  `json:"latencyMs,omitempty"`
+	IP        string `json:"ip,omitempty"`
+	Country   string `json:"country,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+// ScanStatus is how a scan stands. Results come in the order the regions finished, Current is what is being scanned
+// now, and Error is why the scan as a whole could not go on.
+type ScanStatus struct {
+	Running     bool         `json:"running"`
+	Discovering bool         `json:"discovering,omitempty"`
+	Cancelled   bool         `json:"cancelled,omitempty"`
+	Error       string       `json:"error,omitempty"`
+	Total       int          `json:"total"`
+	Current     []string     `json:"current"`
+	StartedAt   int64        `json:"startedAt,omitempty"`
+	FinishedAt  int64        `json:"finishedAt,omitempty"`
+	Results     []ScanResult `json:"results"`
+}
+
+// Scanner runs the scan: a temporary tunnel per region, a few at a time, each measured and taken down again.
+// Only one scan runs at once.
+type Scanner struct {
+	mu     sync.Mutex // guards everything below
+	status ScanStatus
+	ports  map[int]bool
+	cancel context.CancelFunc
+	done   chan struct{} // closed when the run in progress has ended and cleaned up
+}
+
+func newScanner() *Scanner { return &Scanner{} }
+
+func scanDir() string { return filepath.Join(Dir(), "scan") }
+
+// scanSpec is where the temporary tunnel called name keeps its files: a region, or "discover" for the one that
+// only asks which regions have servers.
+func scanSpec(name string, port int) spec {
+	dir := filepath.Join(scanDir(), name)
+	return spec{
+		config:  filepath.Join(dir, "psiphon.config"),
+		data:    filepath.Join(dir, "data"),
+		notices: filepath.Join(dir, "notices.log"),
+		port:    port,
+	}
+}
+
+// cleanScanRegions refuses a code that is not a region, since it names a directory, and takes each region once.
+func cleanScanRegions(regions []string) ([]string, error) {
+	out := make([]string, 0, len(regions))
+	for _, r := range regions {
+		if !ValidRegion(r) {
+			return nil, fmt.Errorf("%q is not a two-letter region code", r)
+		}
+		if !slices.Contains(out, r) {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+// Start begins a scan of regions in the background, or of the regions a tunnel says have servers when none is
+// named. onFinish gets the final status once the scan has ended and cleaned up; it may be nil.
+func (s *Scanner) Start(regions []string, onFinish func(ScanStatus)) error {
+	if !IsInstalled() {
+		return errors.New("Psiphon is not installed")
+	}
+	if !IsConfigured() {
+		return errors.New("Psiphon has no config -- upload a psiphon.config first")
+	}
+	list, err := cleanScanRegions(regions)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.status.Running {
+		return errors.New("a scan is already running")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.cancel, s.done = cancel, make(chan struct{})
+	s.ports = map[int]bool{}
+	s.status = ScanStatus{Running: true, Discovering: len(list) == 0, Total: len(list), StartedAt: time.Now().Unix()}
+	go s.run(ctx, list, s.done, onFinish)
+	return nil
+}
+
+// Cancel ends the scan that runs, if one does, and returns once its tunnels are down and their files gone.
+func (s *Scanner) Cancel() {
+	s.mu.Lock()
+	cancel, done := s.cancel, s.done
+	s.mu.Unlock()
+	if cancel == nil {
+		return
+	}
+	cancel()
+	<-done
+}
+
+// Status is how the scan that runs, or the last one this process ran, stands.
+func (s *Scanner) Status() ScanStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.snapshotLocked()
+}
+
+// snapshotLocked copies the status, so what a caller keeps is not changed under it and a list is never null.
+func (s *Scanner) snapshotLocked() ScanStatus {
+	st := s.status
+	st.Current = append([]string{}, st.Current...)
+	st.Results = append([]ScanResult{}, st.Results...)
+	return st
+}
+
+func (s *Scanner) run(ctx context.Context, regions []string, done chan struct{}, onFinish func(ScanStatus)) {
+	defer close(done)
+	var scanErr error
+	if len(regions) == 0 {
+		regions, scanErr = s.discover(ctx)
+		s.mu.Lock()
+		s.status.Discovering, s.status.Total = false, len(regions)
+		s.mu.Unlock()
+	}
+	if scanErr == nil {
+		s.scanAll(ctx, regions)
+	}
+	s.finish(ctx, scanErr, onFinish)
+}
+
+// scanAll scans the regions with scanParallel workers; a cancel leaves the regions not yet taken unscanned.
+func (s *Scanner) scanAll(ctx context.Context, regions []string) {
+	jobs := make(chan string)
+	var wg sync.WaitGroup
+	for range min(scanParallel, len(regions)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for region := range jobs {
+				s.scanOne(ctx, region)
+			}
+		}()
+	}
+feed:
+	for _, region := range regions {
+		select {
+		case jobs <- region:
+		case <-ctx.Done():
+			break feed
+		}
+	}
+	close(jobs)
+	wg.Wait()
+}
+
+// scanOne scans a region and records the result, unless the scan was cancelled meanwhile: that region is then
+// unfinished, and what it found is not a measurement.
+func (s *Scanner) scanOne(ctx context.Context, region string) {
+	s.mu.Lock()
+	s.status.Current = append(s.status.Current, region)
+	s.mu.Unlock()
+
+	result := s.scanRegion(ctx, region)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.status.Current = slices.DeleteFunc(s.status.Current, func(r string) bool { return r == region })
+	if ctx.Err() == nil {
+		s.status.Results = append(s.status.Results, result)
+	}
+}
+
+// scanRegion brings a tunnel up in region, waits for it to connect and measures it, then takes it down.
+func (s *Scanner) scanRegion(ctx context.Context, region string) ScanResult {
+	result := ScanResult{Region: region}
+	port, err := s.takePort()
+	if err != nil {
+		result.Error = err.Error()
+		return result
+	}
+	defer s.releasePort(port)
+	sp := scanSpec(region, port)
+	defer os.RemoveAll(filepath.Dir(sp.config))
+
+	began := time.Now()
+	proc, err := startScanProcess(ctx, sp, region)
+	if err != nil {
+		result.Error = err.Error()
+		return result
+	}
+	defer func() { _ = proc.Stop() }()
+	if err := waitForTunnel(ctx, sp.notices, proc); err != nil {
+		result.Error = err.Error()
+		return result
+	}
+	result.Connected, result.ConnectMs = true, time.Since(began).Milliseconds()
+
+	probe := Probe(ctx, port)
+	result.LatencyMs, result.IP, result.Country, result.Error = probe.LatencyMs, probe.IP, probe.Country, probe.Error
+	return result
+}
+
+// discover starts a tunnel without a region and returns the regions it says have servers, which is how a scan
+// of every region knows which ones there are before any tunnel of the panel has run.
+func (s *Scanner) discover(ctx context.Context) ([]string, error) {
+	port, err := s.takePort()
+	if err != nil {
+		return nil, err
+	}
+	defer s.releasePort(port)
+	sp := scanSpec("discover", port)
+	defer os.RemoveAll(filepath.Dir(sp.config))
+
+	proc, err := startScanProcess(ctx, sp, "")
+	if err != nil {
+		return nil, fmt.Errorf("could not learn which regions have servers: %w", err)
+	}
+	defer func() { _ = proc.Stop() }()
+	deadline := time.Now().Add(scanDiscoverTimeout)
+	for {
+		if seen, _ := seenRegionsIn(sp.notices); len(seen.Regions) > 0 {
+			return seen.Regions, nil
+		}
+		if !proc.IsRunning() {
+			return nil, fmt.Errorf("could not learn which regions have servers: Psiphon exited: %s", proc.GetResult())
+		}
+		if !time.Now().Before(deadline) {
+			return nil, fmt.Errorf("could not learn which regions have servers: no list within %s", scanDiscoverTimeout)
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(scanPoll):
+		}
+	}
+}
+
+// startScanProcess writes the config of a temporary tunnel, starts it and waits until its SOCKS listener is up.
+func startScanProcess(ctx context.Context, sp spec, region string) (*Process, error) {
+	if err := writeTunnelConfig(sp, region); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(sp.data, 0o700); err != nil {
+		return nil, fmt.Errorf("creating %s: %w", sp.data, err)
+	}
+	proc := newProcess(sp, "[scan "+filepath.Base(filepath.Dir(sp.config))+"]")
+	if err := proc.Start(); err != nil {
+		return nil, err
+	}
+	if err := waitForListener(ctx, net.JoinHostPort("127.0.0.1", strconv.Itoa(sp.port)), proc); err != nil {
+		_ = proc.Stop()
+		return nil, err
+	}
+	return proc, nil
+}
+
+// waitForTunnel blocks until the process reports a tunnel, it exits, the time runs out or the scan is cancelled.
+func waitForTunnel(ctx context.Context, notices string, proc *Process) error {
+	deadline := time.Now().Add(scanConnectTimeout)
+	for {
+		if tunnel, _ := currentTunnel(notices); tunnel.Connected {
+			return nil
+		}
+		if !proc.IsRunning() {
+			return fmt.Errorf("Psiphon exited before it connected: %s", proc.GetResult())
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("did not connect within %s", scanConnectTimeout)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(scanPoll):
+		}
+	}
+}
+
+// takePort reserves the first port of the scan range that no other temporary tunnel has and nothing listens on.
+func (s *Scanner) takePort() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for port := scanPortFirst; port <= scanPortLast; port++ {
+		if !s.ports[port] && portFree(port) {
+			s.ports[port] = true
+			return port, nil
+		}
+	}
+	return 0, fmt.Errorf("no free port in %d-%d for a scan", scanPortFirst, scanPortLast)
+}
+
+func (s *Scanner) releasePort(port int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.ports, port)
+}
+
+// finish closes the status of a run that has ended and clears the folder of its tunnels, which are all down by now.
+func (s *Scanner) finish(ctx context.Context, scanErr error, onFinish func(ScanStatus)) {
+	_ = os.RemoveAll(scanDir())
+	s.mu.Lock()
+	cancelled := ctx.Err() != nil
+	s.cancel()
+	s.status.Running, s.status.Discovering, s.status.Current = false, false, nil
+	s.status.FinishedAt = time.Now().Unix()
+	s.status.Cancelled = cancelled
+	if scanErr != nil && !cancelled {
+		s.status.Error = scanErr.Error()
+	}
+	final := s.snapshotLocked()
+	s.mu.Unlock()
+	if onFinish != nil {
+		onFinish(final)
+	}
+}

@@ -21,7 +21,9 @@ import { applyDeletionByTags, planDeletionByTags } from '@/pages/xray/reference-
 import { HttpUtil } from '@/utils';
 
 import PsiphonCountries, { BALANCER_TAG, COUNTRY_PREFIX } from './PsiphonCountries';
-import { regionPickerOptions, type PsiphonRegion } from './psiphon-regions';
+import PsiphonScan from './PsiphonScan';
+import { regionPickerOptions, useRegionLabels, type PsiphonRegion } from './psiphon-regions';
+import { usePsiphonScan } from './usePsiphonScan';
 
 interface PsiphonModalProps {
   open: boolean;
@@ -73,6 +75,8 @@ export default function PsiphonModal({
   const [selectedRegion, setSelectedRegion] = useState<string>('');
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [exitInfo, setExitInfo] = useState<ExitInfo | null>(null);
+  const regionLabels = useRegionLabels();
+  const scan = usePsiphonScan(open, messageApi.error);
 
   const psiphonOutboundIndex = useMemo(() => {
     const list = templateSettings?.outbounds;
@@ -273,9 +277,9 @@ export default function PsiphonModal({
   const regionOptions = useMemo(
     () => [
       { value: '', label: t('pages.xray.psiphon.egressRegionAuto') },
-      ...regionPickerOptions(regions, t('pages.xray.psiphon.regionNoServers')),
+      ...regionPickerOptions(regions, regionLabels, scan.scan?.results),
     ],
-    [regions, t],
+    [regions, regionLabels, scan.scan?.results, t],
   );
 
   return (
@@ -458,10 +462,20 @@ export default function PsiphonModal({
               {t('pages.xray.psiphon.outboundHint', { port: status?.port })}
             </Typography.Paragraph>
 
+            <Divider className="my-10">{t('pages.xray.psiphon.scanTitle')}</Divider>
+            <PsiphonScan
+              scan={scan.scan}
+              regions={regions}
+              busy={scan.busy}
+              onStart={scan.start}
+              onCancel={scan.cancel}
+            />
+
             <Divider className="my-10">{t('pages.xray.psiphon.countriesTitle')}</Divider>
             <PsiphonCountries
               open={open}
               regions={regions}
+              scanned={scan.scan?.results}
               templateSettings={templateSettings}
               onMutateTemplate={onMutateTemplate}
               onTunnelConnected={loadRegions}

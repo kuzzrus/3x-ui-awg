@@ -240,10 +240,10 @@ func waitForExit(done <-chan struct{}, timeout time.Duration) error {
 	}
 }
 
-// waitForListener blocks until the address accepts a connection, giving up
-// early if the process died. Mirrors adguard.waitForListener.
-func waitForListener(addr string, proc *Process) error {
-	ctx, cancel := context.WithTimeout(context.Background(), startupTimeout)
+// waitForListener blocks until the address accepts a connection, giving up early if the process died or
+// parent ended. Mirrors adguard.waitForListener.
+func waitForListener(parent context.Context, addr string, proc *Process) error {
+	ctx, cancel := context.WithTimeout(parent, startupTimeout)
 	defer cancel()
 	dialer := &net.Dialer{Timeout: time.Second}
 	for {

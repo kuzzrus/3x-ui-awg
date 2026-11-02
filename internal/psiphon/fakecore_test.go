@@ -9,7 +9,9 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -22,7 +24,20 @@ const (
 	fakeNoTunnelEnv  = "PSIPHON_FAKE_NO_TUNNEL"  // "1": bind the port but never report a tunnel
 	fakeExitAfterEnv = "PSIPHON_FAKE_EXIT_AFTER" // a duration: end with a failure after it, as a crash
 	fakeFailStartEnv = "PSIPHON_FAKE_FAIL_START" // "1": end at once without binding anything
+
+	// The scan starts a tunnel per region, so these pick behaviour by the region a process was given.
+	fakeSocksEnv           = "PSIPHON_FAKE_SOCKS"             // "1": carry SOCKS5 CONNECT requests, so a probe goes through
+	fakeRegionsEnv         = "PSIPHON_FAKE_REGIONS"           // "DE,US": the list its AvailableEgressRegions notice carries
+	fakeNoTunnelRegionsEnv = "PSIPHON_FAKE_NO_TUNNEL_REGIONS" // "US,JP": a process of these regions never reports a tunnel
+	fakeFailRegionsEnv     = "PSIPHON_FAKE_FAIL_REGIONS"      // "JP": a process of these regions ends at once
+	fakeConnectAfterEnv    = "PSIPHON_FAKE_CONNECT_AFTER"     // a duration: the tunnel is reported after it
 )
+
+// inRegionList reports whether region is one of the comma separated codes in the variable env.
+func inRegionList(env, region string) bool {
+	list := os.Getenv(env)
+	return list != "" && slices.Contains(strings.Split(list, ","), region)
+}
 
 func TestMain(m *testing.M) {
 	if os.Getenv(fakeCoreEnv) == "1" {
@@ -58,6 +73,10 @@ func runFakeCore(args []string) int {
 		fmt.Fprintln(os.Stderr, "fake psiphon:", err)
 		return 1
 	}
+	if inRegionList(fakeFailRegionsEnv, cfg.EgressRegion) {
+		fmt.Fprintln(os.Stderr, "fake psiphon: refusing to start in", cfg.EgressRegion)
+		return 1
+	}
 	listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.LocalSocksProxyPort)))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "fake psiphon:", err)
@@ -73,13 +92,26 @@ func runFakeCore(args []string) int {
 		_, _ = notices.Write(append(line, '\n'))
 	}
 	notice("ListeningSocksProxyPort", map[string]any{"port": cfg.LocalSocksProxyPort})
-	if os.Getenv(fakeNoTunnelEnv) != "1" {
+	if list := os.Getenv(fakeRegionsEnv); list != "" {
+		notice("AvailableEgressRegions", map[string]any{"regions": strings.Split(list, ",")})
+	}
+	if os.Getenv(fakeNoTunnelEnv) != "1" && !inRegionList(fakeNoTunnelRegionsEnv, cfg.EgressRegion) {
 		region := cfg.EgressRegion
 		if region == "" {
 			region = "XX"
 		}
-		notice("Tunnels", map[string]any{"count": 1})
-		notice("ConnectedServerRegion", map[string]any{"serverRegion": region})
+		connect := func() {
+			notice("Tunnels", map[string]any{"count": 1})
+			notice("ConnectedServerRegion", map[string]any{"serverRegion": region})
+		}
+		if after, err := time.ParseDuration(os.Getenv(fakeConnectAfterEnv)); err == nil {
+			go func() {
+				time.Sleep(after)
+				connect()
+			}()
+		} else {
+			connect()
+		}
 	}
 
 	if after := os.Getenv(fakeExitAfterEnv); after != "" {
@@ -99,7 +131,14 @@ func runFakeCore(args []string) int {
 			if err != nil {
 				return
 			}
-			_ = conn.Close()
+			if os.Getenv(fakeSocksEnv) != "1" {
+				_ = conn.Close()
+				continue
+			}
+			go func() {
+				defer conn.Close()
+				serveSocksConnect(conn)
+			}()
 		}
 	}()
 	<-stop
