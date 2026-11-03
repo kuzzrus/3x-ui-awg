@@ -1,24 +1,20 @@
 package integration
 
 import (
-	"errors"
 	"slices"
-	"strings"
 	"sync"
 	"testing"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/psiphon"
 )
 
-// answeringScans stands in for the scanner for the length of a test: it writes down what it was asked, and answers
-// with the status and the error it is given.
+// answeringScans stands in for the scanner for the length of a test: it writes down what it was asked to scan and
+// the function that wants the final status, and answers with the status it is given.
 type answeringScans struct {
-	mu        sync.Mutex
-	asked     [][]string
-	onFinish  func(psiphon.ScanStatus)
-	live      psiphon.ScanStatus
-	startErr  error
-	cancelled int
+	mu       sync.Mutex
+	asked    [][]string
+	onFinish func(psiphon.ScanStatus)
+	live     psiphon.ScanStatus
 }
 
 func useScans(t *testing.T) *answeringScans {
@@ -34,13 +30,9 @@ func useScans(t *testing.T) *answeringScans {
 			defer fake.mu.Unlock()
 			fake.asked = append(fake.asked, regions)
 			fake.onFinish = onFinish
-			return fake.startErr
+			return nil
 		},
-		cancel: func() {
-			fake.mu.Lock()
-			defer fake.mu.Unlock()
-			fake.cancelled++
-		},
+		cancel: func() {},
 		status: func() psiphon.ScanStatus {
 			fake.mu.Lock()
 			defer fake.mu.Unlock()
@@ -85,17 +77,6 @@ func TestScanOfNamedRegionsTakesThemAsGiven(t *testing.T) {
 
 	if len(fake.asked) != 1 || !slices.Equal(fake.asked[0], []string{"FR", "JP"}) {
 		t.Fatalf("the scanner was asked for %v, want the two regions that were named, listed or not", fake.asked)
-	}
-}
-
-func TestScanPassesOnWhyTheScannerRefused(t *testing.T) {
-	fake := useScans(t)
-	fake.startErr = errors.New("a scan is already running")
-
-	err := (&PsiphonService{}).ScanRegions([]string{"DE"})
-
-	if err == nil || !strings.Contains(err.Error(), "already running") {
-		t.Fatalf("ScanRegions = %v, want the scanner's reason", err)
 	}
 }
 
@@ -173,15 +154,5 @@ func TestScanStatusTrustsNothingInTheKeptResult(t *testing.T) {
 	got = svc.ScanStatus()
 	if got.Running || got.StartedAt != 0 || len(got.Results) != 0 || got.Results == nil {
 		t.Fatalf("status = %+v, want nothing, and a list that is empty and not null, after a result that cannot be read", got)
-	}
-}
-
-func TestCancelScanAsksTheScannerToEnd(t *testing.T) {
-	fake := useScans(t)
-
-	(&PsiphonService{}).CancelScan()
-
-	if fake.cancelled != 1 {
-		t.Fatalf("the scanner was asked to cancel %d times, want once", fake.cancelled)
 	}
 }

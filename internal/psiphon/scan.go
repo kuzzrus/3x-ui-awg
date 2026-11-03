@@ -271,8 +271,12 @@ func (s *Scanner) discover(ctx context.Context) ([]string, error) {
 	}
 }
 
-// startScanProcess writes the config of a temporary tunnel, starts it and waits until its SOCKS listener is up.
+// startScanProcess starts a temporary tunnel in a folder made afresh and waits until its SOCKS listener is up: it only
+// appends to its notice log, and what a crashed scan left there would be read as this tunnel's.
 func startScanProcess(ctx context.Context, sp spec, region string) (*Process, error) {
+	if err := os.RemoveAll(filepath.Dir(sp.config)); err != nil {
+		return nil, fmt.Errorf("clearing %s: %w", filepath.Dir(sp.config), err)
+	}
 	if err := writeTunnelConfig(sp, region); err != nil {
 		return nil, err
 	}

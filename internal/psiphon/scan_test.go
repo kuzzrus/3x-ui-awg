@@ -4,6 +4,7 @@ package psiphon
 
 import (
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -312,6 +313,48 @@ func TestScanRefusesWhatCannotRun(t *testing.T) {
 				t.Fatal("a refused scan made its folder")
 			}
 		})
+	}
+}
+
+func TestScanIgnoresTheNoticesAnEarlierCrashedScanLeft(t *testing.T) {
+	useFakeCore(t)
+	scanThroughSocks(t)
+	t.Setenv(fakeNoTunnelRegionsEnv, "DE")
+	shortScan(t, 600*time.Millisecond)
+	leftover := scanSpec("DE", scanPortFirst)
+	if err := os.MkdirAll(filepath.Dir(leftover.notices), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stale := `{"noticeType":"Tunnels","data":{"count":1}}` + "\n"
+	if err := os.WriteFile(leftover.notices, []byte(stale), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := scanAndWait(t, newTestScanner(t), []string{"DE"})
+
+	if r := got.Results[0]; r.Connected || !strings.Contains(r.Error, "did not connect") {
+		t.Fatalf("DE = %+v, want the tunnel that never came up reported so, not read as connected from the notice an earlier scan left", r)
+	}
+}
+
+func TestScanDiscoveryIgnoresTheListAnEarlierCrashedScanLeft(t *testing.T) {
+	useFakeCore(t)
+	scanThroughSocks(t)
+	t.Setenv(fakeRegionsEnv, "DE,US")
+	t.Setenv(fakeRegionsAfterEnv, "300ms")
+	leftover := scanSpec("discover", scanPortFirst)
+	if err := os.MkdirAll(filepath.Dir(leftover.notices), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stale := `{"noticeType":"AvailableEgressRegions","data":{"regions":["FR"]}}` + "\n"
+	if err := os.WriteFile(leftover.notices, []byte(stale), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := scanAndWait(t, newTestScanner(t), nil)
+
+	if got.Total != 2 || len(got.Results) != 2 || got.Results[0].Region != "DE" || got.Results[1].Region != "US" {
+		t.Fatalf("status = %+v, want the regions the live tunnel named (DE, US) and not the ones an earlier scan left (FR)", got)
 	}
 }
 

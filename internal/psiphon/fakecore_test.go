@@ -28,6 +28,7 @@ const (
 	// The scan starts a tunnel per region, so these pick behaviour by the region a process was given.
 	fakeSocksEnv           = "PSIPHON_FAKE_SOCKS"             // "1": carry SOCKS5 CONNECT requests, so a probe goes through
 	fakeRegionsEnv         = "PSIPHON_FAKE_REGIONS"           // "DE,US": the list its AvailableEgressRegions notice carries
+	fakeRegionsAfterEnv    = "PSIPHON_FAKE_REGIONS_AFTER"     // a duration: the list is sent after it, as a real tunnel-core takes seconds
 	fakeNoTunnelRegionsEnv = "PSIPHON_FAKE_NO_TUNNEL_REGIONS" // "US,JP": a process of these regions never reports a tunnel
 	fakeFailRegionsEnv     = "PSIPHON_FAKE_FAIL_REGIONS"      // "JP": a process of these regions ends at once
 	fakeConnectAfterEnv    = "PSIPHON_FAKE_CONNECT_AFTER"     // a duration: the tunnel is reported after it
@@ -93,7 +94,15 @@ func runFakeCore(args []string) int {
 	}
 	notice("ListeningSocksProxyPort", map[string]any{"port": cfg.LocalSocksProxyPort})
 	if list := os.Getenv(fakeRegionsEnv); list != "" {
-		notice("AvailableEgressRegions", map[string]any{"regions": strings.Split(list, ",")})
+		say := func() { notice("AvailableEgressRegions", map[string]any{"regions": strings.Split(list, ",")}) }
+		if after, err := time.ParseDuration(os.Getenv(fakeRegionsAfterEnv)); err == nil {
+			go func() {
+				time.Sleep(after)
+				say()
+			}()
+		} else {
+			say()
+		}
 	}
 	if os.Getenv(fakeNoTunnelEnv) != "1" && !inRegionList(fakeNoTunnelRegionsEnv, cfg.EgressRegion) {
 		region := cfg.EgressRegion
