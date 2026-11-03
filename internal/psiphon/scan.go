@@ -96,8 +96,8 @@ func cleanScanRegions(regions []string) ([]string, error) {
 	return out, nil
 }
 
-// Start begins a scan of regions in the background, or of the regions a tunnel says have servers when none is
-// named. onFinish gets the final status once the scan has ended and cleaned up; it may be nil.
+// Start begins a scan of regions in the background, or of those a tunnel says have servers when none is named. onFinish, which
+// may be nil, gets the final status once the scan has cleaned up; the scan still reads as running until it returns.
 func (s *Scanner) Start(regions []string, onFinish func(ScanStatus)) error {
 	if !IsInstalled() {
 		return errors.New("Psiphon is not installed")
@@ -271,9 +271,8 @@ func (s *Scanner) discover(ctx context.Context) ([]string, error) {
 	}
 }
 
-// startScanProcess starts a temporary tunnel in a folder made afresh and waits until its SOCKS listener is up: it only
-// appends to its notice log, and what a crashed scan left there would be read as this tunnel's. It clears only a folder of
-// the scan, since the spec could be that of the default tunnel, whose folder holds the config of the admin.
+// startScanProcess starts a temporary tunnel in a folder of the scan made afresh, so that the notices a crashed scan left are not
+// read as this tunnel's, and waits until its SOCKS listener is up. It refuses any other folder, such as the default tunnel's.
 func startScanProcess(ctx context.Context, sp spec, region string) (*Process, error) {
 	dir := filepath.Dir(sp.config)
 	if filepath.Dir(dir) != scanDir() {
@@ -339,21 +338,24 @@ func (s *Scanner) releasePort(port int) {
 	delete(s.ports, port)
 }
 
-// finish closes the status of a run that has ended and clears the folder of its tunnels, which are all down by now.
+// finish clears the folder of the tunnels of a run that has ended, all down by now, and closes its status. The status reads as
+// running until onFinish returns and is then replaced as a whole, so a page that sees the scan end finds what onFinish stored.
 func (s *Scanner) finish(ctx context.Context, scanErr error, onFinish func(ScanStatus)) {
 	_ = os.RemoveAll(scanDir())
 	s.mu.Lock()
-	cancelled := ctx.Err() != nil
-	s.cancel()
-	s.status.Running, s.status.Discovering, s.status.Current = false, false, nil
-	s.status.FinishedAt = time.Now().Unix()
-	s.status.Cancelled = cancelled
-	if scanErr != nil && !cancelled {
-		s.status.Error = scanErr.Error()
-	}
 	final := s.snapshotLocked()
+	final.Running, final.Discovering, final.Current = false, false, []string{}
+	final.FinishedAt = time.Now().Unix()
+	final.Cancelled = ctx.Err() != nil
+	if scanErr != nil && !final.Cancelled {
+		final.Error = scanErr.Error()
+	}
 	s.mu.Unlock()
 	if onFinish != nil {
 		onFinish(final)
 	}
+	s.mu.Lock()
+	s.cancel()
+	s.status = final
+	s.mu.Unlock()
 }

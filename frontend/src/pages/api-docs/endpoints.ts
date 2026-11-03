@@ -2542,6 +2542,7 @@ export const sections: readonly Section[] = [
             name: 'regions',
             in: 'body (form)',
             type: 'string',
+            optional: true,
             desc: 'For start: comma separated ISO 3166-1 alpha-2 codes in capitals. Empty means every region a tunnel has said has servers; when none has yet, the scan starts one temporary process to ask.',
           },
         ],

@@ -2907,7 +2907,7 @@
         "removeCountryButton": "Remove the country",
         "removeCountryConfirm": "Remove {region}? Its tunnel stops, its files are deleted and its outbound is taken out of the config.",
         "regionNoServers": "no servers",
-        "regionsUnknownHint": "Once a tunnel has connected, the regions where Psiphon has servers are marked here, and the others are greyed out.",
+        "regionsUnknownHint": "Once a tunnel has connected or a region scan has run, the regions where Psiphon has servers are marked here, and the others are greyed out.",
         "regionScanNoTunnel": "no tunnel in the last scan",
         "scanTitle": "Region scan",
         "scanHint": "Starts a temporary Psiphon tunnel for each region, three at a time, checks that it connects and measures a request through it. This takes a few minutes and about 40 MB of memory per running tunnel; your tunnels and the config are not touched. The regions that answered fastest come first in the pickers.",

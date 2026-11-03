@@ -279,6 +279,21 @@ func TestScanSaysSoWhenNoTunnelTellsTheRegions(t *testing.T) {
 	}
 }
 
+func TestScanCancelledWhileItAsksForTheRegionsIsNotAnError(t *testing.T) {
+	useFakeCore(t)
+	shortScan(t, time.Minute)
+	sc := newTestScanner(t)
+	done := beginScan(t, sc, nil)
+	eventually(t, "the temporary tunnel that asks", func() bool { return scanProcesses() == 1 })
+
+	sc.Cancel()
+
+	got := <-done
+	if !got.Cancelled || got.Error != "" || got.Running || len(got.Results) != 0 {
+		t.Fatalf("status = %+v, want a scan that says it was cancelled and not that it could not learn the regions", got)
+	}
+}
+
 func TestScanRefusesWhatCannotRun(t *testing.T) {
 	useFakeCore(t)
 	cases := []struct {
@@ -357,6 +372,36 @@ func TestScanDiscoveryIgnoresTheListAnEarlierCrashedScanLeft(t *testing.T) {
 	if got.Total != 2 || len(got.Results) != 2 || got.Results[0].Region != "DE" || got.Results[1].Region != "US" {
 		t.Fatalf("status = %+v, want the regions the live tunnel named (DE, US) and not the ones an earlier scan left (FR)", got)
 	}
+}
+
+func TestScanReadsAsFinishedOnlyAfterItsResultIsStored(t *testing.T) {
+	useFakeCore(t)
+	t.Setenv(fakeNoTunnelRegionsEnv, "DE")
+	shortScan(t, 300*time.Millisecond)
+	sc := newTestScanner(t)
+	storing, stored := make(chan ScanStatus, 1), make(chan struct{})
+	if err := sc.Start([]string{"DE"}, func(ScanStatus) {
+		storing <- sc.Status()
+		<-stored
+	}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	var during ScanStatus
+	select {
+	case during = <-storing:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the scan did not hand over its result")
+	}
+	close(stored)
+
+	if !during.Running || during.FinishedAt != 0 {
+		t.Fatalf("status = %+v while the result was still being stored, want a scan that has not ended: a page that reads the regions when it sees it end gets the ones from before the scan", during)
+	}
+	eventually(t, "the scan to read as finished once its result is stored", func() bool {
+		st := sc.Status()
+		return !st.Running && st.FinishedAt != 0 && len(st.Results) == 1
+	})
 }
 
 func TestScanTunnelNeverClearsAFolderThatIsNotTheScans(t *testing.T) {
