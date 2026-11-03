@@ -123,11 +123,12 @@ export default function PsiphonModal({
   }, []);
 
   // A tunnel tells which regions have servers once it is up, so the list is read again when the window opens and when the
-  // default tunnel has connected; the countries ask for it when one of theirs has.
+  // default tunnel has connected; the countries ask for it when one of theirs has, and a scan when it has ended.
   const connected = status?.tunnel.connected;
+  const scanEnded = scan.scan?.finishedAt;
   useEffect(() => {
     if (open) void loadRegions();
-  }, [open, connected, loadRegions]);
+  }, [open, connected, scanEnded, loadRegions]);
 
   useEffect(() => {
     if (status?.tunnel.serverRegion) setSelectedRegion(status.tunnel.serverRegion);

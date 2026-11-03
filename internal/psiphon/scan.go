@@ -272,10 +272,15 @@ func (s *Scanner) discover(ctx context.Context) ([]string, error) {
 }
 
 // startScanProcess starts a temporary tunnel in a folder made afresh and waits until its SOCKS listener is up: it only
-// appends to its notice log, and what a crashed scan left there would be read as this tunnel's.
+// appends to its notice log, and what a crashed scan left there would be read as this tunnel's. It clears only a folder of
+// the scan, since the spec could be that of the default tunnel, whose folder holds the config of the admin.
 func startScanProcess(ctx context.Context, sp spec, region string) (*Process, error) {
-	if err := os.RemoveAll(filepath.Dir(sp.config)); err != nil {
-		return nil, fmt.Errorf("clearing %s: %w", filepath.Dir(sp.config), err)
+	dir := filepath.Dir(sp.config)
+	if filepath.Dir(dir) != scanDir() {
+		return nil, fmt.Errorf("%s is not a folder of the scan", dir)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		return nil, fmt.Errorf("clearing %s: %w", dir, err)
 	}
 	if err := writeTunnelConfig(sp, region); err != nil {
 		return nil, err

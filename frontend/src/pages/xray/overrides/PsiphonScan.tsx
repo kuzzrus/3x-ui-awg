@@ -56,14 +56,13 @@ export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: 
     {
       title: t('pages.xray.psiphon.scanColLatency'),
       key: 'latency',
-      render: (_: unknown, r) =>
-        r.latencyMs ? (
-          <Tooltip title={r.error}>
-            <span>{t('pages.xray.psiphon.probeResult', { ms: r.latencyMs })}</span>
-          </Tooltip>
-        ) : (
-          '—'
-        ),
+      render: (_: unknown, r) => (
+        <Tooltip title={r.error}>
+          <span>
+            {r.latencyMs ? t('pages.xray.psiphon.probeResult', { ms: r.latencyMs }) : '—'}
+          </span>
+        </Tooltip>
+      ),
     },
     {
       title: t('pages.xray.psiphon.scanColExit'),

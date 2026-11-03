@@ -80,6 +80,75 @@ func TestScanOfNamedRegionsTakesThemAsGiven(t *testing.T) {
 	}
 }
 
+func TestAScanThatHadToAskWhichRegionsHaveServersKeepsTheListAndItsOwnResult(t *testing.T) {
+	fake := useScans(t)
+	svc := &PsiphonService{}
+	if err := svc.ScanRegions(nil); err != nil {
+		t.Fatalf("ScanRegions: %v", err)
+	}
+
+	fake.onFinish(psiphon.ScanStatus{
+		Total: 2, StartedAt: 1, FinishedAt: 2,
+		Results: []psiphon.ScanResult{
+			{Region: "US", Connected: true, LatencyMs: 62},
+			{Region: "DE", Error: "did not connect within 1m0s"},
+		},
+	})
+
+	got := availability(svc.Regions())
+	if got["DE"] != "yes" || got["US"] != "yes" || got["FR"] != "no" {
+		t.Fatalf("after a scan of DE and US that asked for the list: DE %s, US %s, FR %s, want the regions it scanned marked as having servers and the others as having none", got["DE"], got["US"], got["FR"])
+	}
+	fake.live = psiphon.ScanStatus{}
+	if kept := svc.ScanStatus(); kept.FinishedAt != 2 || len(kept.Results) != 2 {
+		t.Fatalf("status = %+v, want the result of that scan kept too", kept)
+	}
+}
+
+func TestAScanThatLearnedNothingLeavesTheListOfRegionsAlone(t *testing.T) {
+	scanned := []psiphon.ScanResult{{Region: "DE", Connected: true}}
+	cases := []struct {
+		name    string
+		regions []string
+		final   psiphon.ScanStatus
+	}{
+		{"cancelled", nil, psiphon.ScanStatus{Cancelled: true, Results: scanned}},
+		{"failed to ask", nil, psiphon.ScanStatus{Error: "could not learn which regions have servers: no list within 45s"}},
+		{"named regions", []string{"DE"}, psiphon.ScanStatus{Total: 1, Results: scanned}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := useScans(t)
+			svc := &PsiphonService{}
+			if err := svc.ScanRegions(tc.regions); err != nil {
+				t.Fatalf("ScanRegions: %v", err)
+			}
+
+			fake.onFinish(tc.final)
+
+			for _, r := range svc.Regions() {
+				if r.Available != nil {
+					t.Fatalf("%s is marked after a scan that learned nothing, want the regions left as they were", r.Code)
+				}
+			}
+		})
+	}
+}
+
+func TestAListWithNoRegionsInItDoesNotReplaceTheOneThatIsKept(t *testing.T) {
+	useTunnels(t, nil)
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+	svc := &PsiphonService{}
+	svc.rememberRegions([]string{"US", "DE"})
+
+	svc.rememberRegions(nil)
+
+	got := availability(svc.Regions())
+	if got["DE"] != "yes" || got["US"] != "yes" || got["FR"] != "no" {
+		t.Fatalf("after a list of nothing: DE %s, US %s, FR %s, want the list that was kept before it", got["DE"], got["US"], got["FR"])
+	}
+}
+
 func TestScanStatusKeepsTheLastResultThroughARestart(t *testing.T) {
 	fake := useScans(t)
 	svc := &PsiphonService{}

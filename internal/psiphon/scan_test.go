@@ -3,6 +3,7 @@
 package psiphon
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -355,6 +356,20 @@ func TestScanDiscoveryIgnoresTheListAnEarlierCrashedScanLeft(t *testing.T) {
 
 	if got.Total != 2 || len(got.Results) != 2 || got.Results[0].Region != "DE" || got.Results[1].Region != "US" {
 		t.Fatalf("status = %+v, want the regions the live tunnel named (DE, US) and not the ones an earlier scan left (FR)", got)
+	}
+}
+
+func TestScanTunnelNeverClearsAFolderThatIsNotTheScans(t *testing.T) {
+	useFakeCore(t)
+
+	proc, err := startScanProcess(context.Background(), defaultSpec(), "")
+
+	if err == nil {
+		_ = proc.Stop()
+		t.Fatal("startScanProcess started a tunnel in the folder of the default one, want it refused")
+	}
+	if !IsConfigured() || !IsInstalled() {
+		t.Fatalf("the folder of the default tunnel was cleared (config there: %v, binary there: %v), want it left alone", IsConfigured(), IsInstalled())
 	}
 }
 

@@ -132,11 +132,12 @@ for when none is up. Until a tunnel has said, every region is offered.
 fast. It starts a temporary Psiphon process for each region, three at a time, waits up to a
 minute for its tunnel, times a request through it, notes the exit address and takes the process
 down again, so your own tunnels and the config are left alone. With no list of regions to go
-by yet, it first starts one temporary process to ask Psiphon which regions have servers. A
-temporary process takes about 40 MB while it runs and a scan takes a few minutes; **Cancel the
-scan** ends it at once and keeps what it had finished. Each temporary process starts with an
-empty data store, so the time to connect is that of a cold start: a country tunnel that has run
-before connects faster.
+by yet, it first starts one temporary process to ask Psiphon which regions have servers; a scan
+that runs to its end keeps that list like the one its own tunnels report, so the pickers can
+mark the regions without servers. A temporary process takes about 40 MB while it runs and a
+scan takes a few minutes; **Cancel the scan** ends it at once and keeps what it had finished.
+Each temporary process starts with an empty data store, so the time to connect is that of a
+cold start: a country tunnel that has run before connects faster.
 
 The result stays in the window, also after a restart of the panel, and the pickers use it: the
 regions that answered come first, the fastest at the top with its latency, then the regions that

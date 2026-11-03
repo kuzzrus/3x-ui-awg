@@ -24,12 +24,28 @@ var scans = scanOps{
 }
 
 // ScanRegions starts the scan of the named regions in the background, or of every region a tunnel said has servers
-// when none is named; with no list known yet the scanner asks a tunnel of its own.
+// when none is named; with no list known yet the scanner asks a tunnel of its own, and the list it gets is kept.
 func (s *PsiphonService) ScanRegions(regions []string) error {
 	if len(regions) == 0 {
 		regions = s.knownRegions()
 	}
+	if len(regions) == 0 {
+		return scans.start(nil, s.keepLearningScan)
+	}
 	return scans.start(regions, s.keepScan)
+}
+
+// keepLearningScan stores the result of a scan that asked a tunnel which regions have servers, and those regions as the list
+// to mark by: every one of them was scanned unless the scan was cancelled, which leaves only some.
+func (s *PsiphonService) keepLearningScan(final psiphon.ScanStatus) {
+	if !final.Cancelled {
+		codes := make([]string, len(final.Results))
+		for i, r := range final.Results {
+			codes[i] = r.Region
+		}
+		s.rememberRegions(codes)
+	}
+	s.keepScan(final)
 }
 
 // CancelScan ends the scan that runs and returns once its tunnels are down. A no-op when none runs.

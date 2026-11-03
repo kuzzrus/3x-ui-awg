@@ -128,6 +128,28 @@ describe('PsiphonScan', () => {
     expect(names).toEqual(['United States (US)', 'Germany (DE)', 'France (FR)']);
   });
 
+  it('says on the latency of a region that connected why it could not be timed', async () => {
+    renderScan({
+      ...finished,
+      results: [
+        {
+          region: 'FR',
+          connected: true,
+          connectMs: 2000,
+          error: 'no answer through the tunnel: timeout',
+        },
+        us,
+      ],
+    });
+
+    const latency = within(rowOf('France (FR)')).getAllByRole('cell')[3];
+    fireEvent.mouseEnter(within(latency).getByText('—'));
+
+    await waitFor(() =>
+      expect(document.body.textContent).toContain('no answer through the tunnel: timeout'),
+    );
+  });
+
   it('offers to scan when none runs, and asks for it', () => {
     const onStart = vi.fn();
     renderScan(idle, { onStart });
@@ -178,9 +200,9 @@ const tunnelStatus = {
 
 // A panel whose scan runs on request: the list of regions and the status of the scan are what the test says they are.
 function scanningPanel() {
-  const state = { scan: idle };
+  const state = { scan: idle, regions: REGIONS };
   const get = vi.spyOn(HttpUtil, 'get').mockImplementation((async (url: string) => {
-    if (url.endsWith('/regions')) return new Msg(true, '', REGIONS);
+    if (url.endsWith('/regions')) return new Msg(true, '', state.regions);
     if (url.endsWith('/scan')) return new Msg(true, '', state.scan);
     return new Msg(true, '', { max: 6, countries: [] });
   }) as never);
@@ -267,6 +289,35 @@ describe('the scan in the Psiphon window', () => {
       await vi.advanceTimersByTimeAsync(7000);
     });
     expect(panel.scanReads()).toBe(reads);
+  });
+
+  it('reads the regions again when a scan has ended, for the list a scan that had to ask has left behind', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const panel = scanningPanel();
+    // No tunnel has said yet which regions have servers, so none is marked.
+    panel.state.regions = REGIONS.map(({ code, name }) => ({ code, name }));
+    renderModal();
+    await screen.findByText('Tunnel connected');
+    fireEvent.click(await screen.findByRole('button', { name: 'Scan regions' }));
+    await screen.findByText('Scanning: DE, JP');
+    expect(listSelectOptions('psiphon-egress-region')).toContain('Antarctica (AQ)');
+
+    panel.state.regions = REGIONS;
+    panel.state.scan = finished;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2100);
+    });
+
+    await waitFor(() =>
+      expect(listSelectOptions('psiphon-egress-region')).toEqual([
+        'Auto (best server)',
+        'United States (US) — 62 ms',
+        'Germany (DE) — 217 ms',
+        'France (FR)',
+        'Japan (JP) — no tunnel in the last scan',
+        'Antarctica (AQ) — no servers',
+      ]),
+    );
   });
 
   it('hands the last scan to the picker of the countries too', async () => {
