@@ -119,6 +119,45 @@ describe('PsiphonScan', () => {
     ).toBeTruthy();
   });
 
+  it('gives the moment and the measurements of the earlier success in the tooltip of the tag of the day', async () => {
+    const at = 1793000000;
+    renderScan({
+      ...finished,
+      seen: [
+        {
+          region: 'JP',
+          at,
+          connectMs: 7000,
+          latencyMs: 40,
+          ip: '203.0.113.5',
+          country: 'JP',
+        },
+      ],
+    });
+
+    fireEvent.mouseEnter(within(rowOf('Japan (JP)')).getByText(/^Connected \d/));
+
+    await waitFor(() => {
+      const text = document.body.textContent ?? '';
+      expect(text).toContain(new Date(at * 1000).toLocaleString());
+      expect(text).toContain('7.0 s');
+      expect(text).toContain('40 ms');
+      expect(text).toContain('203.0.113.5 (JP)');
+    });
+  });
+
+  it('does not list the regions that connected before when the scan could not look at any region', () => {
+    renderScan({
+      ...idle,
+      error: 'could not learn which regions have servers: no list within 15s',
+      finishedAt: 1793650000,
+      seen: [{ region: 'FR', at: 1793000000 }],
+    });
+
+    expect(screen.getByText(/could not learn which regions/)).toBeTruthy();
+    expect(screen.queryByText(/Connected in an earlier scan/)).toBeNull();
+  });
+
   it('does not call the regions that connected before left out while the scan is still going through them', () => {
     renderScan({
       running: true,

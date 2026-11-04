@@ -10,6 +10,7 @@ import {
   type PsiphonRegion,
   type PsiphonScanResult,
   type PsiphonScanStatus,
+  type PsiphonSeenRegion,
 } from './psiphon-regions';
 
 interface PsiphonScanProps {
@@ -39,6 +40,18 @@ export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: 
     const scanned = new Set((results ?? []).map((r) => r.region));
     return (seen ?? []).filter((s) => !scanned.has(s.region));
   }, [seen, results]);
+  // The tag says the day; its tooltip the moment, and what that scan measured, which is all the record keeps.
+  const earlierSeen = (s: PsiphonSeenRegion) =>
+    [
+      new Date(s.at * 1000).toLocaleString(),
+      s.connectMs
+        ? t('pages.xray.psiphon.scanSeconds', { s: (s.connectMs / 1000).toFixed(1) })
+        : '',
+      s.latencyMs ? t('pages.xray.psiphon.probeResult', { ms: s.latencyMs }) : '',
+      s.ip ? `${s.ip} (${s.country ?? '?'})` : '',
+    ]
+      .filter(Boolean)
+      .join(' — ');
 
   const columns: TableColumnsType<PsiphonScanResult> = [
     {
@@ -58,9 +71,11 @@ export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: 
               <Tag color="red">{t('pages.xray.psiphon.scanNoTunnel')}</Tag>
             </Tooltip>
             {before && (
-              <Tag color="blue">
-                {t('pages.xray.psiphon.scanSeenTag', { date: seenDate(before.at) })}
-              </Tag>
+              <Tooltip title={earlierSeen(before)}>
+                <Tag color="blue">
+                  {t('pages.xray.psiphon.scanSeenTag', { date: seenDate(before.at) })}
+                </Tag>
+              </Tooltip>
             )}
           </>
         );
@@ -143,7 +158,7 @@ export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: 
           {t('pages.xray.psiphon.scanCancelled')}
         </Typography.Paragraph>
       )}
-      {!running && onlyEarlier.length > 0 && (
+      {!running && rows.length > 0 && onlyEarlier.length > 0 && (
         <Typography.Paragraph type="secondary" style={{ marginTop: 8, fontSize: 12 }}>
           {t('pages.xray.psiphon.scanEarlier', {
             regions: onlyEarlier.map((s) => `${nameOf(s.region)} (${s.region})`).join(', '),
