@@ -200,7 +200,7 @@ const tunnelStatus = {
 
 // A panel whose scan runs on request: the list of regions and the status of the scan are what the test says they are.
 function scanningPanel() {
-  const state = { scan: idle, regions: REGIONS };
+  const state = { scan: idle, regions: REGIONS, status: tunnelStatus };
   const get = vi.spyOn(HttpUtil, 'get').mockImplementation((async (url: string) => {
     if (url.endsWith('/regions')) return new Msg(true, '', state.regions);
     if (url.endsWith('/scan')) return new Msg(true, '', state.scan);
@@ -227,7 +227,18 @@ function scanningPanel() {
       };
       return new Msg(true, '', state.scan);
     }
-    return new Msg(true, '', url.endsWith('/status') ? tunnelStatus : null);
+    if (url.endsWith('/uninstall')) {
+      // The panel forgets the last scan and the list of regions with servers together with the install.
+      state.scan = idle;
+      state.regions = REGIONS.map(({ code, name }) => ({ code, name }));
+      state.status = { ...state.status, installed: false, configured: false, running: false };
+      return new Msg(true, '', null);
+    }
+    if (url.endsWith('/install')) {
+      state.status = { ...state.status, installed: true, configured: true };
+      return new Msg(true, '', null);
+    }
+    return new Msg(true, '', url.endsWith('/status') ? state.status : null);
   }) as never);
   const scanReads = () => get.mock.calls.filter(([url]) => String(url).endsWith('/scan')).length;
   return { state, get, post, scanReads };
@@ -384,6 +395,68 @@ describe('the scan in the Psiphon window', () => {
     await screen.findByText(/The scan was cancelled/);
     expect(panel.post).toHaveBeenCalledWith('/panel/api/xray/psiphon/scan/cancel', {});
     expect(within(rowOf('United States (US)')).getByText('62 ms')).toBeTruthy();
+  });
+
+  it('shows nothing of the scan or the marks of the install before it when Psiphon is installed again', async () => {
+    const panel = scanningPanel();
+    panel.state.scan = finished;
+    // Stopped, so that no tunnel coming up or going away reads the regions again by itself.
+    panel.state.status = {
+      ...tunnelStatus,
+      running: false,
+      tunnel: { connected: false, tunnelCount: 0 },
+    };
+    renderModal();
+    await screen.findByText(/Last scan:/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Uninstall' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+    await screen.findByText('Psiphon not installed');
+    // The status of the new install is slow to arrive: the one of the old install must not be shown meanwhile.
+    const answer = panel.get.getMockImplementation() as (url: string) => Promise<Msg>;
+    let land: () => void = () => {};
+    panel.get.mockImplementation((async (url: string) => {
+      if (!url.endsWith('/scan')) return answer(url);
+      await new Promise<void>((resolve) => {
+        land = resolve;
+      });
+      return new Msg(true, '', panel.state.scan);
+    }) as never);
+    fireEvent.click(screen.getByRole('button', { name: 'Install' }));
+
+    await screen.findByRole('button', { name: 'Scan regions' });
+    expect(screen.queryByText(/Last scan:/)).toBeNull();
+    await act(async () => {
+      land();
+    });
+    await waitFor(() =>
+      expect(listSelectOptions('psiphon-add-country')).toEqual([
+        'Antarctica (AQ)',
+        'Germany (DE)',
+        'France (FR)',
+        'Japan (JP)',
+        'United States (US)',
+      ]),
+    );
+    expect(screen.queryByText(/Last scan:/)).toBeNull();
+  });
+
+  it('reads the regions again when Psiphon is installed again, since the uninstall dropped the marks', async () => {
+    const panel = scanningPanel();
+    // Stopped and never scanned: nothing but the install itself tells the window that the list of regions has changed.
+    panel.state.status = {
+      ...tunnelStatus,
+      running: false,
+      tunnel: { connected: false, tunnelCount: 0 },
+    };
+    renderModal();
+    fireEvent.click(await screen.findByRole('button', { name: 'Uninstall' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Install' }));
+
+    expect(
+      await screen.findByText(/the regions where Psiphon has servers are marked here/),
+    ).toBeTruthy();
   });
 
   it('says why a scan was refused', async () => {

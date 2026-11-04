@@ -12,7 +12,7 @@ const SCAN_URL = '/panel/api/xray/psiphon/scan';
 const POLL_MS = 2000;
 
 /** The scan of the regions: its status, kept current while it runs, and the two things that can be asked of it. */
-export function usePsiphonScan(open: boolean, onError: (text: string) => void) {
+export function usePsiphonScan(active: boolean, onError: (text: string) => void) {
   const { t } = useTranslation();
   const [scan, setScan] = useState<PsiphonScanStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -26,16 +26,22 @@ export function usePsiphonScan(open: boolean, onError: (text: string) => void) {
     if (asked === generation.current && msg?.success && msg.obj) setScan(msg.obj);
   }, []);
 
+  // What is held belongs to the install that ran the scan, so it is dropped when the window closes or Psiphon goes, which
+  // also keeps a stale table from showing for the moment before the fresh status lands.
   useEffect(() => {
-    if (open) void refresh();
-  }, [open, refresh]);
+    if (!active) {
+      setScan(null);
+      return;
+    }
+    void refresh();
+  }, [active, refresh]);
 
   const running = !!scan?.running;
   useEffect(() => {
-    if (!open || !running) return;
+    if (!active || !running) return;
     const timer = setInterval(() => void refresh(), POLL_MS);
     return () => clearInterval(timer);
-  }, [open, running, refresh]);
+  }, [active, running, refresh]);
 
   // Both answer the status, also when they fail: a scan that was refused says why, and the status stays as it was.
   const act = useCallback(

@@ -76,7 +76,10 @@ export default function PsiphonModal({
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [exitInfo, setExitInfo] = useState<ExitInfo | null>(null);
   const regionLabels = useRegionLabels();
-  const scan = usePsiphonScan(open, messageApi.error);
+  // A scan and the marks of the regions belong to the install that made them, and an uninstall drops both, so the window
+  // reads them again once Psiphon is back.
+  const ready = !!status?.installed && !!status.configured;
+  const scan = usePsiphonScan(open && ready, messageApi.error);
 
   const psiphonOutboundIndex = useMemo(() => {
     const list = templateSettings?.outbounds;
@@ -122,13 +125,13 @@ export default function PsiphonModal({
     if (msg?.success && msg.obj) setRegions(msg.obj);
   }, []);
 
-  // A tunnel tells which regions have servers once it is up, so the list is read again when the window opens and when the
-  // default tunnel has connected; the countries ask for it when one of theirs has, and a scan when it has ended.
+  // A tunnel or a scan tells which regions have servers: the list is read again when the window opens, when Psiphon is installed
+  // again, when the default tunnel connects and when a scan ends; the countries ask for it when one of theirs connects.
   const connected = status?.tunnel.connected;
   const scanEnded = scan.scan?.finishedAt;
   useEffect(() => {
     if (open) void loadRegions();
-  }, [open, connected, scanEnded, loadRegions]);
+  }, [open, ready, connected, scanEnded, loadRegions]);
 
   useEffect(() => {
     if (status?.tunnel.serverRegion) setSelectedRegion(status.tunnel.serverRegion);
