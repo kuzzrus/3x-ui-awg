@@ -19,7 +19,7 @@ export interface PsiphonScanResult {
   error?: string;
 }
 
-/** A region that came up in a scan: the last time it did, kept across scans, since one can connect in a scan and not in the next. */
+/** The last scan in which a tunnel came up in a region: one can connect in a scan and not in the next, so it is kept. */
 export interface PsiphonSeenRegion {
   region: string;
   at: number;
@@ -29,7 +29,7 @@ export interface PsiphonSeenRegion {
   country?: string;
 }
 
-/** How the scan of the regions stands: the one that runs, or the last one that ran, with the regions that connected in earlier ones. */
+/** How the scan stands: the one that runs or the last one that ran, with the regions that connected in earlier scans. */
 export interface PsiphonScanStatus {
   running: boolean;
   discovering?: boolean;
@@ -85,9 +85,8 @@ export function sortScanResults(results: PsiphonScanResult[]): PsiphonScanResult
 }
 
 /**
- * Options of a region picker: what the last scan found first, the fastest at the top, then the regions that connected in an
- * earlier scan, then those not scanned, then those that did not connect. A region without servers is greyed out and last,
- * unless a scan connected one there.
+ * Options of a region picker: what the last scan found first, the fastest at the top, then the regions that connected earlier,
+ * those not scanned and those that did not connect. A region without servers is greyed out and last, unless a scan connected it.
  */
 export function regionPickerOptions(
   regions: PsiphonRegion[],
@@ -109,7 +108,10 @@ export function regionPickerOptions(
     if (result?.connected)
       return result.latencyMs ? `${name} — ${labels.ms(result.latencyMs)}` : name;
     const before = earlier.get(r.code);
-    if (before) return `${name} — ${labels.seen(before.at)}`;
+    if (before)
+      return result
+        ? `${name} — ${labels.noTunnel}, ${labels.seen(before.at)}`
+        : `${name} — ${labels.seen(before.at)}`;
     if (r.available === false) return `${name} — ${labels.noServers}`;
     return result ? `${name} — ${labels.noTunnel}` : name;
   };

@@ -31,8 +31,8 @@ export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: 
   const rows = useMemo(() => sortScanResults(results ?? []), [results]);
   const done = results?.length ?? 0;
   const nameOf = (code: string) => regions.find((r) => r.code === code)?.name ?? code;
-  // The regions that connected in an earlier scan: the ones this scan did not look at are listed, and in the table the ones it
-  // looked at and did not connect get a tag with the day.
+  // The regions that connected in an earlier scan: once this one has ended, those it did not look at are listed, and in the table
+  // those it looked at and did not connect get a tag with the day.
   const seen = scan?.seen;
   const earlier = useMemo(() => new Map((seen ?? []).map((s) => [s.region, s])), [seen]);
   const onlyEarlier = useMemo(() => {
@@ -143,7 +143,7 @@ export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: 
           {t('pages.xray.psiphon.scanCancelled')}
         </Typography.Paragraph>
       )}
-      {onlyEarlier.length > 0 && (
+      {!running && onlyEarlier.length > 0 && (
         <Typography.Paragraph type="secondary" style={{ marginTop: 8, fontSize: 12 }}>
           {t('pages.xray.psiphon.scanEarlier', {
             regions: onlyEarlier.map((s) => `${nameOf(s.region)} (${s.region})`).join(', '),

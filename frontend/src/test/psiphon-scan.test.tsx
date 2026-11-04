@@ -119,6 +119,19 @@ describe('PsiphonScan', () => {
     ).toBeTruthy();
   });
 
+  it('does not call the regions that connected before left out while the scan is still going through them', () => {
+    renderScan({
+      running: true,
+      total: 3,
+      current: ['DE'],
+      startedAt: 1,
+      results: [us],
+      seen: [{ region: 'FR', at: 1793000000 }],
+    });
+
+    expect(screen.queryByText(/Connected in an earlier scan/)).toBeNull();
+  });
+
   it('shows how far a scan has come, what it is scanning now, and offers to cancel it', () => {
     const onCancel = vi.fn();
     renderScan(
@@ -413,7 +426,7 @@ describe('the scan in the Psiphon window', () => {
     const date = new Date(at * 1000).toLocaleDateString();
     await waitFor(() =>
       expect(listSelectOptions('psiphon-egress-region')).toContain(
-        `Japan (JP) — connected ${date}`,
+        `Japan (JP) — no tunnel in the last scan, connected ${date}`,
       ),
     );
   });
@@ -427,7 +440,9 @@ describe('the scan in the Psiphon window', () => {
 
     const date = new Date(at * 1000).toLocaleDateString();
     await waitFor(() =>
-      expect(listSelectOptions('psiphon-add-country')).toContain(`Japan (JP) — connected ${date}`),
+      expect(listSelectOptions('psiphon-add-country')).toContain(
+        `Japan (JP) — no tunnel in the last scan, connected ${date}`,
+      ),
     );
   });
 
@@ -638,7 +653,7 @@ describe('the picker of the countries after a scan', () => {
     const date = new Date(at * 1000).toLocaleDateString();
     expect(listSelectOptions('psiphon-add-country')).toEqual([
       'United States (US) — 62 ms',
-      `Japan (JP) — connected ${date}`,
+      `Japan (JP) — no tunnel in the last scan, connected ${date}`,
       `Antarctica (AQ) — connected ${date}`,
       'Germany (DE)',
       'France (FR)',
