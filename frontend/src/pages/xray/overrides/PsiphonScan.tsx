@@ -5,6 +5,7 @@ import type { TableColumnsType } from 'antd';
 import { ScanOutlined, StopOutlined } from '@ant-design/icons';
 
 import {
+  seenDate,
   sortScanResults,
   type PsiphonRegion,
   type PsiphonScanResult,
@@ -30,6 +31,14 @@ export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: 
   const rows = useMemo(() => sortScanResults(results ?? []), [results]);
   const done = results?.length ?? 0;
   const nameOf = (code: string) => regions.find((r) => r.code === code)?.name ?? code;
+  // The regions that connected in an earlier scan: the ones this scan did not look at are listed, and in the table the ones it
+  // looked at and did not connect get a tag with the day.
+  const seen = scan?.seen;
+  const earlier = useMemo(() => new Map((seen ?? []).map((s) => [s.region, s])), [seen]);
+  const onlyEarlier = useMemo(() => {
+    const scanned = new Set((results ?? []).map((r) => r.region));
+    return (seen ?? []).filter((s) => !scanned.has(s.region));
+  }, [seen, results]);
 
   const columns: TableColumnsType<PsiphonScanResult> = [
     {
@@ -40,14 +49,22 @@ export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: 
     {
       title: t('pages.xray.psiphon.colState'),
       key: 'state',
-      render: (_: unknown, r) =>
-        r.connected ? (
-          <Tag color="green">{t('pages.xray.psiphon.countryConnected')}</Tag>
-        ) : (
-          <Tooltip title={r.error}>
-            <Tag color="red">{t('pages.xray.psiphon.scanNoTunnel')}</Tag>
-          </Tooltip>
-        ),
+      render: (_: unknown, r) => {
+        if (r.connected) return <Tag color="green">{t('pages.xray.psiphon.countryConnected')}</Tag>;
+        const before = earlier.get(r.region);
+        return (
+          <>
+            <Tooltip title={r.error}>
+              <Tag color="red">{t('pages.xray.psiphon.scanNoTunnel')}</Tag>
+            </Tooltip>
+            {before && (
+              <Tag color="blue">
+                {t('pages.xray.psiphon.scanSeenTag', { date: seenDate(before.at) })}
+              </Tag>
+            )}
+          </>
+        );
+      },
     },
     {
       title: t('pages.xray.psiphon.scanColConnect'),
@@ -124,6 +141,13 @@ export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: 
       {!running && scan?.cancelled && (
         <Typography.Paragraph type="secondary" style={{ marginTop: 8, fontSize: 12 }}>
           {t('pages.xray.psiphon.scanCancelled')}
+        </Typography.Paragraph>
+      )}
+      {onlyEarlier.length > 0 && (
+        <Typography.Paragraph type="secondary" style={{ marginTop: 8, fontSize: 12 }}>
+          {t('pages.xray.psiphon.scanEarlier', {
+            regions: onlyEarlier.map((s) => `${nameOf(s.region)} (${s.region})`).join(', '),
+          })}
         </Typography.Paragraph>
       )}
       {rows.length > 0 && (

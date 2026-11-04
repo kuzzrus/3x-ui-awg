@@ -120,6 +120,9 @@ func (s *PsiphonService) Uninstall() error {
 	if err := s.SetPsiphonRegionScan(""); err != nil {
 		return err
 	}
+	if err := s.forgetConnected(); err != nil {
+		return err
+	}
 	return s.forgetRegions()
 }
 

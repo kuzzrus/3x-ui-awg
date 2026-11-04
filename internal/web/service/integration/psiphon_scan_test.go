@@ -202,16 +202,16 @@ func TestUninstallForgetsWhatTheInstallBeforeItMeasured(t *testing.T) {
 		Total: 1, StartedAt: 1, FinishedAt: 2,
 		Results: []psiphon.ScanResult{{Region: "DE", Connected: true, LatencyMs: 62}},
 	})
-	if st := svc.ScanStatus(); len(st.Results) != 1 || availability(svc.Regions())["DE"] != "yes" {
-		t.Fatalf("status = %+v, want the scan and the list of regions it learned kept before the uninstall", st)
+	if st := svc.ScanStatus(); len(st.Results) != 1 || len(st.Seen) != 1 || availability(svc.Regions())["DE"] != "yes" {
+		t.Fatalf("status = %+v, want the scan, the region that connected and the list of regions it learned kept before the uninstall", st)
 	}
 
 	if err := svc.Uninstall(); err != nil {
 		t.Fatalf("Uninstall: %v", err)
 	}
 
-	if st := svc.ScanStatus(); st.StartedAt != 0 || len(st.Results) != 0 {
-		t.Errorf("status = %+v after an uninstall, want nothing of the scan that the install before it ran", st)
+	if st := svc.ScanStatus(); st.StartedAt != 0 || len(st.Results) != 0 || len(st.Seen) != 0 {
+		t.Errorf("status = %+v after an uninstall, want nothing of the scan that the install before it ran, nor of the regions that connected in it", st)
 	}
 	for _, r := range svc.Regions() {
 		if r.Available != nil {

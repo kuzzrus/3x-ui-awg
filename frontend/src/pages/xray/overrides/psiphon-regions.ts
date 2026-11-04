@@ -19,7 +19,17 @@ export interface PsiphonScanResult {
   error?: string;
 }
 
-/** How the scan of the regions stands: the one that runs, or the last one that ran. */
+/** A region that came up in a scan: the last time it did, kept across scans, since one can connect in a scan and not in the next. */
+export interface PsiphonSeenRegion {
+  region: string;
+  at: number;
+  connectMs?: number;
+  latencyMs?: number;
+  ip?: string;
+  country?: string;
+}
+
+/** How the scan of the regions stands: the one that runs, or the last one that ran, with the regions that connected in earlier ones. */
 export interface PsiphonScanStatus {
   running: boolean;
   discovering?: boolean;
@@ -30,7 +40,11 @@ export interface PsiphonScanStatus {
   startedAt?: number;
   finishedAt?: number;
   results: PsiphonScanResult[];
+  seen?: PsiphonSeenRegion[];
 }
+
+/** The day a scan last found a tunnel in a region, as the pickers and the table write it. */
+export const seenDate = (at: number): string => new Date(at * 1000).toLocaleDateString();
 
 /** True once a tunnel has said which regions have Psiphon servers. */
 export const regionsKnown = (regions: PsiphonRegion[]): boolean =>
@@ -41,6 +55,7 @@ export interface RegionLabels {
   noServers: string;
   noTunnel: string;
   ms: (ms: number) => string;
+  seen: (at: number) => string;
 }
 
 export function useRegionLabels(): RegionLabels {
@@ -50,6 +65,7 @@ export function useRegionLabels(): RegionLabels {
       noServers: t('pages.xray.psiphon.regionNoServers'),
       noTunnel: t('pages.xray.psiphon.regionScanNoTunnel'),
       ms: (ms: number) => t('pages.xray.psiphon.probeResult', { ms }),
+      seen: (at: number) => t('pages.xray.psiphon.regionSeenBefore', { date: seenDate(at) }),
     }),
     [t],
   );
@@ -69,30 +85,41 @@ export function sortScanResults(results: PsiphonScanResult[]): PsiphonScanResult
 }
 
 /**
- * Options of a region picker: what a scan found first, the fastest at the top, then the regions not scanned, then those
- * that did not connect. A region without servers is greyed out and last, unless a scan connected one there.
+ * Options of a region picker: what the last scan found first, the fastest at the top, then the regions that connected in an
+ * earlier scan, then those not scanned, then those that did not connect. A region without servers is greyed out and last,
+ * unless a scan connected one there.
  */
 export function regionPickerOptions(
   regions: PsiphonRegion[],
   labels: RegionLabels,
   scanned: PsiphonScanResult[] = [],
+  seen: PsiphonSeenRegion[] = [],
 ) {
   const found = new Map(scanned.map((r) => [r.region, r]));
+  const earlier = new Map(seen.map((s) => [s.region, s]));
   const rank = (r: PsiphonRegion) => {
     if (found.get(r.code)?.connected) return 0;
-    if (r.available === false) return 3;
-    return found.has(r.code) ? 2 : 1;
+    if (earlier.has(r.code)) return 1;
+    if (r.available === false) return 4;
+    return found.has(r.code) ? 3 : 2;
   };
   const label = (r: PsiphonRegion) => {
     const name = `${r.name} (${r.code})`;
     const result = found.get(r.code);
     if (result?.connected)
       return result.latencyMs ? `${name} — ${labels.ms(result.latencyMs)}` : name;
+    const before = earlier.get(r.code);
+    if (before) return `${name} — ${labels.seen(before.at)}`;
     if (r.available === false) return `${name} — ${labels.noServers}`;
     return result ? `${name} — ${labels.noTunnel}` : name;
   };
   const speed = (r: PsiphonRegion) => found.get(r.code)?.latencyMs || slowest;
+  const earlierSpeed = (r: PsiphonRegion) => earlier.get(r.code)?.latencyMs || slowest;
+  const byRank = (a: PsiphonRegion, b: PsiphonRegion) => {
+    if (rank(a) === 0) return speed(a) - speed(b);
+    return rank(a) === 1 ? earlierSpeed(a) - earlierSpeed(b) : 0;
+  };
   return [...regions]
-    .sort((a, b) => rank(a) - rank(b) || (rank(a) === 0 ? speed(a) - speed(b) : 0))
-    .map((r) => ({ value: r.code, label: label(r), disabled: rank(r) === 3 }));
+    .sort((a, b) => rank(a) - rank(b) || byRank(a, b))
+    .map((r) => ({ value: r.code, label: label(r), disabled: rank(r) === 4 }));
 }

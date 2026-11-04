@@ -32,6 +32,7 @@ import {
   useRegionLabels,
   type PsiphonRegion,
   type PsiphonScanResult,
+  type PsiphonSeenRegion,
 } from './psiphon-regions';
 
 interface TunnelStatus {
@@ -69,6 +70,8 @@ interface PsiphonCountriesProps {
   regions: PsiphonRegion[];
   // What the last scan found: the picker puts the fastest regions first and says which ones did not connect.
   scanned?: PsiphonScanResult[];
+  // The regions that connected in earlier scans: they follow those of the last one, and stay selectable.
+  seen?: PsiphonSeenRegion[];
   templateSettings: XraySettingsValue | null;
   onMutateTemplate: (mutator: (tt: XraySettingsValue) => void) => void;
   // Called when one more tunnel has connected: it has told which regions have servers, so the window reads that list again.
@@ -110,6 +113,7 @@ export default function PsiphonCountries({
   open,
   regions,
   scanned,
+  seen,
   templateSettings,
   onMutateTemplate,
   onTunnelConnected,
@@ -343,6 +347,7 @@ export default function PsiphonCountries({
     regions.filter((r) => !added.has(r.code)),
     regionLabels,
     scanned,
+    seen,
   );
   const nameOf = (code: string) => regions.find((r) => r.code === code)?.name ?? code;
   const full = !!view && view.countries.length >= view.max;
