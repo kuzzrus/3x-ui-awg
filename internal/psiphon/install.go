@@ -163,5 +163,6 @@ func Uninstall() error {
 		return fmt.Errorf("cannot remove %s: %w", Dir(), err)
 	}
 	GetManager().forgetCountries()
+	GetManager().scanner.forget()
 	return nil
 }

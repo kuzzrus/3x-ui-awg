@@ -81,6 +81,13 @@ func (s *PsiphonService) rememberRegions(codes []string) {
 	s.saveRegions(seenRegions{Regions: codes, SeenAt: time.Now().Unix()})
 }
 
+// forgetRegions drops the kept list of regions, so that an install after an uninstall does not mark them by the one before it.
+func (s *PsiphonService) forgetRegions() error {
+	regionsMu.Lock()
+	defer regionsMu.Unlock()
+	return s.SetPsiphonRegionsSeen("")
+}
+
 func (s *PsiphonService) saveRegions(seen seenRegions) {
 	raw, err := json.Marshal(seen)
 	if err == nil {

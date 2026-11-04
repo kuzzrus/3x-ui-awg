@@ -135,6 +135,34 @@ func TestAScanThatLearnedNothingLeavesTheListOfRegionsAlone(t *testing.T) {
 	}
 }
 
+func TestUninstallForgetsWhatTheInstallBeforeItMeasured(t *testing.T) {
+	fake := useScans(t)
+	svc := &PsiphonService{}
+	if err := svc.ScanRegions(nil); err != nil {
+		t.Fatalf("ScanRegions: %v", err)
+	}
+	fake.onFinish(psiphon.ScanStatus{
+		Total: 1, StartedAt: 1, FinishedAt: 2,
+		Results: []psiphon.ScanResult{{Region: "DE", Connected: true, LatencyMs: 62}},
+	})
+	if st := svc.ScanStatus(); len(st.Results) != 1 || availability(svc.Regions())["DE"] != "yes" {
+		t.Fatalf("status = %+v, want the scan and the list of regions it learned kept before the uninstall", st)
+	}
+
+	if err := svc.Uninstall(); err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+
+	if st := svc.ScanStatus(); st.StartedAt != 0 || len(st.Results) != 0 {
+		t.Errorf("status = %+v after an uninstall, want nothing of the scan that the install before it ran", st)
+	}
+	for _, r := range svc.Regions() {
+		if r.Available != nil {
+			t.Fatalf("%s is marked after an uninstall, want the list of regions forgotten", r.Code)
+		}
+	}
+}
+
 func TestAListWithNoRegionsInItDoesNotReplaceTheOneThatIsKept(t *testing.T) {
 	useTunnels(t, nil)
 	t.Setenv("XUI_BIN_FOLDER", t.TempDir())

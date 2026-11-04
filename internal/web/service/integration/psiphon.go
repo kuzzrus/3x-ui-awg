@@ -114,7 +114,13 @@ func (s *PsiphonService) Uninstall() error {
 	if err := s.saveCountries(nil); err != nil {
 		return err
 	}
-	return s.SetPsiphonEnable(false)
+	if err := s.SetPsiphonEnable(false); err != nil {
+		return err
+	}
+	if err := s.SetPsiphonRegionScan(""); err != nil {
+		return err
+	}
+	return s.forgetRegions()
 }
 
 // SaveConfig validates and stores the config, restarting the process and the running countries if they were

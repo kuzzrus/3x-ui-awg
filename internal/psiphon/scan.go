@@ -141,6 +141,14 @@ func (s *Scanner) Status() ScanStatus {
 	return s.snapshotLocked()
 }
 
+// forget drops the status of the last scan, so that an install after an uninstall does not show what the one before it
+// measured. The run is over by then: StopAll ends it before the files go.
+func (s *Scanner) forget() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.status = ScanStatus{}
+}
+
 // snapshotLocked copies the status, so what a caller keeps is not changed under it and a list is never null.
 func (s *Scanner) snapshotLocked() ScanStatus {
 	st := s.status

@@ -404,6 +404,23 @@ func TestScanReadsAsFinishedOnlyAfterItsResultIsStored(t *testing.T) {
 	})
 }
 
+func TestUninstallForgetsTheLastScan(t *testing.T) {
+	useFakeCore(t)
+	scanThroughSocks(t)
+	t.Cleanup(GetManager().StopAll)
+	if got := scanAndWait(t, GetScanner(), []string{"DE"}); len(got.Results) != 1 {
+		t.Fatalf("status = %+v, want the scan that is to be forgotten to have measured a region", got)
+	}
+
+	if err := Uninstall(); err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+
+	if st := GetScanner().Status(); st.StartedAt != 0 || st.FinishedAt != 0 || len(st.Results) != 0 {
+		t.Fatalf("status = %+v after an uninstall, want nothing of the scan that the install before it ran", st)
+	}
+}
+
 func TestScanTunnelNeverClearsAFolderThatIsNotTheScans(t *testing.T) {
 	useFakeCore(t)
 
