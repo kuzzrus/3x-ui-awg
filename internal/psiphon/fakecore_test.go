@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -32,7 +33,11 @@ const (
 	fakeNoTunnelRegionsEnv = "PSIPHON_FAKE_NO_TUNNEL_REGIONS" // "US,JP": a process of these regions never reports a tunnel
 	fakeFailRegionsEnv     = "PSIPHON_FAKE_FAIL_REGIONS"      // "JP": a process of these regions ends at once
 	fakeConnectAfterEnv    = "PSIPHON_FAKE_CONNECT_AFTER"     // a duration: the tunnel is reported after it
+	fakeColdStoreEnv       = "PSIPHON_FAKE_COLD_STORE"        // "1": a process on an empty data store names no region until the next start
 )
+
+// fakeStoreFilled is the file a fake tunnel-core leaves in its data root once it has a tunnel: the servers it would have stored.
+const fakeStoreFilled = "store-filled"
 
 // inRegionList reports whether region is one of the comma separated codes in the variable env.
 func inRegionList(env, region string) bool {
@@ -48,13 +53,15 @@ func TestMain(m *testing.M) {
 }
 
 func runFakeCore(args []string) int {
-	var configPath, noticesPath string
+	var configPath, noticesPath, dataPath string
 	for i := 0; i+1 < len(args); i++ {
 		switch args[i] {
 		case "-config":
 			configPath = args[i+1]
 		case "-notices":
 			noticesPath = args[i+1]
+		case "-dataRootDirectory":
+			dataPath = args[i+1]
 		}
 	}
 	if os.Getenv(fakeFailStartEnv) == "1" {
@@ -93,8 +100,19 @@ func runFakeCore(args []string) int {
 		_, _ = notices.Write(append(line, '\n'))
 	}
 	notice("ListeningSocksProxyPort", map[string]any{"port": cfg.LocalSocksProxyPort})
+	// A real tunnel-core on an empty data store has no server to name a region by: it says so once, empty, and not again.
+	filled := filepath.Join(dataPath, fakeStoreFilled)
+	cold := false
+	if os.Getenv(fakeColdStoreEnv) == "1" {
+		_, statErr := os.Stat(filled)
+		cold = statErr != nil
+	}
 	if list := os.Getenv(fakeRegionsEnv); list != "" {
-		say := func() { notice("AvailableEgressRegions", map[string]any{"regions": strings.Split(list, ",")}) }
+		regions := strings.Split(list, ",")
+		if cold {
+			regions = []string{}
+		}
+		say := func() { notice("AvailableEgressRegions", map[string]any{"regions": regions}) }
 		if after, err := time.ParseDuration(os.Getenv(fakeRegionsAfterEnv)); err == nil {
 			go func() {
 				time.Sleep(after)
@@ -110,6 +128,9 @@ func runFakeCore(args []string) int {
 			region = "XX"
 		}
 		connect := func() {
+			if cold {
+				_ = os.WriteFile(filled, nil, 0o600)
+			}
 			notice("Tunnels", map[string]any{"count": 1})
 			notice("ConnectedServerRegion", map[string]any{"serverRegion": region})
 		}

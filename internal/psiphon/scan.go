@@ -25,10 +25,23 @@ var (
 	scanParallel = 3
 	// scanConnectTimeout is how long a region gets to connect; one usually takes seconds, a slow one most of a minute.
 	scanConnectTimeout = 60 * time.Second
-	// scanDiscoverTimeout is how long the tunnel that only asks which regions have servers gets to say so.
-	scanDiscoverTimeout = 45 * time.Second
+	// scanAllConnectTimeout is the time a region gets in a scan of every region, where most of the 200 and more have no servers.
+	scanAllConnectTimeout = 30 * time.Second
+	// scanDiscoverTimeout is how long a tunnel on a store that has servers gets to name their regions: it does so at once.
+	scanDiscoverTimeout = 15 * time.Second
 	scanPoll            = 500 * time.Millisecond
 )
+
+// ScanOption changes how one scan is run.
+type ScanOption func(*scanSettings)
+
+// scanSettings are the parts of a scan that its options change.
+type scanSettings struct{ connectTimeout time.Duration }
+
+// OfEveryRegion marks a scan of every region of the picker: most of them have no servers and wait out their time, so each gets less.
+func OfEveryRegion() ScanOption {
+	return func(c *scanSettings) { c.connectTimeout = scanAllConnectTimeout }
+}
 
 // ScanResult is what a scan found of one region: whether a tunnel through it came up and how long that took,
 // and what a request through it showed. Error says what did not work; a latency may still be there with it.
@@ -59,11 +72,12 @@ type ScanStatus struct {
 // Scanner runs the scan: a temporary tunnel per region, a few at a time, each measured and taken down again.
 // Only one scan runs at once.
 type Scanner struct {
-	mu     sync.Mutex // guards everything below
-	status ScanStatus
-	ports  map[int]bool
-	cancel context.CancelFunc
-	done   chan struct{} // closed when the run in progress has ended and cleaned up
+	mu       sync.Mutex // guards everything below
+	status   ScanStatus
+	settings scanSettings // how the run in progress goes
+	ports    map[int]bool
+	cancel   context.CancelFunc
+	done     chan struct{} // closed when the run in progress has ended and cleaned up
 }
 
 func newScanner() *Scanner { return &Scanner{} }
@@ -98,7 +112,7 @@ func cleanScanRegions(regions []string) ([]string, error) {
 
 // Start begins a scan of regions in the background, or of those a tunnel says have servers when none is named. onFinish, which
 // may be nil, gets the final status once the scan has cleaned up; the scan still reads as running until it returns.
-func (s *Scanner) Start(regions []string, onFinish func(ScanStatus)) error {
+func (s *Scanner) Start(regions []string, onFinish func(ScanStatus), opts ...ScanOption) error {
 	if !IsInstalled() {
 		return errors.New("Psiphon is not installed")
 	}
@@ -116,6 +130,10 @@ func (s *Scanner) Start(regions []string, onFinish func(ScanStatus)) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel, s.done = cancel, make(chan struct{})
+	s.settings = scanSettings{connectTimeout: scanConnectTimeout}
+	for _, opt := range opts {
+		opt(&s.settings)
+	}
 	s.ports = map[int]bool{}
 	s.status = ScanStatus{Running: true, Discovering: len(list) == 0, Total: len(list), StartedAt: time.Now().Unix()}
 	go s.run(ctx, list, s.done, onFinish)
@@ -233,7 +251,7 @@ func (s *Scanner) scanRegion(ctx context.Context, region string) ScanResult {
 		return result
 	}
 	defer func() { _ = proc.Stop() }()
-	if err := waitForTunnel(ctx, sp.notices, proc); err != nil {
+	if err := waitForTunnel(ctx, sp.notices, proc, s.connectLimit()); err != nil {
 		result.Error = err.Error()
 		return result
 	}
@@ -244,8 +262,8 @@ func (s *Scanner) scanRegion(ctx context.Context, region string) ScanResult {
 	return result
 }
 
-// discover starts a tunnel without a region and returns the regions it says have servers, which is how a scan
-// of every region knows which ones there are before any tunnel of the panel has run.
+// discover returns the regions a tunnel says have servers, so that a scan of every region knows them before any tunnel has run. A
+// tunnel on an empty store names none and does not say it again: one runs until it has a tunnel, and a second names them.
 func (s *Scanner) discover(ctx context.Context) ([]string, error) {
 	port, err := s.takePort()
 	if err != nil {
@@ -255,7 +273,25 @@ func (s *Scanner) discover(ctx context.Context) ([]string, error) {
 	sp := scanSpec("discover", port)
 	defer os.RemoveAll(filepath.Dir(sp.config))
 
+	if err := fillStore(ctx, sp); err != nil {
+		return nil, fmt.Errorf("could not learn which regions have servers: %w", err)
+	}
+	return askStore(ctx, sp)
+}
+
+// fillStore runs a tunnel on an empty data store until it has a tunnel, which leaves the servers it found in the store.
+func fillStore(ctx context.Context, sp spec) error {
 	proc, err := startScanProcess(ctx, sp, "")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = proc.Stop() }()
+	return waitForTunnel(ctx, sp.notices, proc, scanConnectTimeout)
+}
+
+// askStore starts a tunnel on the store as it is and returns the regions it names.
+func askStore(ctx context.Context, sp spec) ([]string, error) {
+	proc, err := runScanProcess(ctx, sp)
 	if err != nil {
 		return nil, fmt.Errorf("could not learn which regions have servers: %w", err)
 	}
@@ -295,6 +331,11 @@ func startScanProcess(ctx context.Context, sp spec, region string) (*Process, er
 	if err := os.MkdirAll(sp.data, 0o700); err != nil {
 		return nil, fmt.Errorf("creating %s: %w", sp.data, err)
 	}
+	return runScanProcess(ctx, sp)
+}
+
+// runScanProcess starts the tunnel that the folder of sp describes, as that folder is, and waits until its SOCKS listener is up.
+func runScanProcess(ctx context.Context, sp spec) (*Process, error) {
 	proc := newProcess(sp, "[scan "+filepath.Base(filepath.Dir(sp.config))+"]")
 	if err := proc.Start(); err != nil {
 		return nil, err
@@ -306,9 +347,16 @@ func startScanProcess(ctx context.Context, sp spec, region string) (*Process, er
 	return proc, nil
 }
 
-// waitForTunnel blocks until the process reports a tunnel, it exits, the time runs out or the scan is cancelled.
-func waitForTunnel(ctx context.Context, notices string, proc *Process) error {
-	deadline := time.Now().Add(scanConnectTimeout)
+// connectLimit is the time a region gets to connect in the scan that runs.
+func (s *Scanner) connectLimit() time.Duration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.settings.connectTimeout
+}
+
+// waitForTunnel blocks until the process reports a tunnel, it exits, limit runs out or the scan is cancelled.
+func waitForTunnel(ctx context.Context, notices string, proc *Process, limit time.Duration) error {
+	deadline := time.Now().Add(limit)
 	for {
 		if tunnel, _ := currentTunnel(notices); tunnel.Connected {
 			return nil
@@ -317,7 +365,7 @@ func waitForTunnel(ctx context.Context, notices string, proc *Process) error {
 			return fmt.Errorf("Psiphon exited before it connected: %s", proc.GetResult())
 		}
 		if !time.Now().Before(deadline) {
-			return fmt.Errorf("did not connect within %s", scanConnectTimeout)
+			return fmt.Errorf("did not connect within %s", limit)
 		}
 		select {
 		case <-ctx.Done():

@@ -133,17 +133,26 @@ is offered.
 fast. It starts a temporary Psiphon process for each region, three at a time, waits up to a
 minute for its tunnel, times a request through it, notes the exit address and takes the process
 down again, so your own tunnels and the config are left alone. With no list of regions to go
-by yet, it first starts one temporary process to ask Psiphon which regions have servers; a scan
-that runs to its end keeps that list like the one its own tunnels report, so the pickers can
-mark the regions without servers. A temporary process takes about 40 MB while it runs and a
-scan takes a few minutes; **Cancel the scan** ends it at once and keeps what it had finished.
-Each temporary process starts with an empty data store, so the time to connect is that of a
-cold start: a country tunnel that has run before connects faster.
+by yet, it first runs one temporary process until it has a tunnel and then another on the same
+data store, which names the regions Psiphon has servers in; a scan that runs to its end keeps
+that list like the one its own tunnels report, so the pickers can mark the regions without
+servers. A fresh data store knows fewer regions than one that has been in use for long, so such
+a list can be shorter than the one a running tunnel reports. A temporary process takes about
+40 MB while it runs and a scan takes a few minutes; **Cancel the scan** ends it at once and
+keeps what it had finished. Each temporary process starts with an empty data store, so the
+time to connect is that of a cold start: a country tunnel that has run before connects faster.
+
+**Scan all regions** does the same for every region of the picker, over 200, those a tunnel has
+named first. Psiphon publishes no list of its regions and a tunnel names only those it has
+servers stored for, so a region nobody names may still have servers, or get them later; this is
+how to find out. Most regions have none and wait out their time, which is half a minute here
+instead of a minute, so this scan takes about half an hour. Cancel works the same.
 
 The result stays in the window, also after a restart of the panel, and the pickers use it: the
 regions that answered come first, the fastest at the top with its latency, then the regions that
 were not scanned, then those that did not connect, marked *no tunnel in the last scan*. A scan
-is a measurement of one moment, so a region that failed stays selectable.
+is a measurement of one moment, so a region that failed stays selectable, and a region that
+connected is never greyed out, whatever the list of servers says.
 
 ### Several countries at once
 
