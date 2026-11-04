@@ -120,11 +120,30 @@ proxy on `127.0.0.1:19060`, on a bundled config unless you upload your own `psip
 The panel starts the tunnel again after a restart and after a crash. Do not run it on a
 server located in Russia.
 
-Once a tunnel has connected, the pickers of **Egress region** and of the countries show where
-Psiphon has servers: the regions without any are greyed out, marked *no servers* and listed
-last, since a tunnel through one of them has nothing to connect to. Psiphon publishes no such
-list, so the panel reads it from the notices of its own tunnels and keeps the last one it saw
-for when none is up. Until a tunnel has said, every region is offered.
+Once a tunnel has connected or a region scan has run, the pickers of **Egress region** and of
+the countries show where Psiphon has servers: the regions without any are greyed out, marked
+*no servers* and listed last, since a tunnel through one of them has nothing to connect to.
+Psiphon publishes no such list, so the panel reads it from the notices of its own tunnels and
+keeps the last one it saw for when none is up. Until a tunnel or a scan has said, every region
+is offered.
+
+### Scanning the regions
+
+**Region scan**, in the same window, tells which regions connect from this server and how
+fast. It starts a temporary Psiphon process for each region, three at a time, waits up to a
+minute for its tunnel, times a request through it, notes the exit address and takes the process
+down again, so your own tunnels and the config are left alone. With no list of regions to go
+by yet, it first starts one temporary process to ask Psiphon which regions have servers; a scan
+that runs to its end keeps that list like the one its own tunnels report, so the pickers can
+mark the regions without servers. A temporary process takes about 40 MB while it runs and a
+scan takes a few minutes; **Cancel the scan** ends it at once and keeps what it had finished.
+Each temporary process starts with an empty data store, so the time to connect is that of a
+cold start: a country tunnel that has run before connects faster.
+
+The result stays in the window, also after a restart of the panel, and the pickers use it: the
+regions that answered come first, the fastest at the top with its latency, then the regions that
+were not scanned, then those that did not connect, marked *no tunnel in the last scan*. A scan
+is a measurement of one moment, so a region that failed stays selectable.
 
 ### Several countries at once
 
@@ -167,6 +186,8 @@ Uninstalling Psiphon removes the country tunnels and takes everything of Psiphon
 editor: the outbounds, the balancer, and the rules that lead only to them. The confirmation
 lists what goes before it asks. An outbound that was chained through one of them (its
 `dialerProxy`) is no longer chained and dials directly, which the confirmation says in words.
+The last region scan and the list of regions that tunnels reported are forgotten too, so after
+a new install every region is offered.
 
 ## Outbound subscriptions (server pools)
 

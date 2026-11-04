@@ -1,6 +1,7 @@
 package psiphon
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -134,7 +135,7 @@ func (in *instance) startLocked() (started bool, err error) {
 	if err := proc.Start(); err != nil {
 		return false, err
 	}
-	if err := waitForListener(net.JoinHostPort("127.0.0.1", strconv.Itoa(sp.port)), proc); err != nil {
+	if err := waitForListener(context.Background(), net.JoinHostPort("127.0.0.1", strconv.Itoa(sp.port)), proc); err != nil {
 		_ = proc.Stop()
 		return false, err
 	}

@@ -65,15 +65,37 @@ func (s *PsiphonService) knownRegions() []string {
 		if at.IsZero() {
 			at = time.Now()
 		}
-		raw, err := json.Marshal(seenRegions{Regions: live.Regions, SeenAt: at.Unix()})
-		if err == nil {
-			err = s.SetPsiphonRegionsSeen(string(raw))
-		}
-		if err != nil {
-			logger.Warning("psiphon: cannot keep the list of regions:", err)
-		}
+		s.saveRegions(seenRegions{Regions: live.Regions, SeenAt: at.Unix()})
 	}
 	return live.Regions
+}
+
+// rememberRegions keeps a list that a scan learned from a tunnel of its own, for the picker to mark the regions by while no tunnel of the
+// panel is up. A list with nothing in it is not kept, since it would stand in for the one that is.
+func (s *PsiphonService) rememberRegions(codes []string) {
+	if len(codes) == 0 {
+		return
+	}
+	regionsMu.Lock()
+	defer regionsMu.Unlock()
+	s.saveRegions(seenRegions{Regions: codes, SeenAt: time.Now().Unix()})
+}
+
+// forgetRegions drops the kept list of regions, so that an install after an uninstall does not mark them by the one before it.
+func (s *PsiphonService) forgetRegions() error {
+	regionsMu.Lock()
+	defer regionsMu.Unlock()
+	return s.SetPsiphonRegionsSeen("")
+}
+
+func (s *PsiphonService) saveRegions(seen seenRegions) {
+	raw, err := json.Marshal(seen)
+	if err == nil {
+		err = s.SetPsiphonRegionsSeen(string(raw))
+	}
+	if err != nil {
+		logger.Warning("psiphon: cannot keep the list of regions:", err)
+	}
 }
 
 func (s *PsiphonService) storedRegions() seenRegions {

@@ -80,6 +80,8 @@ func (a *XraySettingController) initRouter(g *gin.RouterGroup) {
 	g.GET("/psiphon/regions", a.psiphonRegions)
 	g.GET("/psiphon/countries", a.psiphonCountries)
 	g.POST("/psiphon/countries/:action", a.psiphonCountry)
+	g.GET("/psiphon/scan", a.psiphonScan)
+	g.POST("/psiphon/scan/:action", a.psiphonScanAction)
 
 	g.GET("/geodata/files", a.geodataFiles)
 	g.GET("/geodata/categories", a.geodataCategories)
@@ -411,6 +413,27 @@ func (a *XraySettingController) psiphonCountry(c *gin.Context) {
 // a tunnel has said so. A plain GET: it reads the notices of the tunnels and the last list kept.
 func (a *XraySettingController) psiphonRegions(c *gin.Context) {
 	jsonObj(c, a.PsiphonService.Regions(), nil)
+}
+
+// psiphonScan answers how the scan of the regions stands: the one that runs, or the last one that ran.
+func (a *XraySettingController) psiphonScan(c *gin.Context) {
+	jsonObj(c, a.PsiphonService.ScanStatus(), nil)
+}
+
+// psiphonScanAction starts or cancels the scan: start takes the regions as a comma separated list, or every region a
+// tunnel said has servers when there is none. Both answer the status as GET psiphon/scan does, also on failure.
+func (a *XraySettingController) psiphonScanAction(c *gin.Context) {
+	var err error
+	switch c.Param("action") {
+	case "start":
+		err = a.PsiphonService.ScanRegions(strings.FieldsFunc(c.PostForm("regions"), func(r rune) bool { return r == ',' || r == ' ' }))
+	case "cancel":
+		a.PsiphonService.CancelScan()
+	default:
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), errors.New("unknown action"))
+		return
+	}
+	jsonObj(c, a.PsiphonService.ScanStatus(), err)
 }
 
 // psiphonConfigUpload replaces the admin-supplied psiphon.config. Multipart

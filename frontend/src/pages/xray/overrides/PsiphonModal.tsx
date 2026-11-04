@@ -21,7 +21,9 @@ import { applyDeletionByTags, planDeletionByTags } from '@/pages/xray/reference-
 import { HttpUtil } from '@/utils';
 
 import PsiphonCountries, { BALANCER_TAG, COUNTRY_PREFIX } from './PsiphonCountries';
-import { regionPickerOptions, type PsiphonRegion } from './psiphon-regions';
+import PsiphonScan from './PsiphonScan';
+import { regionPickerOptions, useRegionLabels, type PsiphonRegion } from './psiphon-regions';
+import { usePsiphonScan } from './usePsiphonScan';
 
 interface PsiphonModalProps {
   open: boolean;
@@ -73,6 +75,11 @@ export default function PsiphonModal({
   const [selectedRegion, setSelectedRegion] = useState<string>('');
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [exitInfo, setExitInfo] = useState<ExitInfo | null>(null);
+  const regionLabels = useRegionLabels();
+  // A scan and the marks of the regions belong to the install that made them, and an uninstall drops both, so the window
+  // reads them again once Psiphon is back.
+  const ready = !!status?.installed && !!status.configured;
+  const scan = usePsiphonScan(open && ready, messageApi.error);
 
   const psiphonOutboundIndex = useMemo(() => {
     const list = templateSettings?.outbounds;
@@ -118,12 +125,13 @@ export default function PsiphonModal({
     if (msg?.success && msg.obj) setRegions(msg.obj);
   }, []);
 
-  // A tunnel tells which regions have servers once it is up, so the list is read again when the window opens and when the
-  // default tunnel has connected; the countries ask for it when one of theirs has.
+  // A tunnel or a scan tells which regions have servers: the list is read again when the window opens, when Psiphon is installed
+  // again, when the default tunnel connects and when a scan ends; the countries ask for it when one of theirs connects.
   const connected = status?.tunnel.connected;
+  const scanEnded = scan.scan?.finishedAt;
   useEffect(() => {
     if (open) void loadRegions();
-  }, [open, connected, loadRegions]);
+  }, [open, ready, connected, scanEnded, loadRegions]);
 
   useEffect(() => {
     if (status?.tunnel.serverRegion) setSelectedRegion(status.tunnel.serverRegion);
@@ -273,9 +281,9 @@ export default function PsiphonModal({
   const regionOptions = useMemo(
     () => [
       { value: '', label: t('pages.xray.psiphon.egressRegionAuto') },
-      ...regionPickerOptions(regions, t('pages.xray.psiphon.regionNoServers')),
+      ...regionPickerOptions(regions, regionLabels, scan.scan?.results),
     ],
-    [regions, t],
+    [regions, regionLabels, scan.scan?.results, t],
   );
 
   return (
@@ -458,10 +466,20 @@ export default function PsiphonModal({
               {t('pages.xray.psiphon.outboundHint', { port: status?.port })}
             </Typography.Paragraph>
 
+            <Divider className="my-10">{t('pages.xray.psiphon.scanTitle')}</Divider>
+            <PsiphonScan
+              scan={scan.scan}
+              regions={regions}
+              busy={scan.busy}
+              onStart={scan.start}
+              onCancel={scan.cancel}
+            />
+
             <Divider className="my-10">{t('pages.xray.psiphon.countriesTitle')}</Divider>
             <PsiphonCountries
               open={open}
               regions={regions}
+              scanned={scan.scan?.results}
               templateSettings={templateSettings}
               onMutateTemplate={onMutateTemplate}
               onTunnelConnected={loadRegions}

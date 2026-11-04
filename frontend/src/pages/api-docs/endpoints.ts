@@ -2517,6 +2517,37 @@ export const sections: readonly Section[] = [
         ],
       },
       {
+        method: 'GET',
+        path: '/panel/api/xray/psiphon/scan',
+        summary:
+          'Read how the scan of the Psiphon regions stands: the one that runs, or the last one that ran, which survives a panel restart.',
+        description:
+          'A scan starts a temporary Psiphon process per region, three at a time, waits for its tunnel to connect, measures a request through it and takes it down again. results come in the order the regions finished and current lists the regions being scanned now; total is how many there are, and is 0 while the scan still asks a tunnel which regions have servers (discovering). error is why a scan could not go on at all, cancelled that it was ended by cancel or a shutdown.',
+        response:
+          '{\n  "success": true,\n  "obj": {\n    "running": false,\n    "total": 2,\n    "current": [],\n    "startedAt": 1793650000,\n    "finishedAt": 1793650044,\n    "results": [\n      { "region": "DE", "connected": true, "connectMs": 4210, "latencyMs": 62, "ip": "172.104.225.141", "country": "DE" },\n      { "region": "JP", "connected": false, "error": "did not connect within 1m0s" }\n    ]\n  }\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/xray/psiphon/scan/:action',
+        summary:
+          'Start or cancel the scan of the Psiphon regions. The action parameter selects the operation.',
+        params: [
+          {
+            name: 'action',
+            in: 'path',
+            type: 'string',
+            desc: 'start — begin a scan in the background and answer at once with its status; it fails while another scan runs. cancel — end the scan that runs and answer once its processes are down. Both answer the status as GET psiphon/scan does, also when they fail.',
+          },
+          {
+            name: 'regions',
+            in: 'body (form)',
+            type: 'string',
+            optional: true,
+            desc: 'For start: comma separated ISO 3166-1 alpha-2 codes in capitals. Empty means every region a tunnel has said has servers; when none has yet, the scan starts one temporary process to ask.',
+          },
+        ],
+      },
+      {
         method: 'POST',
         path: '/panel/api/xray/naiveproxy/:action',
         summary:

@@ -56,7 +56,8 @@ type countrySlot struct {
 
 // Manager owns the Psiphon processes of the whole install: the default one and the country tunnels.
 type Manager struct {
-	def *instance
+	def     *instance
+	scanner *Scanner
 
 	mu          sync.Mutex // guards countries and supervising
 	countries   map[string]*countrySlot
@@ -75,8 +76,11 @@ func GetManager() *Manager {
 }
 
 func newManager() *Manager {
-	return &Manager{def: newDefaultInstance(), countries: map[string]*countrySlot{}}
+	return &Manager{def: newDefaultInstance(), scanner: newScanner(), countries: map[string]*countrySlot{}}
 }
+
+// GetScanner returns the scanner of the process-wide manager.
+func GetScanner() *Scanner { return GetManager().scanner }
 
 // Start launches the default Psiphon process if it is not already running, waiting until its
 // SOCKS listener accepts connections. A no-op, not an error, when already up.
@@ -101,9 +105,10 @@ func (m *Manager) LastResult() string { return m.def.result() }
 // or the config itself -- Psiphon does not hot-reload either.
 func (m *Manager) Restart() error { return m.def.restart(time.Now()) }
 
-// StopAll stops the default process and every country together, each waiting for its process to end; web.go's
-// shutdown calls it like the StopAll of every sidecar manager.
+// StopAll ends a scan, then stops the default process and every country together, each waiting for its process to
+// end; web.go's shutdown calls it like the StopAll of every sidecar manager.
 func (m *Manager) StopAll() {
+	m.scanner.Cancel()
 	var wg sync.WaitGroup
 	for _, in := range m.instances() {
 		wg.Add(1)
