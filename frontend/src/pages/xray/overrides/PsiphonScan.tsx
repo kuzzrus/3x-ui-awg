@@ -15,9 +15,13 @@ interface PsiphonScanProps {
   scan: PsiphonScanStatus | null;
   regions: PsiphonRegion[];
   busy: boolean;
-  onStart: () => void;
+  /** True asks for every region of the picker, and false for those a tunnel said have servers. */
+  onStart: (all: boolean) => void;
   onCancel: () => void;
 }
+
+// A table longer than this is kept in a box that scrolls, with its header in view: a scan of every region lists over 200.
+const TALL_TABLE = 12;
 
 export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: PsiphonScanProps) {
   const { t } = useTranslation();
@@ -82,14 +86,19 @@ export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: 
             {t('pages.xray.psiphon.scanCancelButton')}
           </Button>
         ) : (
-          <Button
-            type="primary"
-            icon={<ScanOutlined aria-hidden />}
-            loading={busy}
-            onClick={onStart}
-          >
-            {t('pages.xray.psiphon.scanButton')}
-          </Button>
+          <>
+            <Button
+              type="primary"
+              icon={<ScanOutlined aria-hidden />}
+              loading={busy}
+              onClick={() => onStart(false)}
+            >
+              {t('pages.xray.psiphon.scanButton')}
+            </Button>
+            <Button loading={busy} onClick={() => onStart(true)}>
+              {t('pages.xray.psiphon.scanAllButton')}
+            </Button>
+          </>
         )}
         {running &&
           (scan.discovering ? (
@@ -133,7 +142,7 @@ export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: 
             pagination={false}
             columns={columns}
             dataSource={rows}
-            scroll={{ x: 'max-content' }}
+            scroll={{ x: 'max-content', y: rows.length > TALL_TABLE ? 360 : undefined }}
           />
         </>
       )}

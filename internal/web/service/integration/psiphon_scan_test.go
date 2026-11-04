@@ -13,6 +13,7 @@ import (
 type answeringScans struct {
 	mu       sync.Mutex
 	asked    [][]string
+	every    []bool // for each of them, whether it was a scan of every region
 	onFinish func(psiphon.ScanStatus)
 	live     psiphon.ScanStatus
 }
@@ -25,10 +26,11 @@ func useScans(t *testing.T) *answeringScans {
 	previous := scans
 	t.Cleanup(func() { scans = previous })
 	scans = scanOps{
-		start: func(regions []string, onFinish func(psiphon.ScanStatus)) error {
+		start: func(regions []string, every bool, onFinish func(psiphon.ScanStatus)) error {
 			fake.mu.Lock()
 			defer fake.mu.Unlock()
 			fake.asked = append(fake.asked, regions)
+			fake.every = append(fake.every, every)
 			fake.onFinish = onFinish
 			return nil
 		},
@@ -77,6 +79,61 @@ func TestScanOfNamedRegionsTakesThemAsGiven(t *testing.T) {
 
 	if len(fake.asked) != 1 || !slices.Equal(fake.asked[0], []string{"FR", "JP"}) {
 		t.Fatalf("the scanner was asked for %v, want the two regions that were named, listed or not", fake.asked)
+	}
+	if fake.every[0] {
+		t.Error("a scan of two named regions was marked as one of every region")
+	}
+}
+
+func TestScanOfAllRegionsTakesEveryRegionOfThePickerAndTheOnesATunnelNamedFirst(t *testing.T) {
+	for _, word := range []string{"all", "ALL", "All"} {
+		t.Run(word, func(t *testing.T) {
+			fake := useScans(t)
+			tunnelSaysRegions(t, "2026-10-27T09:41:45.362Z", "US", "ZZ", "DE")
+
+			if err := (&PsiphonService{}).ScanRegions([]string{word}); err != nil {
+				t.Fatalf("ScanRegions: %v", err)
+			}
+
+			if len(fake.asked) != 1 {
+				t.Fatalf("the scanner was started %d times, want once", len(fake.asked))
+			}
+			if !fake.every[0] {
+				t.Error("the scan was not marked as one of every region, so its regions get the time of a normal scan")
+			}
+			asked := fake.asked[0]
+			if len(asked) != len(isoCountries)+1 {
+				t.Fatalf("the scanner was asked for %d regions, want the %d of the picker and the one it lacks that a tunnel named", len(asked), len(isoCountries))
+			}
+			if !slices.Equal(asked[:3], []string{"DE", "US", "ZZ"}) {
+				t.Errorf("the first regions are %v, want the three a tunnel named before the rest", asked[:3])
+			}
+			seen := map[string]bool{}
+			for _, code := range asked {
+				if seen[code] {
+					t.Fatalf("%s is asked for twice", code)
+				}
+				seen[code] = true
+			}
+			for _, r := range isoCountries {
+				if !seen[r.Code] {
+					t.Fatalf("%s of the picker is not asked for", r.Code)
+				}
+			}
+		})
+	}
+}
+
+func TestScanOfAllRegionsWithNoListKnownTakesThePickerAsItStands(t *testing.T) {
+	fake := useScans(t)
+
+	if err := (&PsiphonService{}).ScanRegions([]string{"all"}); err != nil {
+		t.Fatalf("ScanRegions: %v", err)
+	}
+
+	asked := fake.asked[0]
+	if len(asked) != len(isoCountries) || asked[0] != isoCountries[0].Code || asked[len(asked)-1] != isoCountries[len(isoCountries)-1].Code {
+		t.Fatalf("the scanner was asked for %d regions from %s to %s, want the %d of the picker in its order", len(asked), asked[0], asked[len(asked)-1], len(isoCountries))
 	}
 }
 

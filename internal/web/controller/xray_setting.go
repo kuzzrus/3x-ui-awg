@@ -420,8 +420,8 @@ func (a *XraySettingController) psiphonScan(c *gin.Context) {
 	jsonObj(c, a.PsiphonService.ScanStatus(), nil)
 }
 
-// psiphonScanAction starts or cancels the scan: start takes the regions as a comma separated list, or every region a
-// tunnel said has servers when there is none. Both answer the status as GET psiphon/scan does, also on failure.
+// psiphonScanAction starts or cancels the scan: start takes the regions as a comma separated list, "all" for the whole picker, or
+// every region a tunnel said has servers when there is none. Both answer the status as GET psiphon/scan does, also on failure.
 func (a *XraySettingController) psiphonScanAction(c *gin.Context) {
 	var err error
 	switch c.Param("action") {

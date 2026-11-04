@@ -17,7 +17,8 @@ export function usePsiphonScan(active: boolean, onError: (text: string) => void)
   const [scan, setScan] = useState<PsiphonScanStatus | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Counts the actions, so that a status which left before one finished is not taken for the newer one.
+  // Counts the actions and the times Psiphon or the window went, so that a status which left before one of them is not taken
+  // for what stands now.
   const generation = useRef(0);
 
   const refresh = useCallback(async () => {
@@ -29,6 +30,7 @@ export function usePsiphonScan(active: boolean, onError: (text: string) => void)
   // What is held belongs to the install that ran the scan, so it is dropped when the window closes or Psiphon goes, which
   // also keeps a stale table from showing for the moment before the fresh status lands.
   useEffect(() => {
+    generation.current++;
     if (!active) {
       setScan(null);
       return;
@@ -45,11 +47,11 @@ export function usePsiphonScan(active: boolean, onError: (text: string) => void)
 
   // Both answer the status, also when they fail: a scan that was refused says why, and the status stays as it was.
   const act = useCallback(
-    async (action: 'start' | 'cancel') => {
+    async (action: 'start' | 'cancel', params: { regions?: string } = {}) => {
       setBusy(true);
       generation.current++;
       try {
-        const msg = await HttpUtil.post<PsiphonScanStatus>(`${SCAN_URL}/${action}`, {});
+        const msg = await HttpUtil.post<PsiphonScanStatus>(`${SCAN_URL}/${action}`, params);
         if (msg?.obj && 'results' in msg.obj) setScan(msg.obj);
         if (!msg?.success) onError(msg?.msg || t('pages.xray.psiphon.scanFailed'));
       } finally {
@@ -63,7 +65,8 @@ export function usePsiphonScan(active: boolean, onError: (text: string) => void)
   return {
     scan,
     busy,
-    start: useCallback(() => act('start'), [act]),
+    // Every region of the picker when all is true, and else those a tunnel said have servers.
+    start: useCallback((all = false) => act('start', all ? { regions: 'all' } : {}), [act]),
     cancel: useCallback(() => act('cancel'), [act]),
   };
 }

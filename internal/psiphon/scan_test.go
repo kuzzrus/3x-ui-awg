@@ -40,20 +40,20 @@ func scanProcesses() int {
 }
 
 // beginScan starts a scan and returns the channel its final status arrives on.
-func beginScan(t *testing.T, sc *Scanner, regions []string) <-chan ScanStatus {
+func beginScan(t *testing.T, sc *Scanner, regions []string, opts ...ScanOption) <-chan ScanStatus {
 	t.Helper()
 	done := make(chan ScanStatus, 1)
-	if err := sc.Start(regions, func(st ScanStatus) { done <- st }); err != nil {
+	if err := sc.Start(regions, func(st ScanStatus) { done <- st }, opts...); err != nil {
 		t.Fatalf("Start(%v): %v", regions, err)
 	}
 	return done
 }
 
 // scanAndWait runs a scan to its end and returns the final status, its results in the order of their regions.
-func scanAndWait(t *testing.T, sc *Scanner, regions []string) ScanStatus {
+func scanAndWait(t *testing.T, sc *Scanner, regions []string, opts ...ScanOption) ScanStatus {
 	t.Helper()
 	select {
-	case st := <-beginScan(t, sc, regions):
+	case st := <-beginScan(t, sc, regions, opts...):
 		slices.SortFunc(st.Results, func(a, b ScanResult) int { return strings.Compare(a.Region, b.Region) })
 		return st
 	case <-time.After(30 * time.Second):
@@ -133,6 +133,42 @@ func TestScanSaysSoWhenARegionNeverConnects(t *testing.T) {
 	}
 	if n := scanProcesses(); n != 0 {
 		t.Errorf("%d temporary tunnels are still up, want the one that did not connect taken down", n)
+	}
+}
+
+func TestScanOfEveryRegionGivesEachRegionLessTimeToConnect(t *testing.T) {
+	useFakeCore(t)
+	t.Setenv(fakeNoTunnelRegionsEnv, "DE")
+	shortScan(t, 5*time.Second)
+	oldEvery := scanAllConnectTimeout
+	scanAllConnectTimeout = 300 * time.Millisecond
+	t.Cleanup(func() { scanAllConnectTimeout = oldEvery })
+
+	began := time.Now()
+	got := scanAndWait(t, newTestScanner(t), []string{"DE"}, OfEveryRegion())
+
+	if r := got.Results[0]; r.Connected || !strings.Contains(r.Error, "did not connect within 300ms") {
+		t.Fatalf("DE = %+v, want it given the shorter time of a scan of every region", r)
+	}
+	if took := time.Since(began); took > 3*time.Second {
+		t.Errorf("the scan took %v, want it to give up after the shorter time", took)
+	}
+}
+
+func TestScanOfNamedRegionsKeepsTheTimeOfANormalScanAfterOneOfEveryRegion(t *testing.T) {
+	useFakeCore(t)
+	t.Setenv(fakeNoTunnelRegionsEnv, "DE")
+	shortScan(t, 700*time.Millisecond)
+	oldEvery := scanAllConnectTimeout
+	scanAllConnectTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { scanAllConnectTimeout = oldEvery })
+	sc := newTestScanner(t)
+	scanAndWait(t, sc, []string{"DE"}, OfEveryRegion())
+
+	got := scanAndWait(t, sc, []string{"DE"})
+
+	if r := got.Results[0]; !strings.Contains(r.Error, "did not connect within 700ms") {
+		t.Fatalf("DE = %+v, want the time of a normal scan, which the scan of every region before it did not leave behind", r)
 	}
 }
 
@@ -262,6 +298,35 @@ func TestScanWithoutRegionsLearnsThemFromATunnel(t *testing.T) {
 	}
 	if n := scanProcesses(); n != 0 {
 		t.Errorf("%d temporary tunnels are still up, want the one that asked taken down too", n)
+	}
+}
+
+func TestScanWithoutRegionsLearnsThemFromATunnelThatStartsOnAnEmptyStore(t *testing.T) {
+	useFakeCore(t)
+	scanThroughSocks(t)
+	shortScan(t, 3*time.Second)
+	t.Setenv(fakeRegionsEnv, "DE,US")
+	t.Setenv(fakeColdStoreEnv, "1")
+
+	got := scanAndWait(t, newTestScanner(t), nil)
+
+	if got.Error != "" || got.Total != 2 || len(got.Results) != 2 || got.Results[0].Region != "DE" || got.Results[1].Region != "US" {
+		t.Fatalf("status = %+v, want DE and US, which a second start on the store of the first names: the first names none", got)
+	}
+}
+
+func TestScanSaysSoWhenTheTunnelThatAsksForTheRegionsNeverConnects(t *testing.T) {
+	useFakeCore(t)
+	t.Setenv(fakeNoTunnelEnv, "1")
+	shortScan(t, 500*time.Millisecond)
+
+	got := scanAndWait(t, newTestScanner(t), nil)
+
+	if !strings.Contains(got.Error, "which regions") || !strings.Contains(got.Error, "did not connect") || len(got.Results) != 0 {
+		t.Fatalf("status = %+v, want a scan that says the tunnel which asks never connected", got)
+	}
+	if n := scanProcesses(); n != 0 {
+		t.Errorf("%d temporary tunnels are still up after the scan gave up", n)
 	}
 }
 
