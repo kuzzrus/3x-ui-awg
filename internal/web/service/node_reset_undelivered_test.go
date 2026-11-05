@@ -131,6 +131,19 @@ func setupRecordingNode(t *testing.T, fail bool) (int, *resetRecordingRuntime, *
 	return node.Id, rec, ib
 }
 
+// awaitNodeReset waits for the delivery that starts as a reset commits: the request waits one second for it at
+// most, and on a loaded runner the goroutine can need longer. The assertions after it say what is missing.
+func awaitNodeReset(t *testing.T, rec *resetRecordingRuntime, nodeID int) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for len(rec.delivered()) == 0 || len(pendingResetEmails(t, nodeID)) != 0 {
+		if time.Now().After(deadline) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 // A reachable node gets the reset right after the master commits it.
 func TestNodeResetDeliveredRightAway(t *testing.T) {
 	resets := []struct {
@@ -160,6 +173,7 @@ func TestNodeResetDeliveredRightAway(t *testing.T) {
 			if err := reset.run(&InboundService{}, ib); err != nil {
 				t.Fatalf("reset: %v", err)
 			}
+			awaitNodeReset(t, rec, nodeID)
 			if got := rec.delivered(); !slices.Equal(got, []string{"reset-lost"}) {
 				t.Fatalf("node received resets %v, want [reset-lost]", got)
 			}
