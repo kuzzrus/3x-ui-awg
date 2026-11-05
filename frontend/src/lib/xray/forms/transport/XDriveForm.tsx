@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Input, InputNumber, Select, Typography } from 'antd';
+import { Input, InputNumber, Select, Switch, Typography } from 'antd';
 import { useFormContext, useWatch } from 'react-hook-form';
 
 import { JsonEditor } from '@/components/form';
+import { selectTagRender } from '@/components/form/SelectTag';
 import { FormField } from '@/components/form/rhf';
 import { isYandexDiskTemplate, yandexDiskPreset } from '@/lib/xray/xdrive-presets';
 import { XDriveServiceSchema } from '@/schemas/protocols/stream/xdrive';
@@ -19,12 +20,13 @@ const SERVICE_LABEL_KEYS: Partial<Record<string, string>> = {
   template: 'pages.inbounds.form.xdrive.serviceTemplate',
   [YANDEX_DISK]: 'pages.inbounds.form.xdrive.serviceYandex',
 };
-const SERVICE_NAMES: Partial<Record<string, string>> = { 'google-drive': 'Google Drive' };
+const SERVICE_NAMES: Partial<Record<string, string>> = { 'google-drive': 'Google Drive', s3: 'S3' };
 
-// Google Drive reads three named secrets and the template services a list: a switch between
-// kinds starts the secrets over, so one service's credentials never show up in another's fields.
+// Google Drive and S3 each read their own named secrets and the template services a list: a switch
+// between kinds starts the secrets over, so one service's credentials never show up in another's fields.
 const SECRETS_KIND: Partial<Record<string, string>> = {
   'google-drive': 'named',
+  s3: 's3',
   template: 'list',
   [YANDEX_DISK]: 'list',
 };
@@ -43,6 +45,11 @@ const TUNING_FIELDS = [
 ] as const;
 
 const GOOGLE_DRIVE_SECRETS = ['clientId', 'clientSecret', 'refreshToken'] as const;
+const S3_SECRETS = [
+  ['accessKeyId', true],
+  ['secretAccessKey', true],
+  ['sessionToken', false],
+] as const;
 
 function ServiceSelect({
   id,
@@ -114,7 +121,7 @@ export default function XDriveForm() {
     const current = (getValues(BASE_PATH) ?? {}) as Record<string, unknown>;
     const sameKind = SECRETS_KIND[mode] === SECRETS_KIND[next];
     // Blank strings, not an empty list: a field with no value falls back to the form's loaded one.
-    const blank = next === 'google-drive' ? ['', '', ''] : [];
+    const blank = next === 'google-drive' || next === 's3' ? ['', '', ''] : [];
     const secrets =
       sameKind && Array.isArray(current.secrets) ? (current.secrets as string[]) : blank;
     if (next === YANDEX_DISK) {
@@ -152,7 +159,11 @@ export default function XDriveForm() {
         name={[...BASE, 'remoteFolder']}
         required
       >
-        <Input placeholder={mode === 'local' ? '/var/lib/xdrive' : 'xray-tunnel'} />
+        <Input
+          placeholder={
+            mode === 'local' ? '/var/lib/xdrive' : mode === 's3' ? 'xdrive' : 'xray-tunnel'
+          }
+        />
       </FormField>
       {mode === 'google-drive' &&
         GOOGLE_DRIVE_SECRETS.map((key, index) => (
@@ -183,6 +194,48 @@ export default function XDriveForm() {
           </FormField>
         </>
       )}
+      {mode === 's3' && (
+        <>
+          {S3_SECRETS.map(([key, required], index) => (
+            <FormField
+              key={key}
+              label={t(`pages.inbounds.form.xdrive.${key}`)}
+              name={[...BASE, 'secrets', index]}
+              required={required}
+            >
+              {key === 'accessKeyId' ? <Input /> : <Input.Password />}
+            </FormField>
+          ))}
+          <FormField
+            label={t('pages.inbounds.form.xdrive.s3Endpoint')}
+            name={[...BASE, 's3', 'endpoint']}
+            required
+          >
+            <Input placeholder="https://s3.amazonaws.com" />
+          </FormField>
+          <FormField
+            label={t('pages.inbounds.form.xdrive.s3Region')}
+            name={[...BASE, 's3', 'region']}
+          >
+            <Input placeholder="us-east-1" />
+          </FormField>
+          <FormField
+            label={t('pages.inbounds.form.xdrive.s3Bucket')}
+            name={[...BASE, 's3', 'bucket']}
+            required
+          >
+            <Input />
+          </FormField>
+          <FormField
+            label={t('pages.inbounds.form.xdrive.s3PathStyle')}
+            tooltip={t('pages.inbounds.form.xdrive.s3PathStyleDesc')}
+            name={[...BASE, 's3', 'pathStyle']}
+            transform={{ input: (value) => value !== false }}
+          >
+            <Switch />
+          </FormField>
+        </>
+      )}
       {mode === 'template' && (
         <>
           <FormField
@@ -190,7 +243,7 @@ export default function XDriveForm() {
             tooltip={t('pages.inbounds.form.xdrive.secretsDesc')}
             name={[...BASE, 'secrets']}
           >
-            <Select mode="tags" tokenSeparators={[',']} open={false} />
+            <Select mode="tags" tagRender={selectTagRender} tokenSeparators={[',']} open={false} />
           </FormField>
           <FormField
             label={t('pages.inbounds.form.xdrive.template')}

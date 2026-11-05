@@ -221,7 +221,7 @@ func runThroughputRepro(t *testing.T, randomTrailers bool, listenPort int, handl
 	}
 	defer dev.Close()
 
-	AttachTCPForwarder(dev.Stack, handler)
+	AttachTCPForwarder(dev.Stack, ownerBySource, func(conn *gonet.TCPConn, _, dest netip.AddrPort) { handler(conn, dest) })
 
 	if err := dev.Configure(inst, opts); err != nil {
 		t.Fatalf("Configure: %v", err)
@@ -436,7 +436,7 @@ func oneHandshakeResponseSize(t *testing.T, randomTrailers bool, listenPort int)
 	}
 	defer dev.Close()
 
-	AttachTCPForwarder(dev.Stack, func(conn *gonet.TCPConn, dest netip.AddrPort) { _ = conn.Close() })
+	AttachTCPForwarder(dev.Stack, ownerBySource, func(conn *gonet.TCPConn, _, _ netip.AddrPort) { _ = conn.Close() })
 
 	if err := dev.Configure(inst, opts); err != nil {
 		t.Fatalf("Configure: %v", err)
@@ -589,7 +589,7 @@ func runPacketSizeInflationProbe(t *testing.T, randomTrailers bool, listenPort i
 	}
 	defer dev.Close()
 
-	AttachTCPForwarder(dev.Stack, bigThenSmallWritesHandler)
+	AttachTCPForwarder(dev.Stack, ownerBySource, func(conn *gonet.TCPConn, _, dest netip.AddrPort) { bigThenSmallWritesHandler(conn, dest) })
 
 	if err := dev.Configure(inst, opts); err != nil {
 		t.Fatalf("Configure: %v", err)

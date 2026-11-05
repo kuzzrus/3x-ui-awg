@@ -34,7 +34,7 @@ func TestNewDeviceUDPHandlerAndReply(t *testing.T) {
 		t.Fatalf("generate client keypair: %v", err)
 	}
 
-	listenPort := freePort(t)
+	listenPort := freeUDPPort(t)
 	const wantEmail = "udp-test-peer@example.com"
 	const echoPayload = "hello-from-client"
 

@@ -14,6 +14,7 @@ import {
   message,
 } from 'antd';
 import { FormProvider, useForm, useWatch } from 'react-hook-form';
+import { selectTagRender } from '@/components/form';
 import type { NodeRecord } from '@/api/queries/useNodesQuery';
 import type { RemoteInboundOption } from '@/api/queries/useNodeMutations';
 import type { Msg } from '@/utils';
@@ -411,6 +412,7 @@ export default function NodeFormModal({
               >
                 <Select
                   mode="multiple"
+                  tagRender={selectTagRender}
                   allowClear
                   loading={fetchingInbounds}
                   placeholder={t('pages.nodes.inboundTagsPlaceholder')}

@@ -28,6 +28,7 @@ import {
   type AgentFormValues,
 } from '@/schemas/node';
 import { FormField, rhfZodValidate } from '@/components/form/rhf';
+import { selectTagRender } from '@/components/form/SelectTag';
 import { useNodeOutboundOptions } from './useNodeOutboundOptions';
 import AgentConnectionFields from './AgentConnectionFields';
 import AgentDecoyFields from './AgentDecoyFields';
@@ -157,6 +158,7 @@ function MoreStep() {
       >
         <Select
           mode="tags"
+          tagRender={selectTagRender}
           maxCount={MAX_NODE_TAGS}
           tokenSeparators={[',']}
           placeholder={t('pages.nodes.agent.tagsPlaceholder')}

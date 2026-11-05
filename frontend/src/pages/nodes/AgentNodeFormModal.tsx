@@ -24,6 +24,7 @@ import {
   type AgentFormValues,
 } from '@/schemas/node';
 import { FormField, rhfZodValidate } from '@/components/form/rhf';
+import { selectTagRender } from '@/components/form/SelectTag';
 import { useNodeTags } from '@/api/queries/useNodeTags';
 import { useNodeOutboundOptions } from './useNodeOutboundOptions';
 import AgentConnectionFields from './AgentConnectionFields';
@@ -228,6 +229,7 @@ export default function AgentNodeFormModal({
                       >
                         <Select
                           mode="tags"
+                          tagRender={selectTagRender}
                           maxCount={MAX_NODE_TAGS}
                           tokenSeparators={[',']}
                           placeholder={t('pages.nodes.agent.tagsPlaceholder')}
