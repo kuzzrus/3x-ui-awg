@@ -59,8 +59,8 @@ file locations when it can answer in one hop.
   - `controller/` — panel + REST API handlers; OpenAPI at /panel/api/openapi.json.
   - `service/` — business logic (InboundService, SettingService, XrayService,
     node sync); subpackages tgbot/, discord/, email/, outbound/, panel/, integration/.
-  - `job/` — 19 cron jobs (traffic, fail2ban IP-limit, node heartbeat/sync, LDAP,
-    CPU/memory watchdogs, …); full table in `docs/architecture.md` §5.4.
+  - `job/` — the cron jobs (traffic, fail2ban IP-limit, node heartbeat/sync, sidecar
+    reconcilers, LDAP, CPU/memory watchdogs, …); full table in `docs/architecture.md` §5.4.
   - `middleware/`, `entity/`, `global/`, `session/` (CSRF), `network/`,
     `runtime/` (master/sub-node over mTLS), `websocket/`.
   - `locale/` + `translation/` — i18n, 2 embedded locale JSON files (en-US, ru-RU).
