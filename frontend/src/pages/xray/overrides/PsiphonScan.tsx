@@ -5,10 +5,12 @@ import type { TableColumnsType } from 'antd';
 import { ScanOutlined, StopOutlined } from '@ant-design/icons';
 
 import {
+  seenDate,
   sortScanResults,
   type PsiphonRegion,
   type PsiphonScanResult,
   type PsiphonScanStatus,
+  type PsiphonSeenRegion,
 } from './psiphon-regions';
 
 interface PsiphonScanProps {
@@ -30,6 +32,31 @@ export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: 
   const rows = useMemo(() => sortScanResults(results ?? []), [results]);
   const done = results?.length ?? 0;
   const nameOf = (code: string) => regions.find((r) => r.code === code)?.name ?? code;
+  // The regions that connected in an earlier scan: once this one has ended, those it did not look at are listed, and in the table
+  // those it looked at and did not connect get a tag with the day.
+  const seen = scan?.seen;
+  const earlier = useMemo(() => new Map((seen ?? []).map((s) => [s.region, s])), [seen]);
+  const onlyEarlier = useMemo(() => {
+    const scanned = new Set((results ?? []).map((r) => r.region));
+    return (seen ?? []).filter((s) => !scanned.has(s.region));
+  }, [seen, results]);
+  // How the cells write a measurement, and the tooltip of an earlier success with them; none is what stands for a missing one.
+  const seconds = (ms: number | undefined, none = '—') =>
+    ms ? t('pages.xray.psiphon.scanSeconds', { s: (ms / 1000).toFixed(1) }) : none;
+  const latency = (ms: number | undefined, none = '—') =>
+    ms ? t('pages.xray.psiphon.probeResult', { ms }) : none;
+  const exit = (ip: string | undefined, country: string | undefined, none = '—') =>
+    ip ? `${ip} (${country ?? '?'})` : none;
+  // The tag says the day; its tooltip the moment, and what that scan measured, which is all the record keeps.
+  const earlierSeen = (s: PsiphonSeenRegion) =>
+    [
+      new Date(s.at * 1000).toLocaleString(),
+      seconds(s.connectMs, ''),
+      latency(s.latencyMs, ''),
+      exit(s.ip, s.country, ''),
+    ]
+      .filter(Boolean)
+      .join(' — ');
 
   const columns: TableColumnsType<PsiphonScanResult> = [
     {
@@ -40,38 +67,43 @@ export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: 
     {
       title: t('pages.xray.psiphon.colState'),
       key: 'state',
-      render: (_: unknown, r) =>
-        r.connected ? (
-          <Tag color="green">{t('pages.xray.psiphon.countryConnected')}</Tag>
-        ) : (
-          <Tooltip title={r.error}>
-            <Tag color="red">{t('pages.xray.psiphon.scanNoTunnel')}</Tag>
-          </Tooltip>
-        ),
+      render: (_: unknown, r) => {
+        if (r.connected) return <Tag color="green">{t('pages.xray.psiphon.countryConnected')}</Tag>;
+        const before = earlier.get(r.region);
+        return (
+          <>
+            <Tooltip title={r.error}>
+              <Tag color="red">{t('pages.xray.psiphon.scanNoTunnel')}</Tag>
+            </Tooltip>
+            {before && (
+              <Tooltip title={earlierSeen(before)}>
+                <Tag color="blue">
+                  {t('pages.xray.psiphon.scanSeenTag', { date: seenDate(before.at) })}
+                </Tag>
+              </Tooltip>
+            )}
+          </>
+        );
+      },
     },
     {
       title: t('pages.xray.psiphon.scanColConnect'),
       key: 'connect',
-      render: (_: unknown, r) =>
-        r.connectMs
-          ? t('pages.xray.psiphon.scanSeconds', { s: (r.connectMs / 1000).toFixed(1) })
-          : '—',
+      render: (_: unknown, r) => seconds(r.connectMs),
     },
     {
       title: t('pages.xray.psiphon.scanColLatency'),
       key: 'latency',
       render: (_: unknown, r) => (
         <Tooltip title={r.error}>
-          <span>
-            {r.latencyMs ? t('pages.xray.psiphon.probeResult', { ms: r.latencyMs }) : '—'}
-          </span>
+          <span>{latency(r.latencyMs)}</span>
         </Tooltip>
       ),
     },
     {
       title: t('pages.xray.psiphon.scanColExit'),
       key: 'exit',
-      render: (_: unknown, r) => (r.ip ? `${r.ip} (${r.country ?? '?'})` : '—'),
+      render: (_: unknown, r) => exit(r.ip, r.country),
     },
   ];
 
@@ -124,6 +156,15 @@ export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: 
       {!running && scan?.cancelled && (
         <Typography.Paragraph type="secondary" style={{ marginTop: 8, fontSize: 12 }}>
           {t('pages.xray.psiphon.scanCancelled')}
+        </Typography.Paragraph>
+      )}
+      {!running && rows.length > 0 && onlyEarlier.length > 0 && (
+        <Typography.Paragraph type="secondary" style={{ marginTop: 8, fontSize: 12 }}>
+          {t('pages.xray.psiphon.scanEarlier', {
+            regions: onlyEarlier
+              .map((s) => `${nameOf(s.region)} (${s.region}) — ${seenDate(s.at)}`)
+              .join('; '),
+          })}
         </Typography.Paragraph>
       )}
       {rows.length > 0 && (

@@ -150,9 +150,17 @@ instead of a minute, so this scan takes about half an hour. Cancel works the sam
 
 The result stays in the window, also after a restart of the panel, and the pickers use it: the
 regions that answered come first, the fastest at the top with its latency, then the regions that
-were not scanned, then those that did not connect, marked *no tunnel in the last scan*. A scan
-is a measurement of one moment, so a region that failed stays selectable, and a region that
-connected is never greyed out, whatever the list of servers says.
+connected in an earlier scan, marked with the day, then the regions that were not scanned, then
+those that did not connect, marked *no tunnel in the last scan*. A region of the second group
+that the last scan did look at carries both marks, *no tunnel in the last scan, connected
+&lt;day&gt;*, so that a fresh failure is not hidden behind an old success. A scan is a measurement
+of one moment: Psiphon hands each start a part of its servers, so a region can connect in one
+scan and not in the next. The panel therefore keeps, for every region, the last scan in which a tunnel
+came up, with the day and what it measured. A later scan that finds none does not remove it, and
+a region that ever connected is never greyed out, whatever the list of servers says; a region
+that failed and never connected stays selectable too. The table tags a region that did not
+connect this time with the day it last did, and lists the ones the scan did not look at.
+Uninstalling Psiphon forgets these records.
 
 ### Several countries at once
 

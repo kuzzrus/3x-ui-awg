@@ -281,9 +281,9 @@ export default function PsiphonModal({
   const regionOptions = useMemo(
     () => [
       { value: '', label: t('pages.xray.psiphon.egressRegionAuto') },
-      ...regionPickerOptions(regions, regionLabels, scan.scan?.results),
+      ...regionPickerOptions(regions, regionLabels, scan.scan?.results, scan.scan?.seen),
     ],
-    [regions, regionLabels, scan.scan?.results, t],
+    [regions, regionLabels, scan.scan?.results, scan.scan?.seen, t],
   );
 
   return (
@@ -480,6 +480,7 @@ export default function PsiphonModal({
               open={open}
               regions={regions}
               scanned={scan.scan?.results}
+              seen={scan.scan?.seen}
               templateSettings={templateSettings}
               onMutateTemplate={onMutateTemplate}
               onTunnelConnected={loadRegions}

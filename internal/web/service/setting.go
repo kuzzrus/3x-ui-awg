@@ -1478,6 +1478,23 @@ func (s *SettingService) SetPsiphonRegionScan(value string) error {
 	return s.setString("psiphonRegionScan", value)
 }
 
+// GetPsiphonRegionsConnected returns the stored JSON of the regions that a tunnel came up in during a scan, with when and how, "" when
+// none was kept. The PsiphonService reads and writes it; the setting only keeps it.
+func (s *SettingService) GetPsiphonRegionsConnected() (string, error) {
+	setting, err := s.getSetting("psiphonRegionsConnected")
+	if database.IsNotFound(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return setting.Value, nil
+}
+
+func (s *SettingService) SetPsiphonRegionsConnected(value string) error {
+	return s.setString("psiphonRegionsConnected", value)
+}
+
 // GetFrontProxyEnable reports whether the reverse proxy should be listening.
 // Read at boot to restore whatever state the admin last left it in.
 func (s *SettingService) GetFrontProxyEnable() (bool, error) {

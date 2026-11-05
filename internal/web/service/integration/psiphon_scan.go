@@ -74,16 +74,21 @@ func (s *PsiphonService) keepLearningScan(final psiphon.ScanStatus) {
 // CancelScan ends the scan that runs and returns once its tunnels are down. A no-op when none runs.
 func (s *PsiphonService) CancelScan() { scans.cancel() }
 
-// ScanStatus is the scan that runs, or the last one this process ran, or after a restart the last one kept.
+// ScanStatus is the scan that runs, or the last one this process ran, or after a restart the last one kept, with the regions that
+// connected in the scans before it.
 func (s *PsiphonService) ScanStatus() psiphon.ScanStatus {
-	if live := scans.status(); live.StartedAt != 0 {
-		return live
+	st := scans.status()
+	if st.StartedAt == 0 {
+		st = s.storedScan()
 	}
-	return s.storedScan()
+	st.Seen = s.connectedBefore()
+	return st
 }
 
-// keepScan stores the result of a scan that has ended, so that the page still shows it after the panel restarts.
+// keepScan stores the result of a scan that has ended, so that the page still shows it after the panel restarts, and the regions
+// that connected in it.
 func (s *PsiphonService) keepScan(final psiphon.ScanStatus) {
+	s.rememberConnected(final)
 	raw, err := json.Marshal(final)
 	if err == nil {
 		err = s.SetPsiphonRegionScan(string(raw))

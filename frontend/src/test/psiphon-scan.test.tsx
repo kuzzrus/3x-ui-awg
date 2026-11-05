@@ -99,6 +99,81 @@ describe('PsiphonScan', () => {
     expect(document.querySelector('.ant-table-body')).toBeNull();
   });
 
+  it('says on a region that did not connect now that it did in an earlier scan, and lists those not in this scan', () => {
+    const at = 1793000000;
+    renderScan({
+      ...finished,
+      seen: [
+        { region: 'JP', at, latencyMs: 40 },
+        { region: 'FR', at: at + 5 },
+        { region: 'DE', at },
+      ],
+    });
+
+    const date = new Date(at * 1000).toLocaleDateString();
+    expect(within(rowOf('Japan (JP)')).getByText('No tunnel')).toBeTruthy();
+    expect(within(rowOf('Japan (JP)')).getByText(`Connected ${date}`)).toBeTruthy();
+    expect(within(rowOf('Germany (DE)')).queryByText(`Connected ${date}`)).toBeNull();
+    const franceDate = new Date((at + 5) * 1000).toLocaleDateString();
+    expect(
+      screen.getByText(
+        `Connected in an earlier scan, not in this one: France (FR) — ${franceDate}`,
+      ),
+    ).toBeTruthy();
+  });
+
+  it('gives the moment and the measurements of the earlier success in the tooltip of the tag of the day', async () => {
+    const at = 1793000000;
+    renderScan({
+      ...finished,
+      seen: [
+        {
+          region: 'JP',
+          at,
+          connectMs: 7000,
+          latencyMs: 40,
+          ip: '203.0.113.5',
+          country: 'JP',
+        },
+      ],
+    });
+
+    fireEvent.mouseEnter(within(rowOf('Japan (JP)')).getByText(/^Connected \d/));
+
+    await waitFor(() => {
+      const text = document.body.textContent ?? '';
+      expect(text).toContain(new Date(at * 1000).toLocaleString());
+      expect(text).toContain('7.0 s');
+      expect(text).toContain('40 ms');
+      expect(text).toContain('203.0.113.5 (JP)');
+    });
+  });
+
+  it('does not list the regions that connected before when the scan could not look at any region', () => {
+    renderScan({
+      ...idle,
+      error: 'could not learn which regions have servers: no list within 15s',
+      finishedAt: 1793650000,
+      seen: [{ region: 'FR', at: 1793000000 }],
+    });
+
+    expect(screen.getByText(/could not learn which regions/)).toBeTruthy();
+    expect(screen.queryByText(/Connected in an earlier scan/)).toBeNull();
+  });
+
+  it('does not call the regions that connected before left out while the scan is still going through them', () => {
+    renderScan({
+      running: true,
+      total: 3,
+      current: ['DE'],
+      startedAt: 1,
+      results: [us],
+      seen: [{ region: 'FR', at: 1793000000 }],
+    });
+
+    expect(screen.queryByText(/Connected in an earlier scan/)).toBeNull();
+  });
+
   it('shows how far a scan has come, what it is scanning now, and offers to cancel it', () => {
     const onCancel = vi.fn();
     renderScan(
@@ -383,6 +458,36 @@ describe('the scan in the Psiphon window', () => {
     ]);
   });
 
+  it('hands the regions that connected in earlier scans to the picker of the egress region', async () => {
+    const panel = scanningPanel();
+    const at = 1793000000;
+    panel.state.scan = { ...finished, seen: [{ region: 'JP', at, latencyMs: 40 }] };
+    renderModal();
+    await screen.findByText(/Last scan:/);
+
+    const date = new Date(at * 1000).toLocaleDateString();
+    await waitFor(() =>
+      expect(listSelectOptions('psiphon-egress-region')).toContain(
+        `Japan (JP) — no tunnel in the last scan, connected ${date}`,
+      ),
+    );
+  });
+
+  it('hands the regions that connected in earlier scans to the picker of the countries', async () => {
+    const panel = scanningPanel();
+    const at = 1793000000;
+    panel.state.scan = { ...finished, seen: [{ region: 'JP', at, latencyMs: 40 }] };
+    renderModal();
+    await screen.findByText(/Last scan:/);
+
+    const date = new Date(at * 1000).toLocaleDateString();
+    await waitFor(() =>
+      expect(listSelectOptions('psiphon-add-country')).toContain(
+        `Japan (JP) — no tunnel in the last scan, connected ${date}`,
+      ),
+    );
+  });
+
   it('ignores a status that was asked for before a cancel and arrives after it', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const panel = scanningPanel();
@@ -566,6 +671,39 @@ describe('the picker of the countries after a scan', () => {
       'Japan (JP) — no tunnel in the last scan',
       'Antarctica (AQ) — no servers',
     ]);
+  });
+
+  it('puts a region that connected in an earlier scan after those that connected now and before those not scanned, and keeps it selectable', async () => {
+    vi.spyOn(HttpUtil, 'get').mockResolvedValue(new Msg(true, '', { max: 6, countries: [] }));
+    const at = 1793000000;
+    renderWithProviders(
+      <PsiphonCountries
+        open
+        regions={REGIONS}
+        templateSettings={null}
+        onMutateTemplate={() => {}}
+        onTunnelConnected={() => {}}
+        scanned={[us, jp]}
+        seen={[
+          { region: 'AQ', at },
+          { region: 'JP', at, latencyMs: 40 },
+        ]}
+      />,
+    );
+    await screen.findByText('No countries yet. Add one and its tunnel starts at once.');
+
+    const date = new Date(at * 1000).toLocaleDateString();
+    expect(listSelectOptions('psiphon-add-country')).toEqual([
+      'United States (US) — 62 ms',
+      `Japan (JP) — no tunnel in the last scan, connected ${date}`,
+      `Antarctica (AQ) — connected ${date}`,
+      'Germany (DE)',
+      'France (FR)',
+    ]);
+    chooseSelectOption('psiphon-add-country', `Antarctica (AQ) — connected ${date}`);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Add' }).hasAttribute('disabled')).toBe(false),
+    );
   });
 
   it('puts a region that did not connect after the ones not scanned, wherever it stood in the list', async () => {
