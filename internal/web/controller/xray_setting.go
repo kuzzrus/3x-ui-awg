@@ -420,8 +420,8 @@ func (a *XraySettingController) psiphonScan(c *gin.Context) {
 	jsonObj(c, a.PsiphonService.ScanStatus(), nil)
 }
 
-// psiphonScanAction starts or cancels the scan: start takes the regions as a comma separated list, "all" for the whole picker, or
-// every region a tunnel said has servers when there is none. Both answer the status as GET psiphon/scan does, also on failure.
+// psiphonScanAction starts or cancels the scan (start takes a comma separated list, "all" or none) or switches the weekly one on or
+// off (schedule takes weekly=true or false); all answer the status as GET psiphon/scan does, also on failure.
 func (a *XraySettingController) psiphonScanAction(c *gin.Context) {
 	var err error
 	switch c.Param("action") {
@@ -429,6 +429,8 @@ func (a *XraySettingController) psiphonScanAction(c *gin.Context) {
 		err = a.PsiphonService.ScanRegions(strings.FieldsFunc(c.PostForm("regions"), func(r rune) bool { return r == ',' || r == ' ' }))
 	case "cancel":
 		a.PsiphonService.CancelScan()
+	case "schedule":
+		err = a.PsiphonService.SetScanWeekly(c.PostForm("weekly") == "true")
 	default:
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), errors.New("unknown action"))
 		return

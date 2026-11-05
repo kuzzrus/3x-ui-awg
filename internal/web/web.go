@@ -321,6 +321,7 @@ const (
 	cadenceNodeHeartbeat = "@every 5s"
 	cadenceNodeTraffic   = "@every 5s"
 	cadenceOutboundSub   = "@every 5m"
+	cadencePsiphonScan   = "@every 1h"
 	cadenceReapOrphans   = "@every 5m"
 	cadenceRemoteRouting = "@every 5m"
 	cadenceXrayLogPrune  = "@every 10m"
@@ -387,6 +388,9 @@ func (s *Server) startTask(restartXray bool, loc *time.Location) {
 
 	// Outbound subscription auto-refresh (respects per-sub updateInterval)
 	_, _ = s.cron.AddJob(cadenceOutboundSub, job.NewOutboundSubscriptionJob())
+
+	// The weekly scan of every Psiphon region, when the admin switched it on; the job only asks whether one is due.
+	_, _ = s.cron.AddJob(cadencePsiphonScan, job.NewPsiphonScanJob())
 
 	_, _ = s.cron.AddJob(cadenceReapOrphans, job.NewReapSyncOrphansJob())
 

@@ -13,8 +13,8 @@ import (
 // connectedMu serializes the read, merge and write of the regions that connected in a scan, since a scan ends while a page asks.
 var connectedMu sync.Mutex
 
-// rememberConnected adds the regions that connected in a scan to those kept from the scans before it, each with its newest success;
-// a region that does not connect in a later scan stays as it was.
+// rememberConnected adds the regions that connected in a scan to those kept from the scans before it, each with its newest success
+// and the time of the first; a region that does not connect in a later scan stays as it was.
 func (s *PsiphonService) rememberConnected(final psiphon.ScanStatus) {
 	connectedMu.Lock()
 	defer connectedMu.Unlock()
@@ -24,8 +24,10 @@ func (s *PsiphonService) rememberConnected(final psiphon.ScanStatus) {
 		if !r.Connected {
 			continue
 		}
-		seen := psiphon.ConnectedRegion{Region: r.Region, At: final.FinishedAt, ConnectMs: r.ConnectMs, LatencyMs: r.LatencyMs, IP: r.IP, Country: r.Country}
+		seen := psiphon.ConnectedRegion{Region: r.Region, FirstAt: final.FinishedAt, At: final.FinishedAt, ConnectMs: r.ConnectMs, LatencyMs: r.LatencyMs, IP: r.IP, Country: r.Country}
 		if i := slices.IndexFunc(kept, func(k psiphon.ConnectedRegion) bool { return k.Region == r.Region }); i >= 0 {
+			// A record from before the first time was kept takes its own time for it.
+			seen.FirstAt = cmp.Or(kept[i].FirstAt, kept[i].At)
 			kept[i] = seen
 		} else {
 			kept = append(kept, seen)

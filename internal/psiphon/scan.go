@@ -59,6 +59,7 @@ type ScanResult struct {
 // and not in the next, since Psiphon hands each start a part of its servers.
 type ConnectedRegion struct {
 	Region    string `json:"region"`
+	FirstAt   int64  `json:"firstAt,omitempty"`
 	At        int64  `json:"at"`
 	ConnectMs int64  `json:"connectMs,omitempty"`
 	LatencyMs int64  `json:"latencyMs,omitempty"`
@@ -66,8 +67,8 @@ type ConnectedRegion struct {
 	Country   string `json:"country,omitempty"`
 }
 
-// ScanStatus is how a scan stands. Results come in the order the regions finished, Current is what is being scanned
-// now, and Error is why the scan as a whole could not go on. Seen is for the service to fill: the scanner knows one scan.
+// ScanStatus is how a scan stands. Results come in the order the regions finished, Current is what is being scanned now, and
+// Error is why the scan as a whole could not go on. Seen, Weekly and AutoAt are for the service to fill: the scanner knows one scan.
 type ScanStatus struct {
 	Running     bool              `json:"running"`
 	Discovering bool              `json:"discovering,omitempty"`
@@ -79,6 +80,8 @@ type ScanStatus struct {
 	FinishedAt  int64             `json:"finishedAt,omitempty"`
 	Results     []ScanResult      `json:"results"`
 	Seen        []ConnectedRegion `json:"seen"`
+	Weekly      bool              `json:"weekly"`
+	AutoAt      int64             `json:"autoAt,omitempty"`
 }
 
 // Scanner runs the scan: a temporary tunnel per region, a few at a time, each measured and taken down again.

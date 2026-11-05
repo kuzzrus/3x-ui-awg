@@ -162,6 +162,19 @@ that failed and never connected stays selectable too. The table tags a region th
 connect this time with the day it last did, and lists the ones the scan did not look at.
 Uninstalling Psiphon forgets these records.
 
+When a scan has ended and earlier ones had found regions, those that connected for the first time
+in it are tagged *New* in the table and named above it. The first scan that finds anything finds
+everything for the first time, which says nothing, so it marks no region.
+
+The switch **Scan every region once a week** has the panel run **Scan all regions** by itself.
+It is off until you turn it on. The panel checks every hour and starts the scan when it has not
+started one by itself yet or a week has passed since the last one it started, so the first one
+runs at the next check after you turn the switch on. A scan that cannot start, because another
+one runs or Psiphon is not installed, is tried again at the next check. The result is kept like that of a scan you start, so
+a region that has appeared shows up as *New* the next time you open the window, and the window
+says when the last automatic scan started. Each run takes the half hour and the memory of
+**Scan all regions**.
+
 ### Several countries at once
 
 Under **Countries** in the same window you can add up to six countries. Each one is a
@@ -203,8 +216,9 @@ Uninstalling Psiphon removes the country tunnels and takes everything of Psiphon
 editor: the outbounds, the balancer, and the rules that lead only to them. The confirmation
 lists what goes before it asks. An outbound that was chained through one of them (its
 `dialerProxy`) is no longer chained and dials directly, which the confirmation says in words.
-The last region scan and the list of regions that tunnels reported are forgotten too, so after
-a new install every region is offered.
+The last region scan and the list of regions that tunnels reported are forgotten too and the
+weekly scan is switched off, so after a new install every region is offered and no scan starts
+by itself.
 
 ## Outbound subscriptions (server pools)
 

@@ -473,6 +473,7 @@ export default function PsiphonModal({
               busy={scan.busy}
               onStart={scan.start}
               onCancel={scan.cancel}
+              onWeekly={scan.setWeekly}
             />
 
             <Divider className="my-10">{t('pages.xray.psiphon.countriesTitle')}</Divider>

@@ -22,6 +22,8 @@ export interface PsiphonScanResult {
 /** The last scan in which a tunnel came up in a region: one can connect in a scan and not in the next, so it is kept. */
 export interface PsiphonSeenRegion {
   region: string;
+  /** When a scan first found a tunnel there; a record from before that was kept has none. */
+  firstAt?: number;
   at: number;
   connectMs?: number;
   latencyMs?: number;
@@ -41,6 +43,9 @@ export interface PsiphonScanStatus {
   finishedAt?: number;
   results: PsiphonScanResult[];
   seen?: PsiphonSeenRegion[];
+  /** The scan of every region starts by itself once a week, and when it last did. */
+  weekly?: boolean;
+  autoAt?: number;
 }
 
 /** The day a scan last found a tunnel in a region, as the pickers and the table write it. */

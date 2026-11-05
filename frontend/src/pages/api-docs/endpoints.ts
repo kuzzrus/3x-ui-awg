@@ -2522,21 +2522,21 @@ export const sections: readonly Section[] = [
         summary:
           'Read how the scan of the Psiphon regions stands: the one that runs, or the last one that ran, which survives a panel restart.',
         description:
-          'A scan starts a temporary Psiphon process per region, three at a time, waits for its tunnel to connect, measures a request through it and takes it down again. results come in the order the regions finished and current lists the regions being scanned now; total is how many there are, and is 0 while the scan still asks a tunnel which regions have servers (discovering). error is why a scan could not go on at all, cancelled that it was ended by cancel or a shutdown. seen lists the regions in which a tunnel came up in any scan, each with the time (at) of the last scan that found one and what it measured: a region can connect in one scan and not in the next, and a failed scan does not remove it.',
+          'A scan starts a temporary Psiphon process per region, three at a time, waits for its tunnel to connect, measures a request through it and takes it down again. results come in the order the regions finished and current lists the regions being scanned now; total is how many there are, and is 0 while the scan still asks a tunnel which regions have servers (discovering). error is why a scan could not go on at all, cancelled that it was ended by cancel or a shutdown. seen lists the regions in which a tunnel came up in any scan, each with the time (at) of the last scan that found one, the time (firstAt) of the first and what the last measured: a region can connect in one scan and not in the next, and a failed scan does not remove it. weekly says whether the scan of every region that starts by itself once a week is on, and autoAt when it last started one.',
         response:
-          '{\n  "success": true,\n  "obj": {\n    "running": false,\n    "total": 2,\n    "current": [],\n    "startedAt": 1793650000,\n    "finishedAt": 1793650044,\n    "results": [\n      { "region": "DE", "connected": true, "connectMs": 4210, "latencyMs": 62, "ip": "172.104.225.141", "country": "DE" },\n      { "region": "JP", "connected": false, "error": "did not connect within 1m0s" }\n    ],\n    "seen": [\n      { "region": "DE", "at": 1793650044, "connectMs": 4210, "latencyMs": 62, "ip": "172.104.225.141", "country": "DE" },\n      { "region": "FI", "at": 1793640000, "connectMs": 7000, "latencyMs": 66, "ip": "95.216.0.1", "country": "FI" }\n    ]\n  }\n}',
+          '{\n  "success": true,\n  "obj": {\n    "running": false,\n    "total": 2,\n    "current": [],\n    "startedAt": 1793650000,\n    "finishedAt": 1793650044,\n    "results": [\n      { "region": "DE", "connected": true, "connectMs": 4210, "latencyMs": 62, "ip": "172.104.225.141", "country": "DE" },\n      { "region": "JP", "connected": false, "error": "did not connect within 1m0s" }\n    ],\n    "seen": [\n      { "region": "DE", "firstAt": 1793000000, "at": 1793650044, "connectMs": 4210, "latencyMs": 62, "ip": "172.104.225.141", "country": "DE" },\n      { "region": "FI", "firstAt": 1793640000, "at": 1793640000, "connectMs": 7000, "latencyMs": 66, "ip": "95.216.0.1", "country": "FI" }\n    ],\n    "weekly": true,\n    "autoAt": 1793650000\n  }\n}',
       },
       {
         method: 'POST',
         path: '/panel/api/xray/psiphon/scan/:action',
         summary:
-          'Start or cancel the scan of the Psiphon regions. The action parameter selects the operation.',
+          'Start or cancel the scan of the Psiphon regions, or switch its weekly run on or off. The action parameter selects the operation.',
         params: [
           {
             name: 'action',
             in: 'path',
             type: 'string',
-            desc: 'start — begin a scan in the background and answer at once with its status; it fails while another scan runs. cancel — end the scan that runs and answer once its processes are down. Both answer the status as GET psiphon/scan does, also when they fail.',
+            desc: 'start — begin a scan in the background and answer at once with its status; it fails while another scan runs. cancel — end the scan that runs and answer once its processes are down. schedule — switch the weekly scan of every region on or off (sends weekly): the panel checks every hour and starts one when a week has passed since the last it started. All three answer the status as GET psiphon/scan does, also when they fail.',
           },
           {
             name: 'regions',
@@ -2544,6 +2544,13 @@ export const sections: readonly Section[] = [
             type: 'string',
             optional: true,
             desc: 'For start: comma separated ISO 3166-1 alpha-2 codes in capitals. Empty means every region a tunnel has said has servers; when none has yet, the scan starts temporary processes to ask. The single value all means every region of the picker, those a tunnel has named first; most have no servers, so it takes much longer.',
+          },
+          {
+            name: 'weekly',
+            in: 'body (form)',
+            type: 'boolean',
+            optional: true,
+            desc: 'For schedule: true switches the weekly scan on, anything else off. Uninstalling Psiphon switches it off.',
           },
         ],
       },

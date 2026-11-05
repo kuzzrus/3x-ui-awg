@@ -11,7 +11,7 @@ const SCAN_URL = '/panel/api/xray/psiphon/scan';
 // How often the status is read again while a scan runs.
 const POLL_MS = 2000;
 
-/** The scan of the regions: its status, kept current while it runs, and the two things that can be asked of it. */
+/** The scan of the regions: its status, kept current while it runs, and what can be asked of it. */
 export function usePsiphonScan(active: boolean, onError: (text: string) => void) {
   const { t } = useTranslation();
   const [scan, setScan] = useState<PsiphonScanStatus | null>(null);
@@ -45,9 +45,12 @@ export function usePsiphonScan(active: boolean, onError: (text: string) => void)
     return () => clearInterval(timer);
   }, [active, running, refresh]);
 
-  // Both answer the status, also when they fail: a scan that was refused says why, and the status stays as it was.
+  // Each answers the status, also when it fails: a scan that was refused says why, and the status stays as it was.
   const act = useCallback(
-    async (action: 'start' | 'cancel', params: { regions?: string } = {}) => {
+    async (
+      action: 'start' | 'cancel' | 'schedule',
+      params: { regions?: string; weekly?: string } = {},
+    ) => {
       setBusy(true);
       generation.current++;
       try {
@@ -68,5 +71,7 @@ export function usePsiphonScan(active: boolean, onError: (text: string) => void)
     // Every region of the picker when all is true, and else those a tunnel said have servers.
     start: useCallback((all = false) => act('start', all ? { regions: 'all' } : {}), [act]),
     cancel: useCallback(() => act('cancel'), [act]),
+    // Switches the scan of every region that starts by itself once a week on or off.
+    setWeekly: useCallback((on: boolean) => act('schedule', { weekly: String(on) }), [act]),
   };
 }

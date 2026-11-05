@@ -56,7 +56,11 @@ const finished: PsiphonScanStatus = {
 
 function renderScan(
   scan: PsiphonScanStatus | null,
-  props: { onStart?: (all: boolean) => void; onCancel?: () => void } = {},
+  props: {
+    onStart?: (all: boolean) => void;
+    onCancel?: () => void;
+    onWeekly?: (on: boolean) => void;
+  } = {},
 ) {
   renderWithProviders(
     <PsiphonScan
@@ -65,6 +69,7 @@ function renderScan(
       busy={false}
       onStart={props.onStart ?? (() => {})}
       onCancel={props.onCancel ?? (() => {})}
+      onWeekly={props.onWeekly ?? (() => {})}
     />,
   );
 }
@@ -159,6 +164,85 @@ describe('PsiphonScan', () => {
 
     expect(screen.getByText(/could not learn which regions/)).toBeTruthy();
     expect(screen.queryByText(/Connected in an earlier scan/)).toBeNull();
+  });
+
+  it('offers to scan every region once a week by itself, and says when it last did', () => {
+    const onWeekly = vi.fn();
+    const autoAt = 1793000000;
+    renderScan({ ...idle, weekly: true, autoAt }, { onWeekly });
+
+    const toggle = screen.getByRole('switch', { name: 'Scan every region once a week' });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    expect(
+      screen.getByText(`Last automatic scan: ${new Date(autoAt * 1000).toLocaleString()}`),
+    ).toBeTruthy();
+    fireEvent.click(toggle);
+    expect(onWeekly).toHaveBeenCalledWith(false);
+  });
+
+  it('asks for the weekly scan when it is off, and has no last automatic scan to tell of', () => {
+    const onWeekly = vi.fn();
+    renderScan({ ...idle, weekly: false, autoAt: 1793000000 }, { onWeekly });
+
+    const toggle = screen.getByRole('switch', { name: 'Scan every region once a week' });
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    expect(screen.queryByText(/Last automatic scan/)).toBeNull();
+    fireEvent.click(toggle);
+    expect(onWeekly).toHaveBeenCalledWith(true);
+  });
+
+  it('says which regions connected for the first time in this scan, when scans came before it', () => {
+    renderScan({
+      ...finished,
+      seen: [
+        { region: 'DE', at: finished.finishedAt!, firstAt: finished.finishedAt! - 700000 },
+        { region: 'US', at: finished.finishedAt!, firstAt: finished.finishedAt! },
+        { region: 'FR', at: finished.finishedAt! - 700000, firstAt: finished.finishedAt! - 700000 },
+      ],
+    });
+
+    expect(screen.getByText('New since the previous scan: United States (US)')).toBeTruthy();
+    expect(within(rowOf('United States (US)')).getByText('New')).toBeTruthy();
+    expect(within(rowOf('Germany (DE)')).queryByText('New')).toBeNull();
+  });
+
+  it('calls nothing new in the first scan that found anything, nor a region whose first time is not known', () => {
+    renderScan({
+      ...finished,
+      seen: [
+        { region: 'DE', at: finished.finishedAt!, firstAt: finished.finishedAt! },
+        { region: 'US', at: finished.finishedAt!, firstAt: finished.finishedAt! },
+      ],
+    });
+    expect(screen.queryByText(/New since the previous scan/)).toBeNull();
+    expect(screen.queryByText('New')).toBeNull();
+  });
+
+  it('does not call a region new when its record has no first time', () => {
+    renderScan({
+      ...finished,
+      seen: [
+        { region: 'DE', at: finished.finishedAt! - 700000 },
+        { region: 'US', at: finished.finishedAt! },
+      ],
+    });
+    expect(screen.queryByText(/New since the previous scan/)).toBeNull();
+  });
+
+  it('does not say which regions are new while the scan is still going', () => {
+    renderScan({
+      running: true,
+      total: 3,
+      current: ['DE'],
+      startedAt: 1,
+      finishedAt: 1793650044,
+      results: [us],
+      seen: [
+        { region: 'US', at: 1793650044, firstAt: 1793650044 },
+        { region: 'FR', at: 1793000000, firstAt: 1793000000 },
+      ],
+    });
+    expect(screen.queryByText(/New since the previous scan/)).toBeNull();
   });
 
   it('does not call the regions that connected before left out while the scan is still going through them', () => {
@@ -306,7 +390,14 @@ function scanningPanel() {
     if (url.endsWith('/scan')) return new Msg(true, '', state.scan);
     return new Msg(true, '', { max: 6, countries: [] });
   }) as never);
-  const post = vi.spyOn(HttpUtil, 'post').mockImplementation((async (url: string) => {
+  const post = vi.spyOn(HttpUtil, 'post').mockImplementation((async (
+    url: string,
+    data?: { weekly?: string },
+  ) => {
+    if (url.endsWith('/scan/schedule')) {
+      state.scan = { ...state.scan, weekly: data?.weekly === 'true' };
+      return new Msg(true, '', state.scan);
+    }
     if (url.endsWith('/scan/start')) {
       state.scan = {
         running: true,
@@ -400,6 +491,37 @@ describe('the scan in the Psiphon window', () => {
       await vi.advanceTimersByTimeAsync(7000);
     });
     expect(panel.scanReads()).toBe(reads);
+  });
+
+  it('switches the weekly scan on from the window and shows it on', async () => {
+    const panel = scanningPanel();
+    renderModal();
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Scan every region once a week' }));
+
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('switch', { name: 'Scan every region once a week' })
+          .getAttribute('aria-checked'),
+      ).toBe('true'),
+    );
+    expect(panel.post).toHaveBeenCalledWith('/panel/api/xray/psiphon/scan/schedule', {
+      weekly: 'true',
+    });
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Scan every region once a week' }));
+
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('switch', { name: 'Scan every region once a week' })
+          .getAttribute('aria-checked'),
+      ).toBe('false'),
+    );
+    expect(panel.post).toHaveBeenLastCalledWith('/panel/api/xray/psiphon/scan/schedule', {
+      weekly: 'false',
+    });
   });
 
   it('starts a scan of every region of the picker when asked for it', async () => {
