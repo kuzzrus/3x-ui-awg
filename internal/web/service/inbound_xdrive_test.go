@@ -200,6 +200,10 @@ func TestAddInboundRefusesXDriveStorageTheCoreCannotOpen(t *testing.T) {
 		{"template namesRegex without a group", `{"service":"template","template":{"put":{"url":"u"},"get":{"url":"u"},"list":{"url":"u","namesRegex":"name"},"delete":{"url":"u"}}}`, "XDRIVE template namesRegex needs one capture group"},
 		{"basic login with a blank username secret", `{"service":"template","remoteFolder":"f","secrets":["","pw"],"template":` + basicLoginXDriveTemplate + `}`, "basic-auth username"},
 		{"basic login with a missing password secret", `{"service":"template","remoteFolder":"f","secrets":["login"],"template":` + basicLoginXDriveTemplate + `}`, "basic-auth password"},
+		{"s3 without an s3 object", `{"service":"s3","remoteFolder":"f","secrets":["key","secret"]}`, `service "s3" needs an "s3" object`},
+		{"s3 endpoint that is not http", `{"service":"s3","remoteFolder":"f","secrets":["key","secret"],"s3":{"endpoint":"ftp://s3.example","region":"r","bucket":"b"}}`, "S3 endpoint must be an http(s) URL"},
+		{"s3 with one secret", `{"service":"s3","remoteFolder":"f","secrets":["key"],"s3":{"endpoint":"https://s3.example","region":"r","bucket":"b"}}`, "S3 needs AccessKeyID, SecretAccessKey"},
+		{"s3 virtual-hosted on an IP endpoint", `{"service":"s3","remoteFolder":"f","secrets":["key","secret"],"s3":{"endpoint":"https://10.0.0.1","region":"r","bucket":"b","pathStyle":false}}`, "requires a DNS endpoint"},
 		{"unknown service", `{"service":"Dropbox","remoteFolder":"f"}`, `unsupported XDRIVE service "Dropbox"`},
 	}
 	for i, tc := range tests {
@@ -251,6 +255,14 @@ func TestAddInboundAcceptsTheYandexDiskTemplateOfTheForm(t *testing.T) {
 	settings := `{"service":"template","remoteFolder":"xdrive-test","secrets":["login","app-password"],"template":` + string(template) + `}`
 	if _, _, err := (&InboundService{}).AddInbound(xdriveInbound(18496, settings)); err != nil {
 		t.Fatalf("AddInbound with the Yandex Disk template: %v", err)
+	}
+}
+
+func TestAddInboundAcceptsACompleteXDriveS3Storage(t *testing.T) {
+	setupBulkDB(t)
+	s3 := `{"service":"s3","remoteFolder":"xdrive","secrets":["AKID","SECRET"],"s3":{"endpoint":"https://storage.yandexcloud.net","region":"ru-central1","bucket":"example-bucket"}}`
+	if _, _, err := (&InboundService{}).AddInbound(xdriveInbound(18481, s3)); err != nil {
+		t.Fatalf("AddInbound of an S3 storage xray-core can open: %v", err)
 	}
 }
 

@@ -18,6 +18,7 @@ import { FinalMaskField, SniffingField } from '@/lib/xray/forms/fields';
 import { FormField, rhfZodValidate } from '@/components/form/rhf';
 import { useNodeTags } from '@/api/queries/useNodeTags';
 import { JsonEditor } from '@/components/form';
+import { selectTagRender } from '@/components/form/SelectTag';
 import { Wireguard } from '@/utils';
 import { formValuesToWirePayload, rawOutboundToFormValues } from '@/lib/xray/outbound-form-adapter';
 import { parseOutboundLink } from '@/lib/xray/outbound-link-parser';
@@ -472,6 +473,7 @@ export default function OutboundFormModal({
                       >
                         <Select
                           mode="tags"
+                          tagRender={selectTagRender}
                           tokenSeparators={[',']}
                           allowClear
                           placeholder={t('pages.xray.outboundForm.nodeTagsPlaceholder')}

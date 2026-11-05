@@ -57,6 +57,7 @@ describe('XDRIVE form storage service', () => {
       YANDEX,
       'Local folder',
       'Custom template',
+      'S3',
     ]);
   });
 
@@ -157,6 +158,60 @@ describe('XDRIVE form storage service', () => {
       secrets: ['login', 'password'],
       template: { list: { method: 'PROPFIND' } },
     });
+  });
+
+  it('offers S3 with its own fields, none of them filled with the Google Drive credentials', async () => {
+    const save = vi.fn();
+    renderWithProviders(
+      <Harness
+        save={save}
+        xdrive={{
+          service: 'google-drive',
+          remoteFolder: 'xdrive-test',
+          secrets: ['id', 'secret', 'token'],
+        }}
+      />,
+    );
+
+    pick('S3');
+
+    expect(await screen.findByLabelText('Access key ID')).toBeDefined();
+    expect(screen.queryByLabelText('Client ID')).toBeNull();
+    expect(inputValue('Access key ID')).toBe('');
+    expect(inputValue('Session token')).toBe('');
+    fireEvent.change(screen.getByLabelText('Access key ID'), { target: { value: 'AKID' } });
+    fireEvent.change(screen.getByLabelText('Secret access key'), { target: { value: 'SECRET' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), {
+      target: { value: 'https://s3.example' },
+    });
+    fireEvent.change(screen.getByLabelText('Bucket'), { target: { value: 'bucket' } });
+
+    expect(await submitted(save)).toMatchObject({
+      service: 's3',
+      remoteFolder: 'xdrive-test',
+      secrets: ['AKID', 'SECRET', ''],
+      s3: { endpoint: 'https://s3.example', bucket: 'bucket' },
+    });
+  });
+
+  it('does not show the S3 credentials in the Google Drive fields', async () => {
+    renderWithProviders(
+      <Harness
+        save={vi.fn()}
+        xdrive={{
+          service: 's3',
+          remoteFolder: 'xdrive-test',
+          secrets: ['AKID', 'SECRET'],
+          s3: { endpoint: 'https://s3.example', bucket: 'bucket' },
+        }}
+      />,
+    );
+    expect(inputValue('Access key ID')).toBe('AKID');
+
+    pick('Google Drive');
+
+    expect(await screen.findByLabelText('Client ID')).toBeDefined();
+    expect(inputValue('Client ID')).toBe('');
   });
 
   it('does not show the Yandex credentials in the Google Drive fields', async () => {

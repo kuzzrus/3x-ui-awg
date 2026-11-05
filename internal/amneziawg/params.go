@@ -204,6 +204,35 @@ func ValidateServerObfuscation(o Obfuscation20) error {
 	return nil
 }
 
+const (
+	// maxJunkPackets is the Jc range AmneziaWG documents.
+	maxJunkPackets = 128
+	// maxPreamblePacket is amneziawg-go's MaxSegmentSize: each junk and signature packet is one datagram.
+	maxPreamblePacket = 65535
+)
+
+// ValidateHandshakePreamble bounds what every handshake initiation allocates: Jc junk
+// packets of Jmin..Jmax bytes and the I1-I5 signature packets. Device setup runs it too.
+func ValidateHandshakePreamble(o Obfuscation20) error {
+	if o.Jmin > o.Jmax {
+		return fmt.Errorf("invalid Jmin/Jmax: %d must not exceed %d", o.Jmin, o.Jmax)
+	}
+	for _, f := range []struct {
+		name   string
+		v, max int
+	}{{"Jc", o.Jc, maxJunkPackets}, {"Jmin", o.Jmin, maxPreamblePacket}, {"Jmax", o.Jmax, maxPreamblePacket}} {
+		if f.v < 0 || f.v > f.max {
+			return fmt.Errorf("invalid %s value %d (must be 0..%d)", f.name, f.v, f.max)
+		}
+	}
+	for i, spec := range []string{o.I1, o.I2, o.I3, o.I4, o.I5} {
+		if err := validateObfChain(spec); err != nil {
+			return fmt.Errorf("invalid I%d: %w", i+1, err)
+		}
+	}
+	return nil
+}
+
 // ValidateObfuscation rejects malformed parameters before they are saved, so
 // a bad manual entry can't break the embedded amneziawg-go device's own
 // UAPI config apply (internal/amneziawgnet's buildUAPIConfig/IpcSet) or
@@ -211,30 +240,22 @@ func ValidateServerObfuscation(o Obfuscation20) error {
 // are allowed (they fall back to a default); each accepts an integer or a
 // "100-800" range.
 func ValidateObfuscation(o Obfuscation20) error {
-	if o.Jmin > o.Jmax {
-		return fmt.Errorf("invalid Jmin/Jmax: %d must not exceed %d", o.Jmin, o.Jmax)
+	if err := ValidateHandshakePreamble(o); err != nil {
+		return err
 	}
-	// amneziawg-go parses jc/jmin/jmax as uint32 and s1-s3 as uint16 (device/uapi.go);
-	// a wider value makes IpcSet reject the whole device.
+	// amneziawg-go parses s1-s3 as uint16 (device/uapi.go); a wider value makes IpcSet
+	// reject the whole device.
 	for _, f := range []struct {
 		name string
 		v    int
 		max  int64
 	}{
-		{"Jc", o.Jc, math.MaxUint32},
-		{"Jmin", o.Jmin, math.MaxUint32},
-		{"Jmax", o.Jmax, math.MaxUint32},
 		{"S1", o.S1, math.MaxUint16},
 		{"S2", o.S2, math.MaxUint16},
 		{"S3", o.S3, math.MaxUint16},
 	} {
 		if int64(f.v) < 0 || int64(f.v) > f.max {
 			return fmt.Errorf("invalid %s value %d (must be 0..%d)", f.name, f.v, f.max)
-		}
-	}
-	for i, spec := range []string{o.I1, o.I2, o.I3, o.I4, o.I5} {
-		if err := validateObfChain(spec); err != nil {
-			return fmt.Errorf("invalid I%d: %w", i+1, err)
 		}
 	}
 	if o.S4 < 0 || o.S4 > 32 {
@@ -271,6 +292,7 @@ func validateObfChain(spec string) error {
 		return nil
 	}
 	remaining := spec
+	total := 0
 	for {
 		start := strings.IndexByte(remaining, '<')
 		if start == -1 {
@@ -286,6 +308,29 @@ func validateObfChain(spec string) error {
 		}
 		if !obfChainTags[fields[0]] {
 			return fmt.Errorf("spec %q uses unknown tag <%s>", spec, fields[0])
+		}
+		// The packet is built once per handshake initiation, so what it allocates is bounded.
+		switch fields[0] {
+		case "r", "rc", "rd", "dz":
+			n := -1
+			if len(fields) == 2 {
+				if v, err := strconv.Atoi(fields[1]); err == nil {
+					n = v
+				}
+			}
+			if n < 0 || n > maxPreamblePacket {
+				return fmt.Errorf("spec %q: <%s> needs a length of 0..%d", spec, fields[0], maxPreamblePacket)
+			}
+			total += n
+		case "b":
+			if len(fields) == 2 {
+				total += len(strings.TrimPrefix(fields[1], "0x")) / 2
+			}
+		case "t":
+			total += 4
+		}
+		if total > maxPreamblePacket {
+			return fmt.Errorf("spec %q builds more than %d bytes", spec, maxPreamblePacket)
 		}
 		remaining = remaining[start+end+1:]
 	}
@@ -570,6 +615,17 @@ func ValidateHeaderProtection(headerProtectionKey string, o Obfuscation20) error
 // link, the fallbackDefault EffectiveMTU callers pass when the admin sets none.
 const DefaultMTU = 1420
 
+// MaxMTU bounds the tunnel MTU: amneziawg-go keeps it as an int32, and a wider value wraps.
+const MaxMTU = 65535
+
+// ValidateMTU refuses an MTU past MaxMTU before it is saved; 0 means the default.
+func ValidateMTU(mtu int) error {
+	if mtu < 0 || mtu > MaxMTU {
+		return fmt.Errorf("invalid mtu %d (must be 0..%d)", mtu, MaxMTU)
+	}
+	return nil
+}
+
 // mtuPathCeiling is the largest MTU+S4 sum that fits under a standard
 // 1500-byte path MTU: 1500 - 20 (IPv4) - 8 (UDP) - 32 (AmneziaWG transport
 // header + Poly1305 tag). S4 -- unlike S1-S3, which only pad handshake
@@ -589,7 +645,8 @@ const mtuPathCeiling = 1440
 // collapse before this existed.
 func EffectiveMTU(mtu, s4, fallbackDefault int) int {
 	if mtu > 0 {
-		return mtu
+		// A row saved before ValidateMTU existed may still carry a wider value.
+		return min(mtu, MaxMTU)
 	}
 	if fallbackDefault+s4 > mtuPathCeiling {
 		return mtuPathCeiling - s4
@@ -601,6 +658,9 @@ func EffectiveMTU(mtu, s4, fallbackDefault int) int {
 // once S4 is added. mtu <= 0 (unset) is always valid -- EffectiveMTU already
 // keeps that case safe by shrinking the fallback default instead.
 func ValidateMTUBudget(mtu, s4 int) error {
+	if err := ValidateMTU(mtu); err != nil {
+		return err
+	}
 	if mtu <= 0 {
 		return nil
 	}
