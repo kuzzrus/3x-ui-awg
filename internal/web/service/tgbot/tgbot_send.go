@@ -215,14 +215,15 @@ func (t *Tgbot) sendPagedNotice(chatID int64, text string) {
 
 // deleteMessageTgBot deletes a message from the chat.
 func (t *Tgbot) deleteMessageTgBot(chatId int64, messageID int) {
-	if liveBot() == nil {
+	b := liveBot()
+	if b == nil {
 		return
 	}
 	params := telego.DeleteMessageParams{
 		ChatID:    tu.ID(chatId),
 		MessageID: messageID,
 	}
-	if err := liveBot().DeleteMessage(context.Background(), &params); err != nil {
+	if err := b.DeleteMessage(context.Background(), &params); err != nil {
 		logger.Warning("Failed to delete message:", err)
 	} else {
 		logger.Info("Message deleted successfully")
