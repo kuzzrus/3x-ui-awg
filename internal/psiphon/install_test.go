@@ -23,7 +23,7 @@ func sha256Sum(t *testing.T, s string) []byte {
 func TestReleaseSHA256Value(t *testing.T) {
 	// Independently retyped from `curl -sL <pinned URL> | sha256sum`, not
 	// copied from the production constant, so the two must agree on purpose.
-	const want = "47f8956f3f3cf9813d4cbee4665adc99b1f8ffa788c13dc5e03e824cc29217b0"
+	const want = "d83dcaa632b265536852e2d97c45eb4831960f8dbcb2d8638293d5958483705b"
 	if releaseSHA256 != want {
 		t.Fatalf("releaseSHA256 = %q, want %q", releaseSHA256, want)
 	}
