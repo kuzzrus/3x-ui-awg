@@ -43,15 +43,8 @@ func TestRenderServerConfigOmitsLimitsAndTimeouts(t *testing.T) {
 	}
 }
 
-// Regression for a real production bug: tproxy-server's own config decoder
-// calls DisallowUnknownFields, so a single field here with no counterpart in
-// its Config struct (internal/config/config.go in mhsanaei/tproxy-server,
-// pinned commit f7a6acc4d536a787d442fd7df3ba4ebfd728f406) breaks the shared
-// relay outright on every single deployment -- exactly what "base_path" did
-// (it was never a real field there) until it was removed from serverConfig.
-// This asserts against the real struct's exact json tag set rather than
-// re-listing individually-known-bad field names, so it also catches any
-// *future* field added here without real upstream support, not just this one.
+// tproxy-server's config decoder calls DisallowUnknownFields (internal/config/config.go, pinned commit c8adb8b7c6b7fc46c12ae3acb68be9070c26a8e8),
+// so a key here that its Config struct lacks breaks the relay on every deployment; this asserts against that exact tag set.
 func TestRenderServerConfigOnlyUsesRealUpstreamFields(t *testing.T) {
 	data, err := renderServerConfig("proxy.example.com", "127.0.0.1:8080", "127.0.0.1:8081")
 	if err != nil {
@@ -63,6 +56,7 @@ func TestRenderServerConfigOnlyUsesRealUpstreamFields(t *testing.T) {
 	}
 	realUpstreamFields := map[string]bool{
 		"public_hostname": true,
+		"base_path":       true,
 		"listen":          true,
 		"admin_listen":    true,
 		"public_dir":      true,
