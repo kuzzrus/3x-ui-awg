@@ -22,7 +22,7 @@ import (
 func TestReleaseSHA256Value(t *testing.T) {
 	// Independently retyped from the release asset's own published digest,
 	// not copied from the production constant, so the two must agree on purpose.
-	const want = "19eccb7321dd877a5fb4a3dba6ef1b745185188b616c96cc6201f1a1fc0380a8"
+	const want = "c273dc07dd79c5919f97639cbdcb559d40ce90475dbd8aac80641b0a8c8065ff"
 	if releaseSHA256 != want {
 		t.Fatalf("releaseSHA256 = %q, want %q", releaseSHA256, want)
 	}

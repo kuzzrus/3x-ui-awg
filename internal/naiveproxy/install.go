@@ -31,8 +31,8 @@ import (
 
 // releaseTag/releaseSHA256 pin one klzgrad/forwardproxy release, bumped only deliberately.
 const (
-	releaseTag    = "v2.11.2-naive"
-	releaseSHA256 = "19eccb7321dd877a5fb4a3dba6ef1b745185188b616c96cc6201f1a1fc0380a8"
+	releaseTag    = "v2.11.7-naive2"
+	releaseSHA256 = "c273dc07dd79c5919f97639cbdcb559d40ce90475dbd8aac80641b0a8c8065ff"
 )
 
 // archiveEntryName is the path inside the tar this release always uses.
