@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"sync"
 
@@ -32,6 +33,8 @@ type tunnelOps struct {
 	prepare        func(c psiphon.Country) error
 	restore        func(c psiphon.Country) error
 	restoreDefault func() error
+	// upgradeBinary brings the installed build to the pinned one and restarts what runs from the old file.
+	upgradeBinary func(ctx context.Context, client *http.Client) (bool, error)
 }
 
 var tunnels = tunnelOps{
@@ -43,6 +46,9 @@ var tunnels = tunnelOps{
 	prepare:        func(c psiphon.Country) error { return psiphon.GetManager().PrepareCountry(c) },
 	restore:        func(c psiphon.Country) error { return psiphon.GetManager().StartCountrySupervised(c) },
 	restoreDefault: func() error { return psiphon.GetManager().StartSupervised() },
+	upgradeBinary: func(ctx context.Context, client *http.Client) (bool, error) {
+		return psiphon.GetManager().UpgradeBinary(ctx, client)
+	},
 }
 
 // regionLocks keep a start, a stop and a removal of one region from interleaving, so that a start which read the

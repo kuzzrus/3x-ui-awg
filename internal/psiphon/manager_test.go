@@ -3,6 +3,7 @@
 package psiphon
 
 import (
+	"errors"
 	"net"
 	"os"
 	"strconv"
@@ -476,5 +477,94 @@ func TestACountryCannotBeMovedToAnotherPortWhileItRuns(t *testing.T) {
 	}
 	if !listening(19109) {
 		t.Fatal("the country is not on its new port")
+	}
+}
+
+// startedAt is when the process of in came up, as the manager wrote it down at the start.
+func startedAt(in *instance) time.Time {
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	return in.life.startedAt
+}
+
+func TestRestartRunningRestartsWhatRunsAndLeavesWhatIsStopped(t *testing.T) {
+	useFakeCore(t)
+	if !portFree(SocksPort) || !portFree(19110) || !portFree(19111) {
+		t.Skip("ports 19060 and 19110-19111 are not free on this host")
+	}
+	m := newTestManager(t)
+	if err := m.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := m.StartCountry(Country{Region: "IT", Port: 19110}); err != nil {
+		t.Fatalf("StartCountry IT: %v", err)
+	}
+	if err := m.StartCountry(Country{Region: "ES", Port: 19111}); err != nil {
+		t.Fatalf("StartCountry ES: %v", err)
+	}
+	if err := m.StopCountry("ES"); err != nil {
+		t.Fatalf("StopCountry ES: %v", err)
+	}
+	defBefore, itBefore := startedAt(m.def), startedAt(m.existingCountry("IT"))
+	time.Sleep(20 * time.Millisecond)
+
+	if err := m.restartRunning(); err != nil {
+		t.Fatalf("restartRunning: %v", err)
+	}
+
+	if !startedAt(m.def).After(defBefore) || !m.IsRunning() || !listening(SocksPort) {
+		t.Error("the default process was not restarted")
+	}
+	if !startedAt(m.existingCountry("IT")).After(itBefore) || !m.CountryState("IT").Running || !listening(19110) {
+		t.Error("the running country was not restarted")
+	}
+	if m.CountryState("ES").Running || listening(19111) {
+		t.Error("restartRunning started a country that had been stopped")
+	}
+}
+
+func TestRestartRunningDoesNotStartTheDefaultProcessThatIsStopped(t *testing.T) {
+	useFakeCore(t)
+	if !portFree(SocksPort) {
+		t.Skip("port 19060 is not free on this host")
+	}
+	m := newTestManager(t)
+
+	if err := m.restartRunning(); err != nil {
+		t.Fatalf("restartRunning: %v", err)
+	}
+
+	if m.IsRunning() || listening(SocksPort) {
+		t.Fatal("restartRunning started the default process that was stopped")
+	}
+}
+
+func TestAfterUpgradeRestartsTheTunnelsOnlyWhenTheFileWasReplaced(t *testing.T) {
+	useFakeCore(t)
+	if !portFree(SocksPort) {
+		t.Skip("port 19060 is not free on this host")
+	}
+	m := newTestManager(t)
+	if err := m.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	before := startedAt(m.def)
+	time.Sleep(20 * time.Millisecond)
+
+	if replaced, err := m.afterUpgrade(false, nil); replaced || err != nil {
+		t.Fatalf("afterUpgrade(false, nil) = %v, %v, want nothing", replaced, err)
+	}
+	if replaced, err := m.afterUpgrade(false, errors.New("no network")); replaced || err == nil || err.Error() != "no network" {
+		t.Fatalf("afterUpgrade(false, error) = %v, %v, want the error passed on", replaced, err)
+	}
+	if !startedAt(m.def).Equal(before) {
+		t.Fatal("a build that was not replaced restarted the tunnel")
+	}
+
+	if replaced, err := m.afterUpgrade(true, nil); !replaced || err != nil {
+		t.Fatalf("afterUpgrade(true, nil) = %v, %v, want the replacement reported", replaced, err)
+	}
+	if !startedAt(m.def).After(before) || !m.IsRunning() {
+		t.Fatal("a replaced build did not restart the tunnel that ran from the old file")
 	}
 }

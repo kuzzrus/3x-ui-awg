@@ -15,8 +15,10 @@
 package psiphon
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -104,6 +106,28 @@ func (m *Manager) LastResult() string { return m.def.result() }
 // Restart stops and starts the default Psiphon process, used after SaveConfig changes EgressRegion
 // or the config itself -- Psiphon does not hot-reload either.
 func (m *Manager) Restart() error { return m.def.restart(time.Now()) }
+
+// UpgradeBinary brings the installed build to the pinned one and, when it put a new file in place, restarts the tunnels
+// that run, which started from the old one.
+func (m *Manager) UpgradeBinary(ctx context.Context, client *http.Client) (bool, error) {
+	return m.afterUpgrade(Upgrade(ctx, client))
+}
+
+func (m *Manager) afterUpgrade(replaced bool, err error) (bool, error) {
+	if err != nil || !replaced {
+		return false, err
+	}
+	return true, m.restartRunning()
+}
+
+// restartRunning restarts the default process when it runs, and the countries that run; what is stopped stays stopped.
+func (m *Manager) restartRunning() error {
+	var errs []error
+	if m.def.isRunning() {
+		errs = append(errs, m.def.restart(time.Now()))
+	}
+	return errors.Join(append(errs, m.RestartCountries())...)
+}
 
 // StopAll ends a scan, then stops the default process and every country together, each waiting for its process to
 // end; web.go's shutdown calls it like the StopAll of every sidecar manager.

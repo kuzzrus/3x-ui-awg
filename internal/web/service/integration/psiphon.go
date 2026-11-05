@@ -57,6 +57,21 @@ func (s *PsiphonService) AutoStart() {
 	psiphon.GetManager().Supervise()
 	s.autoStartCountries()
 	s.autoStartDefault()
+	go s.refreshBinary()
+}
+
+// refreshBinary brings an install made before the last update of the panel to the build the panel pins now. It runs beside
+// the boot, so a slow download holds nothing up, and a failed one leaves the installed build running until the next boot.
+func (s *PsiphonService) refreshBinary() {
+	ctx, cancel := context.WithTimeout(context.Background(), installTimeout)
+	defer cancel()
+	replaced, err := tunnels.upgradeBinary(ctx, s.NewProxiedHTTPClient(installTimeout))
+	if err != nil {
+		logger.Warningf("psiphon: cannot bring the installed build to the pinned one: %v", err)
+	}
+	if replaced {
+		logger.Info("psiphon: the installed build was replaced by the pinned one")
+	}
 }
 
 func (s *PsiphonService) autoStartDefault() {

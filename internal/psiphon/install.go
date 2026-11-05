@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
 )
@@ -94,13 +95,44 @@ func Install(ctx context.Context, client *http.Client) error {
 	if err != nil {
 		return err
 	}
-	want, err := hex.DecodeString(releaseSHA256)
+	return fetchPinned(ctx, client, asset, releaseSHA256)
+}
+
+// Upgrade fetches the pinned build again when the binary in place is another one, an earlier build's or one damaged
+// since, and says whether it put a new file there. Where no build is pinned for the platform the binary is the admin's own.
+func Upgrade(ctx context.Context, client *http.Client) (bool, error) {
+	asset, err := assetPath(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return false, nil
+	}
+	return upgradeTo(ctx, client, asset, releaseSHA256)
+}
+
+func upgradeTo(ctx context.Context, client *http.Client, asset, digest string) (bool, error) {
+	if !IsInstalled() || hasDigest(BinPath(), digest) {
+		return false, nil
+	}
+	if err := fetchPinned(ctx, client, asset, digest); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// fetchMu keeps two fetches from writing the one staging file.
+var fetchMu sync.Mutex
+
+// fetchPinned downloads the build with the given checksum next to the binary and renames it into place, which a
+// running process does not mind: it keeps the file it started from.
+func fetchPinned(ctx context.Context, client *http.Client, asset, digest string) error {
+	want, err := hex.DecodeString(digest)
 	if err != nil {
 		return fmt.Errorf("malformed pinned checksum: %w", err)
 	}
 	if len(want) != sha256.Size {
 		return fmt.Errorf("malformed pinned checksum: got %d bytes, want %d", len(want), sha256.Size)
 	}
+	fetchMu.Lock()
+	defer fetchMu.Unlock()
 	if err := os.MkdirAll(Dir(), 0o700); err != nil {
 		return fmt.Errorf("cannot create %s: %w", Dir(), err)
 	}
