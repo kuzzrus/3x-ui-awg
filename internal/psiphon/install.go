@@ -19,8 +19,8 @@ import (
 // releaseCommit/releaseSHA256 pin one commit of psiphon-tunnel-core-binaries --
 // that repo has no checksums.txt, so this is this package's own reviewed digest, bumped only deliberately.
 const (
-	releaseCommit = "70d99fd87bb010654e5e0759f347e3ab0f4a952f"
-	releaseSHA256 = "47f8956f3f3cf9813d4cbee4665adc99b1f8ffa788c13dc5e03e824cc29217b0"
+	releaseCommit = "196a723c3f07a35df0e36aa05190ad1cf3922d61"
+	releaseSHA256 = "d83dcaa632b265536852e2d97c45eb4831960f8dbcb2d8638293d5958483705b"
 )
 
 // maxDownloadBytes bounds the download. The real binary is ~10 MiB; this only
