@@ -131,8 +131,8 @@ func setupRecordingNode(t *testing.T, fail bool) (int, *resetRecordingRuntime, *
 	return node.Id, rec, ib
 }
 
-// awaitNodeReset waits for the delivery that starts as a reset commits: the request waits one second for it at
-// most, and on a loaded runner the goroutine can need longer. The assertions after it say what is missing.
+// awaitNodeReset waits for the delivery that starts as a reset commits. The request waits one second for it at most,
+// and the lock of the node can still be held by the silent node of another test for as long as nodeClientPushTimeout.
 func awaitNodeReset(t *testing.T, rec *resetRecordingRuntime, nodeID int) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
