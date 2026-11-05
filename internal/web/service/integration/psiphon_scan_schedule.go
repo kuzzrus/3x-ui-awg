@@ -1,6 +1,9 @@
 package integration
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 // weeklyScanEvery is how long the weekly scan waits after the last one it started.
 const weeklyScanEvery = 7 * 24 * time.Hour
@@ -9,7 +12,7 @@ const weeklyScanEvery = 7 * 24 * time.Hour
 func (s *PsiphonService) SetScanWeekly(on bool) error { return s.SetPsiphonScanWeekly(on) }
 
 // ScanIfDue starts the scan of every region when the weekly scan is on and a week has passed since the last one it started, and
-// says whether it did. A scan that cannot start (another runs, Psiphon is not installed) leaves the day alone, so the next call tries again.
+// says whether it did. A scan that cannot start (another runs, Psiphon is not installed) gives the day back, so the next call tries again.
 func (s *PsiphonService) ScanIfDue(now time.Time) (bool, error) {
 	on, err := s.GetPsiphonScanWeekly()
 	if err != nil || !on {
@@ -22,10 +25,14 @@ func (s *PsiphonService) ScanIfDue(now time.Time) (bool, error) {
 	if now.Sub(time.Unix(last, 0)) < weeklyScanEvery {
 		return false, nil
 	}
-	if err := s.ScanRegions([]string{everyRegion}); err != nil {
+	// The day is written first: a scan that started with its day unwritten would start again an hour after it ended.
+	if err := s.SetPsiphonLastAutoScan(now.Unix()); err != nil {
 		return false, err
 	}
-	return true, s.SetPsiphonLastAutoScan(now.Unix())
+	if err := s.ScanRegions([]string{everyRegion}); err != nil {
+		return false, errors.Join(err, s.SetPsiphonLastAutoScan(last))
+	}
+	return true, nil
 }
 
 // forgetSchedule switches the weekly scan off and forgets its day, so that a new install does not start a scan nobody asked it for.

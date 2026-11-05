@@ -2,13 +2,27 @@ package integration
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/psiphon"
 )
 
 var firstOfNovember = time.Date(2026, 11, 1, 3, 0, 0, 0, time.UTC)
+
+// refuseWrites makes the database turn down the writes of the settings that match the condition, as a full or locked one would.
+func refuseWrites(t *testing.T, when string) {
+	t.Helper()
+	for _, event := range []string{"INSERT", "UPDATE"} {
+		trigger := fmt.Sprintf("CREATE TRIGGER refuse_%s BEFORE %s ON settings WHEN %s BEGIN SELECT RAISE(ABORT, 'no write'); END", event, event, when)
+		if err := database.GetDB().Exec(trigger).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
 
 func TestTheWeeklyScanIsOffUntilItIsSwitchedOn(t *testing.T) {
 	useScans(t)
@@ -106,6 +120,38 @@ func TestTheWeeklyScanKeepsItsDayWhenTheScanCannotStart(t *testing.T) {
 	fake.refuse = nil
 	if started, err := svc.ScanIfDue(firstOfNovember.Add(time.Hour)); !started || err != nil {
 		t.Fatalf("an hour later: started = %v, err = %v, want the scan that was due", started, err)
+	}
+}
+
+func TestTheWeeklyScanStartsNothingWhenItsDayCannotBeWritten(t *testing.T) {
+	fake := useScans(t)
+	svc := &PsiphonService{}
+	if err := svc.SetScanWeekly(true); err != nil {
+		t.Fatal(err)
+	}
+	refuseWrites(t, `NEW."key" = 'psiphonLastAutoScan'`)
+
+	started, err := svc.ScanIfDue(firstOfNovember)
+
+	if started || err == nil || len(fake.asked) != 0 {
+		t.Fatalf("started = %v, err = %v, asked %v, want no scan: one that started with its day unwritten would start again an hour after it ended", started, err, fake.asked)
+	}
+}
+
+func TestTheWeeklyScanSaysWhenItCannotGiveTheDayBack(t *testing.T) {
+	fake := useScans(t)
+	svc := &PsiphonService{}
+	if err := svc.SetScanWeekly(true); err != nil {
+		t.Fatal(err)
+	}
+	refusal := errors.New("a scan is already running")
+	fake.refuse = refusal
+	refuseWrites(t, `NEW."key" = 'psiphonLastAutoScan' AND NEW.value = '0'`)
+
+	started, err := svc.ScanIfDue(firstOfNovember)
+
+	if started || !errors.Is(err, refusal) || !strings.Contains(err.Error(), "no write") {
+		t.Fatalf("started = %v, err = %v, want the refusal together with the write that failed to give the day back", started, err)
 	}
 }
 
