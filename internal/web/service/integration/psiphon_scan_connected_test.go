@@ -16,13 +16,13 @@ func finishedScan(t *testing.T, fake *answeringScans, svc *PsiphonService, regio
 	fake.live = psiphon.ScanStatus{}
 }
 
-func seenOf(svc *PsiphonService, region string) (psiphon.SeenRegion, bool) {
+func seenOf(svc *PsiphonService, region string) (psiphon.ConnectedRegion, bool) {
 	for _, s := range svc.ScanStatus().Seen {
 		if s.Region == region {
 			return s, true
 		}
 	}
-	return psiphon.SeenRegion{}, false
+	return psiphon.ConnectedRegion{}, false
 }
 
 func TestAScanRemembersTheRegionsThatConnectedInIt(t *testing.T) {
@@ -41,7 +41,7 @@ func TestAScanRemembersTheRegionsThatConnectedInIt(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("seen = %+v, want the one region that connected", got)
 	}
-	want := psiphon.SeenRegion{Region: "DE", At: 160, ConnectMs: 4000, LatencyMs: 62, IP: "203.0.113.9", Country: "DE"}
+	want := psiphon.ConnectedRegion{Region: "DE", At: 160, ConnectMs: 4000, LatencyMs: 62, IP: "203.0.113.9", Country: "DE"}
 	if got[0] != want {
 		t.Errorf("DE = %+v, want %+v: what the scan measured, at the time it ended", got[0], want)
 	}

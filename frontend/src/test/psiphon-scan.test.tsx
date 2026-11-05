@@ -114,8 +114,11 @@ describe('PsiphonScan', () => {
     expect(within(rowOf('Japan (JP)')).getByText('No tunnel')).toBeTruthy();
     expect(within(rowOf('Japan (JP)')).getByText(`Connected ${date}`)).toBeTruthy();
     expect(within(rowOf('Germany (DE)')).queryByText(`Connected ${date}`)).toBeNull();
+    const franceDate = new Date((at + 5) * 1000).toLocaleDateString();
     expect(
-      screen.getByText(/Connected in an earlier scan, not in this one: France \(FR\)$/),
+      screen.getByText(
+        `Connected in an earlier scan, not in this one: France (FR) — ${franceDate}`,
+      ),
     ).toBeTruthy();
   });
 

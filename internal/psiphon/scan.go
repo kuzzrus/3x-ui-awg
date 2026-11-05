@@ -55,9 +55,9 @@ type ScanResult struct {
 	Error     string `json:"error,omitempty"`
 }
 
-// SeenRegion is the last time a tunnel through a region came up in a scan, kept across scans: a region can connect in one scan
+// ConnectedRegion is the last time a tunnel through a region came up in a scan, kept across scans: a region can connect in one scan
 // and not in the next, since Psiphon hands each start a part of its servers.
-type SeenRegion struct {
+type ConnectedRegion struct {
 	Region    string `json:"region"`
 	At        int64  `json:"at"`
 	ConnectMs int64  `json:"connectMs,omitempty"`
@@ -69,16 +69,16 @@ type SeenRegion struct {
 // ScanStatus is how a scan stands. Results come in the order the regions finished, Current is what is being scanned
 // now, and Error is why the scan as a whole could not go on. Seen is for the service to fill: the scanner knows one scan.
 type ScanStatus struct {
-	Running     bool         `json:"running"`
-	Discovering bool         `json:"discovering,omitempty"`
-	Cancelled   bool         `json:"cancelled,omitempty"`
-	Error       string       `json:"error,omitempty"`
-	Total       int          `json:"total"`
-	Current     []string     `json:"current"`
-	StartedAt   int64        `json:"startedAt,omitempty"`
-	FinishedAt  int64        `json:"finishedAt,omitempty"`
-	Results     []ScanResult `json:"results"`
-	Seen        []SeenRegion `json:"seen"`
+	Running     bool              `json:"running"`
+	Discovering bool              `json:"discovering,omitempty"`
+	Cancelled   bool              `json:"cancelled,omitempty"`
+	Error       string            `json:"error,omitempty"`
+	Total       int               `json:"total"`
+	Current     []string          `json:"current"`
+	StartedAt   int64             `json:"startedAt,omitempty"`
+	FinishedAt  int64             `json:"finishedAt,omitempty"`
+	Results     []ScanResult      `json:"results"`
+	Seen        []ConnectedRegion `json:"seen"`
 }
 
 // Scanner runs the scan: a temporary tunnel per region, a few at a time, each measured and taken down again.
