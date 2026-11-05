@@ -299,12 +299,13 @@ func (t *Tgbot) sendNotice(chatID int64, text string) {
 // sendNoticeReturningID posts one dismissable message and hands back its id, so
 // the caller can replace it later instead of leaving copies behind.
 func (t *Tgbot) sendNoticeReturningID(chatID int64, text string) int {
-	if liveBot() == nil || text == "" {
+	b := liveBot()
+	if b == nil || text == "" {
 		return 0
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	sent, err := liveBot().SendMessage(ctx, &telego.SendMessageParams{
+	sent, err := b.SendMessage(ctx, &telego.SendMessageParams{
 		ChatID: tu.ID(chatID), MessageThreadID: adminTopic(chatID), Text: text, ParseMode: "HTML", ReplyMarkup: t.hideButton(),
 	})
 	if err != nil {
@@ -322,12 +323,13 @@ func (t *Tgbot) sendBanLogsFile(chatID int64) {
 		return
 	}
 	defer file.Close()
-	if liveBot() == nil {
+	b := liveBot()
+	if b == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	_, err = liveBot().SendDocument(ctx, &telego.SendDocumentParams{
+	_, err = b.SendDocument(ctx, &telego.SendDocumentParams{
 		ChatID: tu.ID(chatID), MessageThreadID: adminTopic(chatID),
 		Document:    tu.File(file),
 		ReplyMarkup: t.hideButton(),

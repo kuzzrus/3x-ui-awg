@@ -121,7 +121,8 @@ func (t *Tgbot) screenClientTG(chatID int64, email string, withPicker bool) {
 // sendTGPicker posts the native user picker — the only way the API asks for a
 // user. It is a real message, so it carries the hide button and is removed later.
 func (t *Tgbot) sendTGPicker(chatID int64, trafficID int) {
-	if liveBot() == nil {
+	b := liveBot()
+	if b == nil {
 		return
 	}
 	t.sendNotice(chatID, t.I18nBot("tgbot.buttons.selectOneTGUser"))
@@ -132,7 +133,7 @@ func (t *Tgbot) sendTGPicker(chatID int64, trafficID int) {
 		tu.KeyboardRow(tu.KeyboardButton(t.I18nBot("tgbot.buttons.selectTGUser")).WithRequestUsers(&request)),
 		tu.KeyboardRow(tu.KeyboardButton(t.I18nBot("tgbot.buttons.closeKeyboard"))),
 	).WithIsPersistent().WithResizeKeyboard()
-	_, _ = liveBot().SendMessage(ctx, &telego.SendMessageParams{
+	_, _ = b.SendMessage(ctx, &telego.SendMessageParams{
 		ChatID: tu.ID(chatID), MessageThreadID: adminTopic(chatID), Text: t.I18nBot("tgbot.buttons.selectOneTGUser"), ReplyMarkup: keyboard,
 	})
 }
@@ -282,12 +283,13 @@ func (t *Tgbot) clientTrafficID(email string) int {
 // sendNoticeNoKeyboard reports a result and drops the client picker's reply
 // keyboard in one message: this is the only place it is torn down.
 func (t *Tgbot) sendNoticeNoKeyboard(chatID int64, text string) {
-	if liveBot() == nil {
+	b := liveBot()
+	if b == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	_, err := liveBot().SendMessage(ctx, &telego.SendMessageParams{
+	_, err := b.SendMessage(ctx, &telego.SendMessageParams{
 		ChatID: tu.ID(chatID), MessageThreadID: adminTopic(chatID), Text: text, ParseMode: "HTML",
 		ReplyMarkup: tu.ReplyKeyboardRemove(),
 	})

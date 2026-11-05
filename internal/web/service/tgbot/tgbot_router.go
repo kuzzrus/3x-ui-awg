@@ -348,10 +348,11 @@ func (t *Tgbot) isCommandForCurrentBot(message *telego.Message) bool {
 }
 
 func botUsername() string {
-	if liveBot() == nil {
+	b := liveBot()
+	if b == nil {
 		return ""
 	}
-	return liveBot().Username()
+	return b.Username()
 }
 
 func isCommandForBot(text string, username string) bool {
