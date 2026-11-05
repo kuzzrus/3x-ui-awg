@@ -6,7 +6,7 @@ import (
 )
 
 // Vectors verified against telegramdesktop/tproxy-server's own PROTOCOL.md
-// and DeriveCapability (commit f7a6acc4d536a787d442fd7df3ba4ebfd728f406).
+// and DeriveCapability (commit c8adb8b7c6b7fc46c12ae3acb68be9070c26a8e8: a root deployment keeps the v1 derivation byte for byte).
 func TestDeriveCapabilityPublishedVectors(t *testing.T) {
 	cases := []struct {
 		name   string

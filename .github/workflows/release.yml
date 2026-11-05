@@ -189,7 +189,7 @@ jobs:
           # here alongside it rather than for the other six platforms too.
           if [ "${{ matrix.platform }}" == "amd64" ]; then
             DEST="$PWD"
-            TPROXY_SHA=f7a6acc4d536a787d442fd7df3ba4ebfd728f406
+            TPROXY_SHA=c8adb8b7c6b7fc46c12ae3acb68be9070c26a8e8
             rm -rf /tmp/tproxy-src && mkdir /tmp/tproxy-src
             git -C /tmp/tproxy-src init -q
             git -C /tmp/tproxy-src fetch -q --depth 1 https://github.com/telegramdesktop/tproxy-server.git "$TPROXY_SHA"
