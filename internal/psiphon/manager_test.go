@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -566,5 +567,71 @@ func TestAfterUpgradeRestartsTheTunnelsOnlyWhenTheFileWasReplaced(t *testing.T) 
 	}
 	if !startedAt(m.def).After(before) || !m.IsRunning() {
 		t.Fatal("a replaced build did not restart the tunnel that ran from the old file")
+	}
+}
+
+func TestRestartRunningRestartsATunnelThatIsStillStarting(t *testing.T) {
+	useFakeCore(t)
+	if !portFree(19112) {
+		t.Skip("port 19112 is not free on this host")
+	}
+	m := newTestManager(t)
+	nl := Country{Region: "NL", Port: 19112}
+	if err := m.PrepareCountry(nl); err != nil {
+		t.Fatalf("PrepareCountry: %v", err)
+	}
+	in := m.existingCountry("NL")
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	render := in.prepare
+	in.prepare = func() error {
+		once.Do(func() { close(entered) })
+		<-release
+		return render()
+	}
+	started := make(chan error, 1)
+	go func() { started <- m.StartCountrySupervised(nl) }()
+	<-entered // the start is under way: the tunnel is meant to run and has no process yet
+
+	beforeRestart := time.Now()
+	restarted := make(chan error, 1)
+	go func() { restarted <- m.restartRunning() }()
+	close(release)
+
+	if err := <-started; err != nil {
+		t.Fatalf("StartCountrySupervised: %v", err)
+	}
+	if err := <-restarted; err != nil {
+		t.Fatalf("restartRunning: %v", err)
+	}
+	if startedAt(in).Before(beforeRestart) {
+		t.Fatal("a tunnel that was still starting was skipped, so it runs from the file it began with")
+	}
+	if !m.CountryState("NL").Running || !listening(19112) {
+		t.Fatal("the country is not running after the restart")
+	}
+}
+
+func TestRestartRunningStartsADefaultProcessThatShouldRunButIsDown(t *testing.T) {
+	useFakeCore(t)
+	if !portFree(SocksPort) {
+		t.Skip("port 19060 is not free on this host")
+	}
+	m := newTestManager(t)
+	t.Setenv(fakeFailStartEnv, "1")
+	if err := m.StartSupervised(); err == nil {
+		t.Fatal("setup: a process that ends at once was reported as started")
+	}
+	t.Setenv(fakeFailStartEnv, "")
+	if m.IsRunning() {
+		t.Fatal("setup: the default process runs")
+	}
+
+	if err := m.restartRunning(); err != nil {
+		t.Fatalf("restartRunning: %v", err)
+	}
+
+	if !m.IsRunning() || !listening(SocksPort) {
+		t.Fatal("a default process that is meant to run, and was down, was not brought up by the restart")
 	}
 }

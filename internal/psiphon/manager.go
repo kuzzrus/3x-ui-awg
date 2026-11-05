@@ -120,10 +120,10 @@ func (m *Manager) afterUpgrade(replaced bool, err error) (bool, error) {
 	return true, m.restartRunning()
 }
 
-// restartRunning restarts the default process when it runs, and the countries that run; what is stopped stays stopped.
+// restartRunning restarts the default process when it runs or is meant to, and the countries likewise; what is stopped stays stopped.
 func (m *Manager) restartRunning() error {
 	var errs []error
-	if m.def.isRunning() {
+	if m.def.wantedUp() {
 		errs = append(errs, m.def.restart(time.Now()))
 	}
 	return errors.Join(append(errs, m.RestartCountries())...)
@@ -261,7 +261,7 @@ func (m *Manager) forgetCountries() {
 	}
 }
 
-// RestartCountries restarts the country tunnels that are running, which is how a new base config reaches them.
+// RestartCountries restarts the country tunnels that run or are meant to, which is how a new base config reaches them.
 func (m *Manager) RestartCountries() error {
 	var (
 		wg   sync.WaitGroup
@@ -269,7 +269,7 @@ func (m *Manager) RestartCountries() error {
 		errs []error
 	)
 	for _, in := range m.instances() {
-		if in == m.def || !in.isRunning() {
+		if in == m.def || !in.wantedUp() {
 			continue
 		}
 		wg.Add(1)

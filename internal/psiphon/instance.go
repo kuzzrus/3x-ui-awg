@@ -101,6 +101,14 @@ func (in *instance) isRunning() bool {
 	return in.proc != nil && in.proc.IsRunning()
 }
 
+// wantedUp is whether the tunnel runs or is meant to: one in the middle of a start has no process yet, and a restart that
+// skipped it would leave it on the file and the config it began with.
+func (in *instance) wantedUp() bool {
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	return in.life.wanted || (in.proc != nil && in.proc.IsRunning())
+}
+
 // startLocked launches the process unless one is up, and waits until its SOCKS listener accepts connections.
 // started is false when one was up already. The caller holds the lifecycle lock.
 func (in *instance) startLocked() (started bool, err error) {
