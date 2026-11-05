@@ -123,6 +123,9 @@ func (s *PsiphonService) Uninstall() error {
 	if err := s.forgetConnected(); err != nil {
 		return err
 	}
+	if err := s.forgetSchedule(); err != nil {
+		return err
+	}
 	return s.forgetRegions()
 }
 

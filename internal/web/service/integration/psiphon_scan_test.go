@@ -14,6 +14,7 @@ type answeringScans struct {
 	mu       sync.Mutex
 	asked    [][]string
 	every    []bool // for each of them, whether it was a scan of every region
+	refuse   error  // what a start answers, when it refuses
 	onFinish func(psiphon.ScanStatus)
 	live     psiphon.ScanStatus
 }
@@ -29,6 +30,9 @@ func useScans(t *testing.T) *answeringScans {
 		start: func(regions []string, every bool, onFinish func(psiphon.ScanStatus)) error {
 			fake.mu.Lock()
 			defer fake.mu.Unlock()
+			if fake.refuse != nil {
+				return fake.refuse
+			}
 			fake.asked = append(fake.asked, regions)
 			fake.every = append(fake.every, every)
 			fake.onFinish = onFinish

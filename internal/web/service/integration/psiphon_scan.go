@@ -75,13 +75,15 @@ func (s *PsiphonService) keepLearningScan(final psiphon.ScanStatus) {
 func (s *PsiphonService) CancelScan() { scans.cancel() }
 
 // ScanStatus is the scan that runs, or the last one this process ran, or after a restart the last one kept, with the regions that
-// connected in the scans before it.
+// connected in the scans before it and the state of the weekly scan.
 func (s *PsiphonService) ScanStatus() psiphon.ScanStatus {
 	st := scans.status()
 	if st.StartedAt == 0 {
 		st = s.storedScan()
 	}
 	st.Seen = s.connectedBefore()
+	st.Weekly, _ = s.GetPsiphonScanWeekly()
+	st.AutoAt, _ = s.GetPsiphonLastAutoScan()
 	return st
 }
 

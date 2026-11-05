@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Button, Progress, Table, Tag, Tooltip, Typography } from 'antd';
+import { Alert, Button, Progress, Switch, Table, Tag, Tooltip, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { ScanOutlined, StopOutlined } from '@ant-design/icons';
 
@@ -20,12 +20,21 @@ interface PsiphonScanProps {
   /** True asks for every region of the picker, and false for those a tunnel said have servers. */
   onStart: (all: boolean) => void;
   onCancel: () => void;
+  /** Switches the scan of every region that starts by itself once a week on or off. */
+  onWeekly: (on: boolean) => void;
 }
 
 // A table longer than this is kept in a box that scrolls, with its header in view: a scan of every region lists over 200.
 const TALL_TABLE = 12;
 
-export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: PsiphonScanProps) {
+export default function PsiphonScan({
+  scan,
+  regions,
+  busy,
+  onStart,
+  onCancel,
+  onWeekly,
+}: PsiphonScanProps) {
   const { t } = useTranslation();
   const running = !!scan?.running;
   const results = scan?.results;
@@ -40,6 +49,15 @@ export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: 
     const scanned = new Set((results ?? []).map((r) => r.region));
     return (seen ?? []).filter((s) => !scanned.has(s.region));
   }, [seen, results]);
+  // The regions that connected for the first time in the scan that has just ended, when earlier scans had found others: the first
+  // scan that finds anything finds everything for the first time, which says nothing.
+  const finishedAt = scan?.finishedAt;
+  const fresh = useMemo(() => {
+    const found = seen ?? [];
+    if (!finishedAt || running || !found.some((s) => (s.firstAt || s.at) < finishedAt))
+      return new Set<string>();
+    return new Set(found.filter((s) => s.firstAt === finishedAt).map((s) => s.region));
+  }, [seen, finishedAt, running]);
   // How the cells write a measurement, and the tooltip of an earlier success with them; none is what stands for a missing one.
   const seconds = (ms: number | undefined, none = '—') =>
     ms ? t('pages.xray.psiphon.scanSeconds', { s: (ms / 1000).toFixed(1) }) : none;
@@ -68,7 +86,13 @@ export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: 
       title: t('pages.xray.psiphon.colState'),
       key: 'state',
       render: (_: unknown, r) => {
-        if (r.connected) return <Tag color="green">{t('pages.xray.psiphon.countryConnected')}</Tag>;
+        if (r.connected)
+          return (
+            <>
+              <Tag color="green">{t('pages.xray.psiphon.countryConnected')}</Tag>
+              {fresh.has(r.region) && <Tag color="gold">{t('pages.xray.psiphon.scanNewTag')}</Tag>}
+            </>
+          );
         const before = earlier.get(r.region);
         return (
           <>
@@ -139,6 +163,25 @@ export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: 
             <span>{t('pages.xray.psiphon.scanProgress', { done, total: scan.total })}</span>
           ))}
       </div>
+      <div
+        style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}
+      >
+        <Switch
+          size="small"
+          checked={!!scan?.weekly}
+          loading={busy}
+          aria-label={t('pages.xray.psiphon.scanWeekly')}
+          onChange={(on) => onWeekly(on)}
+        />
+        <span>{t('pages.xray.psiphon.scanWeekly')}</span>
+        {scan?.weekly && !!scan.autoAt && (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {t('pages.xray.psiphon.scanAutoLast', {
+              time: new Date(scan.autoAt * 1000).toLocaleString(),
+            })}
+          </Typography.Text>
+        )}
+      </div>
       {running && !scan.discovering && scan.total > 0 && (
         <Progress
           size="small"
@@ -153,6 +196,16 @@ export default function PsiphonScan({ scan, regions, busy, onStart, onCancel }: 
         </Typography.Paragraph>
       )}
       {scan?.error && <Alert style={{ marginTop: 8 }} type="error" showIcon title={scan.error} />}
+      {fresh.size > 0 && (
+        <Alert
+          style={{ marginTop: 8 }}
+          type="success"
+          showIcon
+          title={t('pages.xray.psiphon.scanNewRegions', {
+            regions: [...fresh].map((c) => `${nameOf(c)} (${c})`).join(', '),
+          })}
+        />
+      )}
       {!running && scan?.cancelled && (
         <Typography.Paragraph type="secondary" style={{ marginTop: 8, fontSize: 12 }}>
           {t('pages.xray.psiphon.scanCancelled')}

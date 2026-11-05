@@ -41,7 +41,7 @@ func TestAScanRemembersTheRegionsThatConnectedInIt(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("seen = %+v, want the one region that connected", got)
 	}
-	want := psiphon.ConnectedRegion{Region: "DE", At: 160, ConnectMs: 4000, LatencyMs: 62, IP: "203.0.113.9", Country: "DE"}
+	want := psiphon.ConnectedRegion{Region: "DE", FirstAt: 160, At: 160, ConnectMs: 4000, LatencyMs: 62, IP: "203.0.113.9", Country: "DE"}
 	if got[0] != want {
 		t.Errorf("DE = %+v, want %+v: what the scan measured, at the time it ended", got[0], want)
 	}

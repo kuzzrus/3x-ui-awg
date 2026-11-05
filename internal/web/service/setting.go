@@ -1495,6 +1495,42 @@ func (s *SettingService) SetPsiphonRegionsConnected(value string) error {
 	return s.setString("psiphonRegionsConnected", value)
 }
 
+// GetPsiphonScanWeekly reports whether the scan of every Psiphon region is to start by itself once a week, false when it was
+// never switched on.
+func (s *SettingService) GetPsiphonScanWeekly() (bool, error) {
+	setting, err := s.getSetting("psiphonScanWeekly")
+	if database.IsNotFound(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return setting.Value == "true", nil
+}
+
+func (s *SettingService) SetPsiphonScanWeekly(on bool) error {
+	return s.setBool("psiphonScanWeekly", on)
+}
+
+// GetPsiphonLastAutoScan returns when the last scan that the weekly one started was started, as unix seconds, 0 when none was.
+func (s *SettingService) GetPsiphonLastAutoScan() (int64, error) {
+	setting, err := s.getSetting("psiphonLastAutoScan")
+	if database.IsNotFound(err) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	if setting.Value == "" {
+		return 0, nil
+	}
+	return strconv.ParseInt(setting.Value, 10, 64)
+}
+
+func (s *SettingService) SetPsiphonLastAutoScan(at int64) error {
+	return s.setString("psiphonLastAutoScan", strconv.FormatInt(at, 10))
+}
+
 // GetFrontProxyEnable reports whether the reverse proxy should be listening.
 // Read at boot to restore whatever state the admin last left it in.
 func (s *SettingService) GetFrontProxyEnable() (bool, error) {
