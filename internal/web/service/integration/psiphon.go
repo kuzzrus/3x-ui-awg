@@ -155,12 +155,7 @@ func (s *PsiphonService) SaveConfig(raw []byte) error {
 	if err := psiphon.SaveConfig(raw); err != nil {
 		return err
 	}
-	var restarts []error
-	if psiphon.GetManager().IsRunning() {
-		restarts = append(restarts, psiphon.GetManager().Restart())
-	}
-	restarts = append(restarts, psiphon.GetManager().RestartCountries())
-	return errors.Join(restarts...)
+	return errors.Join(psiphon.GetManager().RestartIfRunning(), psiphon.GetManager().RestartCountries())
 }
 
 // Region is one entry of the ISO 3166-1 list (states plus common territories) behind the picker: an alpha-2 code and its display

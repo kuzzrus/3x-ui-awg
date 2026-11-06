@@ -719,3 +719,77 @@ func TestRestartCountriesLeavesACountryThatIsDownToTheSupervisor(t *testing.T) {
 		t.Error("a config save started a country that was down, which is the supervisor's to start")
 	}
 }
+
+// A config save that found the default process up decides again under the lifecycle lock, so a stop that lands first
+// is not undone.
+func TestRestartIfRunningDoesNotUndoAStopThatLandsFirst(t *testing.T) {
+	useFakeCore(t)
+	if !portFree(SocksPort) {
+		t.Skip("port 19060 is not free on this host")
+	}
+	m := newTestManager(t)
+	if err := m.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	m.def.lifecycle.Lock() // the stop is under way
+	restarted := make(chan error, 1)
+	go func() { restarted <- m.RestartIfRunning() }()
+	time.Sleep(50 * time.Millisecond) // long enough for a restart that decides before the lock to have decided
+	stopErr := m.def.stopLocked()
+	m.def.lifecycle.Unlock()
+
+	if stopErr != nil {
+		t.Fatalf("stopLocked: %v", stopErr)
+	}
+	if err := <-restarted; err != nil {
+		t.Fatalf("RestartIfRunning: %v", err)
+	}
+	if m.IsRunning() || listening(SocksPort) {
+		t.Fatal("the restart started again the default process that had been stopped")
+	}
+}
+
+// A config save leaves a default process that is down to the supervisor, and its failure to start is not the save's.
+func TestRestartIfRunningLeavesTheDefaultProcessThatIsDownToTheSupervisor(t *testing.T) {
+	useFakeCore(t)
+	if !portFree(SocksPort) {
+		t.Skip("port 19060 is not free on this host")
+	}
+	m := newTestManager(t)
+	t.Setenv(fakeFailStartEnv, "1")
+	if err := m.StartSupervised(); err == nil {
+		t.Fatal("setup: a process that ends at once was reported as started")
+	}
+	t.Setenv(fakeFailStartEnv, "")
+
+	if err := m.RestartIfRunning(); err != nil {
+		t.Fatalf("RestartIfRunning: %v", err)
+	}
+
+	if m.IsRunning() || listening(SocksPort) {
+		t.Error("a config save started the default process that was down, which is the supervisor's to start")
+	}
+}
+
+// A config save restarts the default process that is up, which is how the new config reaches it.
+func TestRestartIfRunningRestartsTheDefaultProcessThatIsUp(t *testing.T) {
+	useFakeCore(t)
+	if !portFree(SocksPort) {
+		t.Skip("port 19060 is not free on this host")
+	}
+	m := newTestManager(t)
+	if err := m.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	before := startedAt(m.def)
+	time.Sleep(20 * time.Millisecond)
+
+	if err := m.RestartIfRunning(); err != nil {
+		t.Fatalf("RestartIfRunning: %v", err)
+	}
+
+	if !startedAt(m.def).After(before) || !m.IsRunning() || !listening(SocksPort) {
+		t.Error("the default process that was up was not restarted")
+	}
+}

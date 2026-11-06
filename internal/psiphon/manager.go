@@ -107,6 +107,10 @@ func (m *Manager) LastResult() string { return m.def.result() }
 // or the config itself -- Psiphon does not hot-reload either.
 func (m *Manager) Restart() error { return m.def.restart(time.Now()) }
 
+// RestartIfRunning restarts the default process when it is up, deciding under its lifecycle lock so a stop that lands
+// first is not undone; one that is down is the supervisor's to bring up with the new config.
+func (m *Manager) RestartIfRunning() error { return m.def.restartIfRunning(time.Now()) }
+
 // UpgradeBinary brings the installed build to the pinned one and, when it put a new file in place, restarts the tunnels
 // that run, which started from the old one.
 func (m *Manager) UpgradeBinary(ctx context.Context, client *http.Client) (bool, error) {
