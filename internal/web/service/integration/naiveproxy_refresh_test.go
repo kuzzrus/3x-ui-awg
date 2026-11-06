@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -43,6 +44,14 @@ func useEngineUpgrade(t *testing.T, upgrade func(context.Context, *http.Client) 
 	t.Cleanup(func() { upgradeEngine = real })
 }
 
+// withRefreshRetry shortens the retry of the refresh for the length of the test.
+func withRefreshRetry(t *testing.T, attempts int, delay time.Duration) {
+	t.Helper()
+	realAttempts, realDelay := engineRefreshAttempts, engineRefreshDelay
+	engineRefreshAttempts, engineRefreshDelay = attempts, delay
+	t.Cleanup(func() { engineRefreshAttempts, engineRefreshDelay = realAttempts, realDelay })
+}
+
 func TestRefreshEngineSaysWhenItReplacedTheEngine(t *testing.T) {
 	useEngineUpgrade(t, func(context.Context, *http.Client) (bool, error) { return true, nil })
 	const said = "the installed engine was replaced by the pinned release"
@@ -55,8 +64,57 @@ func TestRefreshEngineSaysWhenItReplacedTheEngine(t *testing.T) {
 	}
 }
 
+// The first attempt can fall before Xray carries the panel's own outbound, so a failed fetch is tried again.
+func TestRefreshEngineFetchesTheEngineAgainAfterAFailedAttempt(t *testing.T) {
+	var asked atomic.Int32
+	useEngineUpgrade(t, func(context.Context, *http.Client) (bool, error) {
+		if asked.Add(1) == 1 {
+			return false, errors.New("no route to github")
+		}
+		return true, nil
+	})
+	withRefreshRetry(t, 4, time.Millisecond)
+	const said = "the installed engine was replaced by the pinned release"
+	const warned = "cannot bring the installed engine to the pinned release:"
+	saidBefore, warnedBefore := engineLines(said), engineLines(warned)
+
+	(&NaiveProxyService{}).refreshEngine()
+
+	if got := asked.Load(); got != 2 {
+		t.Fatalf("the refresh asked %d times, want a second attempt after the first one failed", got)
+	}
+	if got := engineLines(said) - saidBefore; got != 1 {
+		t.Errorf("%d lines say that the engine was replaced, want one", got)
+	}
+	if got := engineLines(warned) - warnedBefore; got != 0 {
+		t.Errorf("%d warnings for a fetch that succeeded on its second attempt, want none", got)
+	}
+}
+
+// A fetch that keeps failing is tried as often as the refresh allows and then said once.
+func TestRefreshEngineGivesUpAfterItsAttempts(t *testing.T) {
+	var asked atomic.Int32
+	useEngineUpgrade(t, func(context.Context, *http.Client) (bool, error) {
+		asked.Add(1)
+		return false, errors.New("no route to github")
+	})
+	withRefreshRetry(t, 3, time.Millisecond)
+	const warned = "cannot bring the installed engine to the pinned release: no route to github"
+	before := engineLines(warned)
+
+	(&NaiveProxyService{}).refreshEngine()
+
+	if got := asked.Load(); got != 3 {
+		t.Errorf("the refresh asked %d times, want the 3 attempts it is allowed", got)
+	}
+	if got := engineLines(warned) - before; got != 1 {
+		t.Errorf("%d warnings for a fetch that failed every time, want one", got)
+	}
+}
+
 func TestRefreshEngineWarnsWhenTheEngineCannotBeFetched(t *testing.T) {
 	useEngineUpgrade(t, func(context.Context, *http.Client) (bool, error) { return false, errors.New("no route to github") })
+	withRefreshRetry(t, 1, 0)
 	const warned = "cannot bring the installed engine to the pinned release: no route to github"
 	const replaced = "the installed engine was replaced by the pinned release"
 	warnedBefore, replacedBefore := engineLines(warned), engineLines(replaced)

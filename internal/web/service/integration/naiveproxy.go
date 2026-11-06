@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/naiveproxy"
@@ -47,19 +48,39 @@ var upgradeEngine = naiveproxy.Upgrade
 // beside the boot and returns at once; the reconcile job restarts the inbounds that run from the old file.
 func (s *NaiveProxyService) AutoStart() { go s.refreshEngine() }
 
+// engineRefreshAttempts and engineRefreshDelay retry the fetch: Xray's start only execs the core, and a panel-only
+// restart never starts it, so the panel's own outbound may not carry the first attempt. Vars so tests can shorten them.
+var (
+	engineRefreshAttempts = 4
+	engineRefreshDelay    = 10 * time.Minute
+)
+
 func (s *NaiveProxyService) refreshEngine() {
 	if !naiveproxy.IsInstalled() {
 		return // nothing to bring up to date, and the egress proxy setting is not read at the boot of every panel
 	}
+	for attempt := 1; ; attempt++ {
+		replaced, err := s.fetchPinnedEngine()
+		switch {
+		case err == nil && replaced:
+			logger.Info("naiveproxy: the installed engine was replaced by the pinned release")
+			return
+		case err == nil:
+			return
+		case attempt >= engineRefreshAttempts:
+			logger.Warningf("naiveproxy: cannot bring the installed engine to the pinned release: %v", err)
+			return
+		}
+		logger.Debugf("naiveproxy: cannot bring the installed engine to the pinned release yet: %v", err)
+		time.Sleep(engineRefreshDelay)
+	}
+}
+
+// fetchPinnedEngine is one attempt, through the outbound the panel has at that moment.
+func (s *NaiveProxyService) fetchPinnedEngine() (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), installTimeout)
 	defer cancel()
-	replaced, err := upgradeEngine(ctx, s.NewProxiedHTTPClient(installTimeout))
-	switch {
-	case err != nil:
-		logger.Warningf("naiveproxy: cannot bring the installed engine to the pinned release: %v", err)
-	case replaced:
-		logger.Info("naiveproxy: the installed engine was replaced by the pinned release")
-	}
+	return upgradeEngine(ctx, s.NewProxiedHTTPClient(installTimeout))
 }
 
 // NaiveProxyCert is one inbound's certificate as its form shows it: for an automatic
