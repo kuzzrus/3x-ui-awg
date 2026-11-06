@@ -49,11 +49,21 @@ func beginScan(t *testing.T, sc *Scanner, regions []string, opts ...ScanOption) 
 	return done
 }
 
-// scanAndWait runs a scan to its end and returns the final status, its results in the order of their regions.
+// scanAndWait runs a scan to its end and returns the final status, its results in the order of their regions. The scanner
+// takes another scan only after it has stored that status, which it does once the callback has returned, so it waits for that too.
 func scanAndWait(t *testing.T, sc *Scanner, regions []string, opts ...ScanOption) ScanStatus {
 	t.Helper()
+	finished := beginScan(t, sc, regions, opts...)
+	sc.mu.Lock()
+	over := sc.done
+	sc.mu.Unlock()
 	select {
-	case st := <-beginScan(t, sc, regions, opts...):
+	case st := <-finished:
+		select {
+		case <-over:
+		case <-time.After(10 * time.Second):
+			t.Fatal("the scanner did not take the final status of the scan")
+		}
 		slices.SortFunc(st.Results, func(a, b ScanResult) int { return strings.Compare(a.Region, b.Region) })
 		return st
 	case <-time.After(30 * time.Second):
