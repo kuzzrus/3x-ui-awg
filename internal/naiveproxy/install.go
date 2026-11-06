@@ -22,11 +22,13 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/ulikunitz/xz"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
+	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 )
 
 // releaseTag/releaseSHA256 pin one klzgrad/forwardproxy release, bumped only deliberately.
@@ -87,8 +89,8 @@ func checkPlatform(goos, goarch string) error {
 	return fmt.Errorf("NaiveProxy is only available on linux/amd64 (this host is %s/%s)", goos, goarch)
 }
 
-// installMu serialises Install: its staging file has a fixed name, so two
-// concurrent installs would truncate each other's download.
+// installMu holds an install or an upgrade from its look at the engine to the end of its download: the staging
+// files have fixed names, and what the next one looks at is the engine this one left.
 var installMu sync.Mutex
 
 // downloadURL is the pinned release asset. A var, not a func returning a
@@ -109,7 +111,34 @@ func Install(ctx context.Context, client *http.Client) error {
 	if err := checkPlatform(runtime.GOOS, runtime.GOARCH); err != nil {
 		return err
 	}
-	want, err := hex.DecodeString(releaseSHA256)
+	return fetchLocked(ctx, client, releaseSHA256)
+}
+
+// Upgrade fetches the pinned release again when the engine in place came from another one, or from one that was never
+// written down, and says whether it put a new file there. A running process keeps the file it started from.
+func Upgrade(ctx context.Context, client *http.Client) (bool, error) {
+	if !Supported() {
+		return false, nil
+	}
+	return upgradeTo(ctx, client, releaseSHA256)
+}
+
+func upgradeTo(ctx context.Context, client *http.Client, digest string) (bool, error) {
+	installMu.Lock()
+	defer installMu.Unlock()
+	if !IsInstalled() || installedRelease() == digest {
+		return false, nil
+	}
+	if err := fetchLocked(ctx, client, digest); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// fetchLocked downloads the release whose archive has the given checksum, puts its binary in place and writes the
+// release down. The caller holds installMu.
+func fetchLocked(ctx context.Context, client *http.Client, digest string) error {
+	want, err := hex.DecodeString(digest)
 	if err != nil {
 		return fmt.Errorf("malformed pinned checksum: %w", err)
 	}
@@ -149,7 +178,23 @@ func Install(ctx context.Context, client *http.Client) error {
 		os.Remove(staging)
 		return fmt.Errorf("cannot put the Caddy binary in place: %w", err)
 	}
+	// The engine works without it: the cost of a failed write is one more download at the next start.
+	if err := os.WriteFile(releasePath(), []byte(digest+"\n"), 0o600); err != nil {
+		logger.Warningf("naiveproxy: cannot write down the release of the engine: %v", err)
+	}
 	return nil
+}
+
+// releasePath is the file that holds the checksum of the release archive the engine in place came from.
+func releasePath() string { return BinPath() + ".release" }
+
+// installedRelease is that checksum, or "" for an engine from before the panel wrote it down.
+func installedRelease() string {
+	data, err := os.ReadFile(releasePath())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
 
 // downloadArchive streams the pinned release archive into dst, verifying

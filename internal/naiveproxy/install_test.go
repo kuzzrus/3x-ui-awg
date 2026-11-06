@@ -11,8 +11,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ulikunitz/xz"
 )
@@ -245,5 +249,246 @@ func TestUninstallRemovesTheDirectory(t *testing.T) {
 	}
 	if _, err := os.Stat(Dir()); !os.IsNotExist(err) {
 		t.Errorf("Dir() still exists after Uninstall: %v", err)
+	}
+}
+
+// installedEngine puts body at BinPath(), in a bin folder of its own, as an earlier panel version left it. A release
+// other than "" is written down next to it.
+func installedEngine(t *testing.T, body, release string) {
+	t.Helper()
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+	if err := os.MkdirAll(Dir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(BinPath(), []byte(body), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if release != "" {
+		if err := os.WriteFile(releasePath(), []byte(release+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func readEngine(t *testing.T) string {
+	t.Helper()
+	got, err := os.ReadFile(BinPath())
+	if err != nil {
+		t.Fatalf("reading the installed engine: %v", err)
+	}
+	return string(got)
+}
+
+// otherDigest is a checksum that no archive of these tests has.
+var otherDigest = strings.Repeat("ab", sha256.Size)
+
+// serveEngine answers every download with the release archive that holds engine, and returns the count of the
+// requests and the checksum of that archive.
+func serveEngine(t *testing.T, engine string) (*atomic.Int32, string) {
+	t.Helper()
+	archive := buildTestArchive(t, archiveEntryName, engine)
+	sum := sha256.Sum256(archive)
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		_, _ = w.Write(archive)
+	}))
+	t.Cleanup(srv.Close)
+	realURL := downloadURL
+	downloadURL = srv.URL
+	t.Cleanup(func() { downloadURL = realURL })
+	return &requests, hex.EncodeToString(sum[:])
+}
+
+func TestUpgradeReplacesAnEngineOfAnotherRelease(t *testing.T) {
+	for name, release := range map[string]string{
+		"none written down":   "",
+		"another one written": otherDigest,
+	} {
+		t.Run(name, func(t *testing.T) {
+			installedEngine(t, "the engine of an earlier panel version", release)
+			requests, digest := serveEngine(t, "the pinned engine")
+
+			replaced, err := upgradeTo(context.Background(), http.DefaultClient, digest)
+
+			if err != nil || !replaced {
+				t.Fatalf("upgradeTo = %v, %v, want a replacement", replaced, err)
+			}
+			if got := readEngine(t); got != "the pinned engine" {
+				t.Errorf("the installed engine is %q, want the pinned one", got)
+			}
+			if got := installedRelease(); got != digest {
+				t.Errorf("the release written down is %q, want %q", got, digest)
+			}
+			if info, err := os.Stat(BinPath()); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm()&0o100 == 0) {
+				t.Errorf("the replacement is not executable (%v, %v)", info, err)
+			}
+			for _, leftover := range []string{BinPath() + ".new", BinPath() + ".tar.xz"} {
+				if _, err := os.Stat(leftover); !os.IsNotExist(err) {
+					t.Errorf("%s is still there (%v)", leftover, err)
+				}
+			}
+			if n := requests.Load(); n != 1 {
+				t.Errorf("%d downloads, want 1", n)
+			}
+		})
+	}
+}
+
+func TestUpgradeLeavesAnEngineOfThePinnedReleaseAlone(t *testing.T) {
+	requests, digest := serveEngine(t, "the pinned engine")
+	installedEngine(t, "the pinned engine", digest)
+
+	replaced, err := upgradeTo(context.Background(), http.DefaultClient, digest)
+
+	if err != nil || replaced {
+		t.Fatalf("upgradeTo = %v, %v, want nothing to do", replaced, err)
+	}
+	if n := requests.Load(); n != 0 {
+		t.Errorf("%d downloads, want none for the release that is the pinned one", n)
+	}
+}
+
+func TestUpgradeDoesNothingWithoutAnEngine(t *testing.T) {
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+	requests, digest := serveEngine(t, "the pinned engine")
+
+	replaced, err := upgradeTo(context.Background(), http.DefaultClient, digest)
+
+	if err != nil || replaced {
+		t.Fatalf("upgradeTo = %v, %v, want nothing to do", replaced, err)
+	}
+	if IsInstalled() || requests.Load() != 0 {
+		t.Errorf("an upgrade installed something (%v) or downloaded (%d), it is no install", IsInstalled(), requests.Load())
+	}
+}
+
+func TestUpgradeKeepsTheInstalledEngineWhenTheDownloadFails(t *testing.T) {
+	for name, serve := range map[string]func(t *testing.T){
+		"the host refuses": func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			}))
+			t.Cleanup(srv.Close)
+			realURL := downloadURL
+			downloadURL = srv.URL
+			t.Cleanup(func() { downloadURL = realURL })
+		},
+		"it is another archive": func(t *testing.T) { serveEngine(t, "not the pinned engine") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			installedEngine(t, "the engine of an earlier panel version", "")
+			serve(t)
+
+			replaced, err := upgradeTo(context.Background(), http.DefaultClient, otherDigest)
+
+			if err == nil || replaced {
+				t.Fatalf("upgradeTo = %v, %v, want the failure", replaced, err)
+			}
+			if got := readEngine(t); got != "the engine of an earlier panel version" {
+				t.Errorf("the installed engine is %q after a failed download, want it kept", got)
+			}
+			if got := installedRelease(); got != "" {
+				t.Errorf("the release written down is %q after a failed download, want it as it was", got)
+			}
+			for _, leftover := range []string{BinPath() + ".new", BinPath() + ".tar.xz"} {
+				if _, err := os.Stat(leftover); !os.IsNotExist(err) {
+					t.Errorf("%s is still there (%v)", leftover, err)
+				}
+			}
+		})
+	}
+}
+
+func TestUpgradeRefusesAChecksumThatIsNotOne(t *testing.T) {
+	installedEngine(t, "the engine of an earlier panel version", "")
+	requests, _ := serveEngine(t, "the pinned engine")
+
+	for name, digest := range map[string]string{"not hex": "not-a-checksum", "too short": "abcd"} {
+		t.Run(name, func(t *testing.T) {
+			replaced, err := upgradeTo(context.Background(), http.DefaultClient, digest)
+
+			if err == nil || !strings.Contains(err.Error(), "malformed pinned checksum") || replaced {
+				t.Fatalf("upgradeTo = %v, %v, want the malformed checksum refused", replaced, err)
+			}
+		})
+	}
+	if n := requests.Load(); n != 0 {
+		t.Errorf("%d downloads for a checksum that cannot be met, want none", n)
+	}
+}
+
+// A first install writes the release down too, so that the next start does not fetch the engine again.
+func TestFetchWritesDownTheReleaseOfAFirstInstall(t *testing.T) {
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+	_, digest := serveEngine(t, "the pinned engine")
+
+	installMu.Lock()
+	err := fetchLocked(context.Background(), http.DefaultClient, digest)
+	installMu.Unlock()
+
+	if err != nil {
+		t.Fatalf("fetchLocked: %v", err)
+	}
+	if got := installedRelease(); got != digest {
+		t.Errorf("the release written down is %q, want %q", got, digest)
+	}
+	if got := readEngine(t); got != "the pinned engine" {
+		t.Errorf("the installed engine is %q, want the pinned one", got)
+	}
+}
+
+// A second upgrade that starts during the first one's download looks at the engine once that has been replaced.
+func TestTwoUpgradesAtOnceFetchTheEngineOnce(t *testing.T) {
+	installedEngine(t, "the engine of an earlier panel version", "")
+	archive := buildTestArchive(t, archiveEntryName, "the pinned engine")
+	sum := sha256.Sum256(archive)
+	digest := hex.EncodeToString(sum[:])
+	var requests atomic.Int32
+	arrived, hold := make(chan struct{}, 2), make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		arrived <- struct{}{}
+		<-hold
+		_, _ = w.Write(archive)
+	}))
+	t.Cleanup(srv.Close)
+	realURL := downloadURL
+	downloadURL = srv.URL
+	t.Cleanup(func() { downloadURL = realURL })
+
+	var (
+		wg       sync.WaitGroup
+		replaced [2]bool
+		errs     [2]error
+	)
+	upgrade := func(i int) {
+		defer wg.Done()
+		replaced[i], errs[i] = upgradeTo(context.Background(), http.DefaultClient, digest)
+	}
+	wg.Add(1)
+	go upgrade(0)
+	select {
+	case <-arrived:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first download never started")
+	}
+	wg.Add(1)
+	go upgrade(1)
+	time.Sleep(50 * time.Millisecond) // long enough for a second download to start, were one going to
+	close(hold)
+	wg.Wait()
+
+	if errs[0] != nil || errs[1] != nil {
+		t.Fatalf("upgradeTo errors = %v, %v", errs[0], errs[1])
+	}
+	if replaced[0] == replaced[1] {
+		t.Errorf("replaced = %v, want exactly one of the two upgrades to have put the engine there", replaced)
+	}
+	if n := requests.Load(); n != 1 {
+		t.Errorf("%d downloads for two upgrades at once, want 1", n)
+	}
+	if got := readEngine(t); got != "the pinned engine" {
+		t.Errorf("the installed engine is %q, want the pinned one", got)
 	}
 }

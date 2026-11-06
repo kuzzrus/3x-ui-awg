@@ -593,6 +593,9 @@ func (s *Server) start(restartXray bool, startTgBot bool) (err error) {
 	// Psiphon is the same standalone-sidecar shape as Tor above, via its own AutoStart.
 	(&integration.PsiphonService{}).AutoStart()
 
+	// The NaiveProxy engine runs per inbound, so its AutoStart only brings an installed engine to the pinned release.
+	(&integration.NaiveProxyService{}).AutoStart()
+
 	// Same shape for the reverse proxy. AutoStart never returns an error: a
 	// proxy that cannot come up must not stop the panel itself from starting.
 	(&integration.FrontProxyService{}).AutoStart()

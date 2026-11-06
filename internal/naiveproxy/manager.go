@@ -37,6 +37,7 @@ type managed struct {
 	proc        *Process
 	fingerprint string
 	certDigest  string // of the certificate pair the process loaded, "" when it had none
+	release     string // of the engine the process started from, "" when none was written down
 }
 
 // Manager owns every Naive-backed inbound's Caddy process, one per inbound,
@@ -148,7 +149,7 @@ func (m *Manager) ensureLocked(inst Instance) (*Process, error) {
 	writeDecoyContent(inst)
 
 	if cur, ok := m.procs[inst.Id]; ok {
-		if cur.proc.IsRunning() && cur.fingerprint == fp {
+		if cur.proc.IsRunning() && cur.fingerprint == fp && !engineReplaced(cur.release) {
 			return nil, nil
 		}
 		_ = cur.proc.Stop()
@@ -165,6 +166,7 @@ func (m *Manager) ensureLocked(inst Instance) (*Process, error) {
 
 	// Only now: the process stopped above wrote its last lines under the old routing.
 	mt.setRouted(inst.RouteThroughXray)
+	release := installedRelease() // before the start, so an engine put in place meanwhile counts as newer than the process
 	proc := newProcess(cfgPath, inst.ListenAddr, fmt.Sprintf("inbound %d", inst.Id), mt)
 	if err := proc.Start(); err != nil {
 		// Never tracked, so removeLocked would not clean these up later.
@@ -172,8 +174,14 @@ func (m *Manager) ensureLocked(inst Instance) (*Process, error) {
 		_ = os.RemoveAll(decoyDirForID(inst.Id))
 		return nil, err
 	}
-	m.procs[inst.Id] = &managed{proc: proc, fingerprint: fp, certDigest: inst.CertDigest}
+	m.procs[inst.Id] = &managed{proc: proc, fingerprint: fp, certDigest: inst.CertDigest, release: release}
 	return proc, nil
+}
+
+// engineReplaced is whether the engine in place was fetched from another release than the one a process started from.
+// With no engine in place there is nothing to start again from, and a running process is left alone.
+func engineReplaced(release string) bool {
+	return IsInstalled() && installedRelease() != release
 }
 
 // awaitReady blocks (outside m.mu) until proc is actually serving, tearing

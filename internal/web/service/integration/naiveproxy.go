@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/naiveproxy"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/service"
 )
@@ -37,6 +38,25 @@ func (s *NaiveProxyService) Install() error {
 	ctx, cancel := context.WithTimeout(context.Background(), installTimeout)
 	defer cancel()
 	return naiveproxy.Install(ctx, s.NewProxiedHTTPClient(installTimeout))
+}
+
+// upgradeEngine brings the installed engine to the pinned release; a variable so that tests can answer for it.
+var upgradeEngine = naiveproxy.Upgrade
+
+// AutoStart brings an engine that an earlier version of the panel installed to the release this one pins. It runs
+// beside the boot and returns at once; the reconcile job restarts the inbounds that run from the old file.
+func (s *NaiveProxyService) AutoStart() { go s.refreshEngine() }
+
+func (s *NaiveProxyService) refreshEngine() {
+	ctx, cancel := context.WithTimeout(context.Background(), installTimeout)
+	defer cancel()
+	replaced, err := upgradeEngine(ctx, s.NewProxiedHTTPClient(installTimeout))
+	switch {
+	case err != nil:
+		logger.Warningf("naiveproxy: cannot bring the installed engine to the pinned release: %v", err)
+	case replaced:
+		logger.Info("naiveproxy: the installed engine was replaced by the pinned release")
+	}
 }
 
 // NaiveProxyCert is one inbound's certificate as its form shows it: for an automatic

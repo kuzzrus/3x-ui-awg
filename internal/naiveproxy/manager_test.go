@@ -332,6 +332,88 @@ func TestEnsureRestartsWhenClientsChange(t *testing.T) {
 	waitSpawnCount(t, pidFile, 2)
 }
 
+// writeRelease writes down the release the engine in place came from, as an install does once the file is there.
+func writeRelease(t *testing.T, release string) {
+	t.Helper()
+	if err := os.WriteFile(releasePath(), []byte(release+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// An engine that an upgrade replaced is not the one a running instance started from: the next Ensure starts it
+// again, whether or not the release it started from was written down.
+func TestEnsureRestartsAnInstanceWhoseEngineWasReplaced(t *testing.T) {
+	for name, before := range map[string]string{"none written down": "", "another one written": "release-one"} {
+		t.Run(name, func(t *testing.T) {
+			pidFile := installFakeCaddy(t)
+			if before != "" {
+				writeRelease(t, before)
+			}
+			m := newTestManager()
+			inst := testInst(t, 1, "alice")
+			if err := m.Ensure(inst); err != nil {
+				t.Fatalf("first Ensure: %v", err)
+			}
+			t.Cleanup(m.StopAll)
+			waitSpawnCount(t, pidFile, 1)
+
+			writeRelease(t, "release-two")
+			if err := m.Ensure(inst); err != nil {
+				t.Fatalf("second Ensure: %v", err)
+			}
+			waitSpawnCount(t, pidFile, 2)
+			if !m.IsRunning(1) {
+				t.Error("the instance is not running after the restart")
+			}
+		})
+	}
+}
+
+func TestEnsureKeepsAnInstanceWhoseEngineIsOfTheReleaseItStartedFrom(t *testing.T) {
+	pidFile := installFakeCaddy(t)
+	writeRelease(t, "release-one")
+	m := newTestManager()
+	inst := testInst(t, 1, "alice")
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("first Ensure: %v", err)
+	}
+	t.Cleanup(m.StopAll)
+	waitSpawnCount(t, pidFile, 1)
+
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("second Ensure: %v", err)
+	}
+	if got := spawnCount(t, pidFile); got != 1 {
+		t.Errorf("spawn count = %d with the engine of the same release, want 1 (no restart)", got)
+	}
+}
+
+// With no engine in place there is nothing to start again from, whatever is written down about its release.
+func TestEnsureLeavesARunningInstanceAloneWhenTheEngineVanishesAfterARelease(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a running executable cannot be removed on Windows")
+	}
+	pidFile := installFakeCaddy(t)
+	m := newTestManager()
+	inst := testInst(t, 1, "alice")
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+	t.Cleanup(m.StopAll)
+	waitSpawnCount(t, pidFile, 1)
+
+	writeRelease(t, "release-one")
+	if err := os.Remove(BinPath()); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Ensure(inst); err != nil {
+		t.Fatalf("Ensure of a running instance after the engine vanished = %v, want nil", err)
+	}
+	if !m.IsRunning(1) || spawnCount(t, pidFile) != 1 {
+		t.Errorf("the running instance was touched when the engine vanished (running %v, %d spawns)", m.IsRunning(1), spawnCount(t, pidFile))
+	}
+}
+
 // A client-less instance must not run at all: an unauthenticated
 // forward_proxy is a live security hole, not just an idle process.
 func TestEnsureStopsWhenClientsBecomeEmpty(t *testing.T) {
