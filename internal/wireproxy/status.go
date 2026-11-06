@@ -63,7 +63,7 @@ func GetStatus(ctx context.Context) (Status, error) {
 	if !IsInstalled() {
 		return Status{}, nil
 	}
-	out, err := run(ctx, "--status-json")
+	out, err := run(ctx, actionStatusJSON)
 	if err != nil {
 		return Status{}, err
 	}

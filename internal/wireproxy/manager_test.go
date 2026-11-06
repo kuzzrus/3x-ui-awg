@@ -2,8 +2,11 @@ package wireproxy
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -60,30 +63,64 @@ func TestRepairRejectsUnknownMode(t *testing.T) {
 	}
 }
 
-// The embedded scripts are this package's entire security-relevant surface
-// -- pin their shape lightly so a future edit can't accidentally embed the
-// wrong file or truncate one.
-func TestEmbeddedScriptsLookReal(t *testing.T) {
-	if !strings.HasPrefix(string(managerScript), "#!/usr/bin/env bash") {
-		t.Error("managerScript does not start with the expected shebang")
-	}
-	repoRawLine := ""
-	for _, line := range strings.Split(string(managerScript), "\n") {
-		if strings.HasPrefix(line, "REPO_RAW=") {
-			repoRawLine = line
-			break
+// The embedded scripts are the assets of one signed release of the manager, byte for byte. These are the digests that
+// release lists for them (its signed SHA256SUMS holds the same), so a patched or truncated copy cannot pass.
+func TestEmbeddedScriptsAreTheReleaseAssets(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		script []byte
+		want   string
+	}{
+		{"warpwp.sh of v1.3.9", managerScript, "36bd1c13684207515420f852474dbbdcbbbc5c0a42813bc65fe10e530a7291e8"},
+		{"warp-wireproxy-native.sh of v1.3.9", nativeScript, "fdad34fa42f3b5282eca21a417e620cb8b222c7d0fafb6b99c2ddf6907b8c0ae"},
+	} {
+		sum := sha256.Sum256(tc.script)
+		if got := hex.EncodeToString(sum[:]); got != tc.want {
+			t.Errorf("%s: sha256 = %s, want %s", tc.name, got, tc.want)
 		}
 	}
-	if repoRawLine == "" {
-		t.Fatal("managerScript has no REPO_RAW= assignment -- expected the pinning patch to be there")
+}
+
+// Every action the package runs has to be one the vendored manager answers to; a script that lost one would fail only
+// when an admin pressed the button.
+func TestEmbeddedManagerAnswersEveryActionThePanelRuns(t *testing.T) {
+	actions := []string{actionInstall, actionRemove, actionStatusJSON, actionFixRouting}
+	for _, mode := range []RepairMode{RepairCheck, RepairQuickScan, RepairDeepScan} {
+		actions = append(actions, "--"+string(mode))
 	}
-	if !strings.Contains(repoRawLine, "kuzzrus/WARP_WireProxy_Manager") {
-		t.Errorf("REPO_RAW line = %q, want it to reference kuzzrus/WARP_WireProxy_Manager", repoRawLine)
+	for _, action := range actions {
+		if !regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(action) + `[|)]`).Match(managerScript) {
+			t.Errorf("the manager script has no case for %s", action)
+		}
 	}
-	if strings.HasSuffix(repoRawLine, `/main"`) {
-		t.Errorf("REPO_RAW line = %q, still points at the live \"main\" branch instead of a pinned commit", repoRawLine)
+}
+
+// Install runs the manager with the action that fetches no script, and leaves both scripts where warpwp expects them.
+func TestInstallPlacesTheScriptsAndRunsInstallCurrent(t *testing.T) {
+	dir := t.TempDir()
+	record := filepath.Join(dir, "args")
+	t.Setenv("WIREPROXY_TEST_RECORD", record)
+	realManager, realNative, realManagerBin, realNativeBin := managerScript, nativeScript, managerBinPath, nativeBinPath
+	t.Cleanup(func() {
+		managerScript, nativeScript, managerBinPath, nativeBinPath = realManager, realNative, realManagerBin, realNativeBin
+	})
+	managerScript = []byte("#!/usr/bin/env bash\nprintf '%s\\n' \"$@\" > \"$WIREPROXY_TEST_RECORD\"\n")
+	nativeScript = []byte("#!/usr/bin/env bash\n# the native script\n")
+	managerBinPath = filepath.Join(dir, "warpwp")
+	nativeBinPath = filepath.Join(dir, "warp-wireproxy-native.sh")
+
+	if err := Install(context.Background()); err != nil {
+		t.Fatalf("Install: %v", err)
 	}
-	if !strings.HasPrefix(string(nativeScript), "#!/usr/bin/env bash") {
-		t.Error("nativeScript does not start with the expected shebang")
+
+	args, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatalf("the manager was not run: %v", err)
+	}
+	if got := strings.TrimSpace(string(args)); got != "--install-current" {
+		t.Errorf("the manager was run with %q, want --install-current", got)
+	}
+	if native, err := os.ReadFile(nativeBinPath); err != nil || string(native) != string(nativeScript) {
+		t.Errorf("the native script was not placed as embedded (%q, %v)", native, err)
 	}
 }
