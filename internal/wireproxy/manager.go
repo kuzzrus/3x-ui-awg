@@ -23,16 +23,14 @@
 // parse `warpwp --status-json` -- already a rich, structured status blob --
 // instead of inventing a second source of truth.
 //
-// warpwp.sh/warp-wireproxy-native.sh are vendored via go:embed at a pinned
-// commit (see Install in install.go), not fetched live from "main" --
-// REPO_RAW inside the vendored warpwp.sh is itself repointed at that same
-// commit so even its own internal update_local_scripts call can't silently
-// pull different content than what this panel build shipped and reviewed.
-// That said, warpwp's own --install still re-fetches both scripts from that
-// pinned URL as its first step (update_local_scripts runs unconditionally),
-// so Install is not network-free the way a pure go:embed read would be --
-// it is pinned, not offline, the same tradeoff install.go's binary download
-// makes for Psiphon.
+// warpwp.sh/warp-wireproxy-native.sh are vendored via go:embed, byte for byte
+// the assets of one signed release of the manager (manager_test.go pins their
+// digests), and Install runs warpwp's --install-current,
+// which sets up with the scripts on disk and fetches none. Plain --install
+// would first replace them with the latest signed release, so a panel build
+// could run scripts it never shipped or reviewed. What the native script
+// downloads itself (wgcf, wireproxy, OS packages) is not pinned by the panel.
+// An admin's own warpwp --update still moves the scripts, which is theirs to do.
 //
 // This carries real system-level blast radius none of Tor/AdGuard/Psiphon
 // do: warpwp runs as root, installs OS packages via the host's own package
@@ -151,6 +149,6 @@ func Repair(ctx context.Context, mode RepairMode) error {
 // comment) without touching wireproxy's own SOCKS5 setup -- the UI exposes
 // this specifically so clearing it never requires SSH either.
 func FixRouting(ctx context.Context) error {
-	_, err := run(ctx, "--fix-routing")
+	_, err := run(ctx, actionFixRouting)
 	return err
 }

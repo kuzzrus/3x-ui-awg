@@ -5,24 +5,24 @@ import (
 	"testing"
 )
 
-// Trimmed but structurally real: shaped exactly like warpwp's own
-// status_json() heredoc (see the vendored warpwp.sh), not hand-invented.
+// Structurally real: shaped exactly like the output of warpwp v1.3.9 --status-json, captured from the script run
+// against a live install (the values are made up).
 const sampleStatusJSON = `{
-  "manager_version": "1.3.0",
-  "native_version": "1.2.0",
+  "manager_version": "1.3.9",
+  "native_version": "v1.2.6",
   "healthy": true,
-  "scheduler": "cron",
+  "scheduler": "systemd_timer",
   "installed": true,
   "manager_installed": true,
   "native_installed": true,
   "service": {"name": "wireproxy", "state": "active", "active": true},
   "socks5": {"host": "127.0.0.1", "port": 40000, "listening": true},
   "warp": {"endpoint": "162.159.192.1:2408", "endpoint_port": "2408", "ip": "104.28.203.9", "colo": "HEL", "loc": "FI", "status": "on", "on": true},
-  "selection": {"time_total": "0.842", "colo": "HEL", "loc": "FI", "checked_at": 1735689600, "probe_loss_percent": "0", "stable": "1", "scanner": "legacy"},
+  "selection": {"time_total": "0.093969", "colo": "HEL", "loc": "FI", "checked_at": 1735689600, "probe_loss_percent": "0", "stable": "1", "scanner": "native"},
   "routing_guard": {"danger": false},
-  "cron": {"file": "/etc/cron.d/warp-wireproxy-check", "installed": true, "uses_flock": true, "lock_file": "/var/lock/warpwp-check.lock", "schedule": "*/10 * * * *"},
-  "timer": {"service_file": "", "timer_file": "", "installed": false, "enabled": false, "active": false, "interval_minutes": 10, "log_file": "", "log_exists": false},
-  "logs": {"cron_file": "/var/log/warp-check.log", "cron_exists": true, "timer_file": "", "timer_exists": false},
+  "cron": {"file": "/etc/cron.d/warp-wireproxy-check", "installed": false, "active": false, "daemon": "cron", "uses_flock": false, "lock_file": "/var/lock/warpwp-check.lock", "schedule": ""},
+  "timer": {"service_file": "/etc/systemd/system/warp-wireproxy-check.service", "timer_file": "/etc/systemd/system/warp-wireproxy-check.timer", "installed": true, "enabled": true, "active": true, "interval_minutes": 15, "log_file": "/var/log/warp-timer-check.log", "log_exists": true},
+  "logs": {"cron_file": "/var/log/warp-check.log", "cron_exists": true, "timer_file": "/var/log/warp-timer-check.log", "timer_exists": true},
   "cache": {"good_file": "/etc/wireguard/warp-endpoints.good", "bad_file": "/etc/wireguard/warp-endpoints.bad"}
 }`
 
@@ -34,8 +34,8 @@ func TestParseStatusRealShape(t *testing.T) {
 	if !status.Healthy {
 		t.Error("Healthy = false, want true")
 	}
-	if status.Scheduler != "cron" {
-		t.Errorf("Scheduler = %q, want %q", status.Scheduler, "cron")
+	if status.Scheduler != "systemd_timer" {
+		t.Errorf("Scheduler = %q, want %q", status.Scheduler, "systemd_timer")
 	}
 	if !status.Service.Active {
 		t.Error("Service.Active = false, want true")
