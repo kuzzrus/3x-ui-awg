@@ -255,6 +255,10 @@ func TestResetClientTrafficLimitByEmail_ReenablesDepletedClient(t *testing.T) {
 // not only the inbound whose reset ran first.
 func TestResetTrafficByEmail_ReenablesEveryInboundOfTheClient(t *testing.T) {
 	setupBulkDB(t)
+	// As the panel runs: the resets of the two inbounds go through the serial traffic writer. Inline they overlap, and one
+	// that reads the counters before the other commits can take the client for one that was switched off by hand.
+	resetTrafficWriterForTest(t)
+	StartTrafficWriter()
 	svc := &ClientService{}
 	inboundSvc := &InboundService{}
 
