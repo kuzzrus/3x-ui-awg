@@ -52,6 +52,24 @@ func TestRefreshBinaryWarnsWhenTheBuildCannotBeFetched(t *testing.T) {
 	}
 }
 
+// The file reached the disk and a tunnel did not come back: the log must not say that the build could not be fetched.
+func TestRefreshBinarySaysWhenOnlyTheRestartFailed(t *testing.T) {
+	fake := useTunnels(t, nil)
+	fake.upgrade = func(context.Context, *http.Client) (bool, error) { return true, errors.New("country IT did not start") }
+	const said = "replaced by the pinned one, but restarting the tunnels failed: country IT did not start"
+	const misreported = "cannot bring the installed build to the pinned one"
+	saidBefore, misreportedBefore := refreshLines(said), refreshLines(misreported)
+
+	(&PsiphonService{}).refreshBinary()
+
+	if got := refreshLines(said) - saidBefore; got != 1 {
+		t.Errorf("%d lines say that the restart failed after the replacement, want one", got)
+	}
+	if got := refreshLines(misreported) - misreportedBefore; got != 0 {
+		t.Errorf("%d lines say that the build could not be fetched, want none for a build that was put in place", got)
+	}
+}
+
 func TestRefreshBinaryIsQuietWhenThereIsNothingToDo(t *testing.T) {
 	useTunnels(t, nil)
 	before := refreshLines("the installed build") + refreshLines("cannot bring the installed build")

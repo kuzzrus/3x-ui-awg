@@ -109,21 +109,30 @@ func Upgrade(ctx context.Context, client *http.Client) (bool, error) {
 }
 
 func upgradeTo(ctx context.Context, client *http.Client, asset, digest string) (bool, error) {
+	fetchMu.Lock()
+	defer fetchMu.Unlock()
 	if !IsInstalled() || hasDigest(BinPath(), digest) {
 		return false, nil
 	}
-	if err := fetchPinned(ctx, client, asset, digest); err != nil {
+	if err := fetchLocked(ctx, client, asset, digest); err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
-// fetchMu keeps two fetches from writing the one staging file.
+// fetchMu holds a decision and its download together, so what the next upgrade looks at is the build this one left.
 var fetchMu sync.Mutex
 
-// fetchPinned downloads the build with the given checksum next to the binary and renames it into place, which a
-// running process does not mind: it keeps the file it started from.
+// fetchPinned is fetchLocked for the install, which has no decision of its own to hold with the download.
 func fetchPinned(ctx context.Context, client *http.Client, asset, digest string) error {
+	fetchMu.Lock()
+	defer fetchMu.Unlock()
+	return fetchLocked(ctx, client, asset, digest)
+}
+
+// fetchLocked downloads the build with the given checksum next to the binary and renames it into place, which a
+// running process does not mind: it keeps the file it started from. The caller holds fetchMu.
+func fetchLocked(ctx context.Context, client *http.Client, asset, digest string) error {
 	want, err := hex.DecodeString(digest)
 	if err != nil {
 		return fmt.Errorf("malformed pinned checksum: %w", err)
@@ -131,8 +140,6 @@ func fetchPinned(ctx context.Context, client *http.Client, asset, digest string)
 	if len(want) != sha256.Size {
 		return fmt.Errorf("malformed pinned checksum: got %d bytes, want %d", len(want), sha256.Size)
 	}
-	fetchMu.Lock()
-	defer fetchMu.Unlock()
 	if err := os.MkdirAll(Dir(), 0o700); err != nil {
 		return fmt.Errorf("cannot create %s: %w", Dir(), err)
 	}

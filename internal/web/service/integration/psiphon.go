@@ -66,10 +66,12 @@ func (s *PsiphonService) refreshBinary() {
 	ctx, cancel := context.WithTimeout(context.Background(), installTimeout)
 	defer cancel()
 	replaced, err := tunnels.upgradeBinary(ctx, s.NewProxiedHTTPClient(installTimeout))
-	if err != nil {
+	switch {
+	case replaced && err != nil: // the file is in place, only a restart failed
+		logger.Warningf("psiphon: the installed build was replaced by the pinned one, but restarting the tunnels failed: %v", err)
+	case err != nil:
 		logger.Warningf("psiphon: cannot bring the installed build to the pinned one: %v", err)
-	}
-	if replaced {
+	case replaced:
 		logger.Info("psiphon: the installed build was replaced by the pinned one")
 	}
 }

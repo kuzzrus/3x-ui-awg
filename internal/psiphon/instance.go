@@ -101,8 +101,8 @@ func (in *instance) isRunning() bool {
 	return in.proc != nil && in.proc.IsRunning()
 }
 
-// wantedUp is whether the tunnel runs or is meant to: one in the middle of a start has no process yet, and a restart that
-// skipped it would leave it on the file and the config it began with.
+// wantedUp is whether the tunnel runs or is meant to, so one that is down and waits for the supervisor comes back from
+// the new build too. A caller that acts on the answer holds the lifecycle lock.
 func (in *instance) wantedUp() bool {
 	in.mu.Lock()
 	defer in.mu.Unlock()
@@ -220,6 +220,22 @@ func (in *instance) stopLocked() error {
 func (in *instance) restart(now time.Time) error {
 	in.lifecycle.Lock()
 	defer in.lifecycle.Unlock()
+	return in.restartLocked(now)
+}
+
+// restartIfWantedUp restarts a tunnel that runs or is meant to, deciding under the lifecycle lock so that a stop
+// or a start in flight is looked at after it ends, and a stop that landed first is not undone.
+func (in *instance) restartIfWantedUp(now time.Time) error {
+	in.lifecycle.Lock()
+	defer in.lifecycle.Unlock()
+	if !in.wantedUp() {
+		return nil
+	}
+	return in.restartLocked(now)
+}
+
+// restartLocked is restart for a caller that holds the lifecycle lock.
+func (in *instance) restartLocked(now time.Time) error {
 	in.mu.Lock()
 	wanted := in.life.wanted
 	in.life.wanted = false // so the end of the old process is not taken for a crash

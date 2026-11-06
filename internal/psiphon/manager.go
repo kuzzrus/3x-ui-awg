@@ -122,11 +122,7 @@ func (m *Manager) afterUpgrade(replaced bool, err error) (bool, error) {
 
 // restartRunning restarts the default process when it runs or is meant to, and the countries likewise; what is stopped stays stopped.
 func (m *Manager) restartRunning() error {
-	var errs []error
-	if m.def.wantedUp() {
-		errs = append(errs, m.def.restart(time.Now()))
-	}
-	return errors.Join(append(errs, m.RestartCountries())...)
+	return errors.Join(m.def.restartIfWantedUp(time.Now()), m.RestartCountries())
 }
 
 // StopAll ends a scan, then stops the default process and every country together, each waiting for its process to
@@ -269,13 +265,13 @@ func (m *Manager) RestartCountries() error {
 		errs []error
 	)
 	for _, in := range m.instances() {
-		if in == m.def || !in.wantedUp() {
+		if in == m.def {
 			continue
 		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := in.restart(time.Now()); err != nil {
+			if err := in.restartIfWantedUp(time.Now()); err != nil {
 				mu.Lock()
 				errs = append(errs, err)
 				mu.Unlock()

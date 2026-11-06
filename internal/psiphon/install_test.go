@@ -9,8 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func sha256Sum(t *testing.T, s string) []byte {
@@ -301,5 +303,58 @@ func TestUpgradeRefusesAPinnedChecksumThatIsNotOne(t *testing.T) {
 	}
 	if got := readBuild(t); got != "the build of an earlier panel version" {
 		t.Errorf("the installed build is %q, want it kept", got)
+	}
+}
+
+// A second upgrade that starts during the first one's download looks at the file once that has been replaced.
+func TestTwoUpgradesAtOnceFetchTheBuildOnce(t *testing.T) {
+	installedBuild(t, "the build of an earlier panel version")
+	digest := hex.EncodeToString(sha256Sum(t, "the pinned build"))
+	var requests atomic.Int32
+	arrived, hold := make(chan struct{}, 2), make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		arrived <- struct{}{}
+		<-hold
+		_, _ = w.Write([]byte("the pinned build"))
+	}))
+	t.Cleanup(srv.Close)
+	realURL := downloadURL
+	downloadURL = func(string) string { return srv.URL }
+	t.Cleanup(func() { downloadURL = realURL })
+
+	var (
+		wg       sync.WaitGroup
+		replaced [2]bool
+		errs     [2]error
+	)
+	upgrade := func(i int) {
+		defer wg.Done()
+		replaced[i], errs[i] = upgradeTo(context.Background(), http.DefaultClient, "asset", digest)
+	}
+	wg.Add(1)
+	go upgrade(0)
+	select {
+	case <-arrived:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first download never started")
+	}
+	wg.Add(1)
+	go upgrade(1)
+	time.Sleep(50 * time.Millisecond) // long enough for a second download to start, were one going to
+	close(hold)
+	wg.Wait()
+
+	if errs[0] != nil || errs[1] != nil {
+		t.Fatalf("upgradeTo errors = %v, %v", errs[0], errs[1])
+	}
+	if replaced[0] == replaced[1] {
+		t.Errorf("replaced = %v, want exactly one of the two upgrades to have put the build there", replaced)
+	}
+	if n := requests.Load(); n != 1 {
+		t.Errorf("%d downloads for two upgrades at once, want 1", n)
+	}
+	if got := readBuild(t); got != "the pinned build" {
+		t.Errorf("the installed build is %q, want the pinned one", got)
 	}
 }

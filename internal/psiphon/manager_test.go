@@ -612,6 +612,36 @@ func TestRestartRunningRestartsATunnelThatIsStillStarting(t *testing.T) {
 	}
 }
 
+// A restart that arrives while a stop holds the lifecycle lock decides once the stop is over, and does not undo it.
+func TestRestartRunningDoesNotUndoAStopThatLandsFirst(t *testing.T) {
+	useFakeCore(t)
+	if !portFree(19113) {
+		t.Skip("port 19113 is not free on this host")
+	}
+	m := newTestManager(t)
+	if err := m.StartCountry(Country{Region: "IT", Port: 19113}); err != nil {
+		t.Fatalf("StartCountry: %v", err)
+	}
+	in := m.existingCountry("IT")
+
+	in.lifecycle.Lock() // the stop is under way
+	restarted := make(chan error, 1)
+	go func() { restarted <- m.restartRunning() }()
+	time.Sleep(50 * time.Millisecond) // long enough for a restart that decides before the lock to have decided
+	stopErr := in.stopLocked()
+	in.lifecycle.Unlock()
+
+	if stopErr != nil {
+		t.Fatalf("stopLocked: %v", stopErr)
+	}
+	if err := <-restarted; err != nil {
+		t.Fatalf("restartRunning: %v", err)
+	}
+	if m.CountryState("IT").Running || listening(19113) {
+		t.Fatal("the restart started again a tunnel that had been stopped")
+	}
+}
+
 func TestRestartRunningStartsADefaultProcessThatShouldRunButIsDown(t *testing.T) {
 	useFakeCore(t)
 	if !portFree(SocksPort) {
