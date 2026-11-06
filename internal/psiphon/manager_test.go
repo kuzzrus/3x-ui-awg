@@ -591,7 +591,12 @@ func TestRestartRunningRestartsATunnelThatIsStillStarting(t *testing.T) {
 	}
 	started := make(chan error, 1)
 	go func() { started <- m.StartCountrySupervised(nl) }()
-	<-entered // the start is under way: the tunnel is meant to run and has no process yet
+	// The start is under way: the tunnel is meant to run and has no process yet.
+	select {
+	case <-entered:
+	case err := <-started:
+		t.Fatalf("StartCountrySupervised ended before it reached the config it was to hold: %v", err)
+	}
 
 	beforeRestart := time.Now()
 	restarted := make(chan error, 1)

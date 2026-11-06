@@ -22,6 +22,21 @@ func refreshLines(text string) int {
 	return n
 }
 
+// withBinaryRetry shortens the retry of the refresh for the length of the test.
+func withBinaryRetry(t *testing.T, attempts int, delay time.Duration) {
+	t.Helper()
+	realAttempts, realDelay := binaryRefreshAttempts, binaryRefreshDelay
+	binaryRefreshAttempts, binaryRefreshDelay = attempts, delay
+	t.Cleanup(func() { binaryRefreshAttempts, binaryRefreshDelay = realAttempts, realDelay })
+}
+
+// asks is how many times the refresh has asked for the build to be brought to the pinned one.
+func (a *answeringTunnels) asks() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.upgrades
+}
+
 func TestRefreshBinarySaysWhenItReplacedTheBuild(t *testing.T) {
 	fake := useTunnels(t, nil)
 	installedPsiphon(t)
@@ -36,9 +51,57 @@ func TestRefreshBinarySaysWhenItReplacedTheBuild(t *testing.T) {
 	}
 }
 
+// The first attempt can fall before Xray carries the panel's own outbound, so a failed fetch is tried again.
+func TestRefreshBinaryFetchesTheBuildAgainAfterAFailedAttempt(t *testing.T) {
+	fake := useTunnels(t, nil)
+	installedPsiphon(t)
+	fake.upgrade = func(context.Context, *http.Client) (bool, error) {
+		if fake.asks() == 1 {
+			return false, errors.New("no route to github")
+		}
+		return true, nil
+	}
+	withBinaryRetry(t, 4, time.Millisecond)
+	const said = "the installed build was replaced by the pinned one"
+	const warned = "cannot bring the installed build to the pinned one:"
+	saidBefore, warnedBefore := refreshLines(said), refreshLines(warned)
+
+	(&PsiphonService{}).refreshBinary()
+
+	if got := fake.asks(); got != 2 {
+		t.Fatalf("the refresh asked %d times, want a second attempt after the first one failed", got)
+	}
+	if got := refreshLines(said) - saidBefore; got != 1 {
+		t.Errorf("%d lines say that the build was replaced, want one", got)
+	}
+	if got := refreshLines(warned) - warnedBefore; got != 0 {
+		t.Errorf("%d warnings for a fetch that succeeded on its second attempt, want none", got)
+	}
+}
+
+// A fetch that keeps failing is tried as often as the refresh allows and then said once.
+func TestRefreshBinaryGivesUpAfterItsAttempts(t *testing.T) {
+	fake := useTunnels(t, nil)
+	installedPsiphon(t)
+	fake.upgrade = func(context.Context, *http.Client) (bool, error) { return false, errors.New("no route to github") }
+	withBinaryRetry(t, 3, time.Millisecond)
+	const warned = "cannot bring the installed build to the pinned one: no route to github"
+	before := refreshLines(warned)
+
+	(&PsiphonService{}).refreshBinary()
+
+	if got := fake.asks(); got != 3 {
+		t.Errorf("the refresh asked %d times, want the 3 attempts it is allowed", got)
+	}
+	if got := refreshLines(warned) - before; got != 1 {
+		t.Errorf("%d warnings for a fetch that failed every time, want one", got)
+	}
+}
+
 func TestRefreshBinaryWarnsWhenTheBuildCannotBeFetched(t *testing.T) {
 	fake := useTunnels(t, nil)
 	installedPsiphon(t)
+	withBinaryRetry(t, 1, 0)
 	fake.upgrade = func(context.Context, *http.Client) (bool, error) { return false, errors.New("no route to github") }
 	const warned = "cannot bring the installed build to the pinned one: no route to github"
 	const replaced = "the installed build was replaced by the pinned one"
@@ -58,6 +121,7 @@ func TestRefreshBinaryWarnsWhenTheBuildCannotBeFetched(t *testing.T) {
 func TestRefreshBinarySaysWhenOnlyTheRestartFailed(t *testing.T) {
 	fake := useTunnels(t, nil)
 	installedPsiphon(t)
+	withBinaryRetry(t, 4, time.Millisecond)
 	fake.upgrade = func(context.Context, *http.Client) (bool, error) { return true, errors.New("country IT did not start") }
 	const said = "replaced by the pinned one, but restarting the tunnels failed: country IT did not start"
 	const misreported = "cannot bring the installed build to the pinned one"
@@ -99,8 +163,21 @@ func TestRefreshBinaryIsQuietWhenThereIsNothingToDo(t *testing.T) {
 	}
 }
 
+// The refresh waits for Xray, which the boot starts after the sidecars: AutoStart must not start it.
+func TestAutoStartLeavesTheRefreshOfTheBuildToTheBoot(t *testing.T) {
+	fake := useTunnels(t, nil)
+	installedPsiphon(t)
+
+	(&PsiphonService{}).AutoStart()
+	time.Sleep(100 * time.Millisecond) // long enough for a refresh started in the background to have asked
+
+	if got := fake.asks(); got != 0 {
+		t.Errorf("AutoStart asked %d times for the build to be brought to the pinned one, want none before Xray is up", got)
+	}
+}
+
 // The boot must not wait for a download: a slow host would hold up the whole panel.
-func TestAutoStartBringsTheBuildToThePinnedOneBesideTheBoot(t *testing.T) {
+func TestRefreshBinaryReturnsAtOnceBesideTheBoot(t *testing.T) {
 	fake := useTunnels(t, nil)
 	installedPsiphon(t)
 	asked, release := make(chan struct{}), make(chan struct{})
@@ -113,18 +190,18 @@ func TestAutoStartBringsTheBuildToThePinnedOneBesideTheBoot(t *testing.T) {
 
 	returned := make(chan struct{})
 	go func() {
-		(&PsiphonService{}).AutoStart()
+		(&PsiphonService{}).RefreshBinary()
 		close(returned)
 	}()
 
 	select {
 	case <-returned:
 	case <-time.After(10 * time.Second):
-		t.Fatal("AutoStart waited for the download")
+		t.Fatal("RefreshBinary waited for the download")
 	}
 	select {
 	case <-asked:
 	case <-time.After(10 * time.Second):
-		t.Fatal("AutoStart never asked for the build to be brought to the pinned one")
+		t.Fatal("RefreshBinary never asked for the build to be brought to the pinned one")
 	}
 }
