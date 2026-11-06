@@ -131,8 +131,8 @@ func setupRecordingNode(t *testing.T, fail bool) (int, *resetRecordingRuntime, *
 	return node.Id, rec, ib
 }
 
-// awaitNodeReset waits for the delivery that starts as a reset commits. The request waits one second for it at most,
-// and the lock of the node can still be held by the silent node of another test for as long as nodeClientPushTimeout.
+// awaitNodeReset waits for the delivery that starts as a reset commits: the request itself waits one second for it
+// at most, and a loaded runner can need longer. It returns silently, so the assertion after it names the failure.
 func awaitNodeReset(t *testing.T, rec *resetRecordingRuntime, nodeID int) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -338,7 +338,8 @@ func (*stallingResetRuntime) ResetClientTraffic(ctx context.Context, _ *model.In
 func TestNodeResetDeliveryDoesNotHoldTheRequestBehindASilentNode(t *testing.T) {
 	setupBulkDB(t)
 	mgr := useTestRuntimeManager(t)
-	node := &model.Node{Name: "silent", Address: "127.0.0.1", Port: 2096, ApiToken: "tok", Enable: true, Status: "online"}
+	// An id of its own: the delivery goroutine keeps the lock of this node for nodeClientPushTimeout, past the test.
+	node := &model.Node{Id: 31, Name: "silent", Address: "127.0.0.1", Port: 2096, ApiToken: "tok", Enable: true, Status: "online"}
 	if err := database.GetDB().Create(node).Error; err != nil {
 		t.Fatalf("create node: %v", err)
 	}
