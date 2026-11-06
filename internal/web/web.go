@@ -830,6 +830,10 @@ func (s *Server) start(restartXray bool, startTgBot bool) (err error) {
 		_ = s.discordGateway.Start(s.ctx)
 	}
 
+	// After startTask, which starts Xray: the engine is fetched through the panel's own outbound, whose loopback
+	// bridge exists only in the running core.
+	(&integration.NaiveProxyService{}).AutoStart()
+
 	return nil
 }
 

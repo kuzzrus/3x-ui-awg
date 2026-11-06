@@ -88,6 +88,15 @@ engine is missing the form shows a notice with an **Install** button. It
 downloads a pinned release (about 12 MB, 47 MB once unpacked) through the
 panel's own outbound proxy and verifies its SHA-256 before installing it. On any
 other platform the notice says the engine is unavailable.
+
+The release is pinned by its checksum. When an update of the panel moves the pin, the
+panel fetches the new engine at its next start, and the NaiveProxy inbounds that run
+start again from it a few seconds later. If the download fails, the installed engine
+keeps running, the panel tries again a few times over the next half hour (the first try
+can come before the panel's own outbound is up), and the next start tries once more.
+The panel goes by the record it keeps of the release it fetched, not by the file: an
+engine without that record, or with the record of another release, counts as an old one
+and is replaced, whoever put it there.
 </Step>
 
 <Step>
