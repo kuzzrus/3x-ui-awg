@@ -160,11 +160,14 @@ func TestStartCommandForAStrangerRevealsOnlyItsID(t *testing.T) {
 	if len(got) == 0 {
 		t.Fatal("a stranger's /start got no answer at all")
 	}
-	// The locale key is what the test environment resolves to; the panel's own
-	// bundle renders it as the stranger's id, which an admin needs to bind it.
-	if !strings.Contains(got[0].text(), "askToAddUserId") {
-		t.Errorf("answer = %q, want the bind-your-id notice", got[0].text())
+	// The locale key is what the test environment resolves to; the panel's own bundle renders it as the stranger's id,
+	// which an admin needs to bind it. It is looked for among the calls: work of an earlier test can still reach this bot.
+	for _, c := range got {
+		if c.Method == "sendMessage" && strings.Contains(c.text(), "askToAddUserId") {
+			return
+		}
 	}
+	t.Errorf("calls = %v, want the bind-your-id notice among them", methods(got))
 }
 
 // A client list stays scoped to the inbound its screen named, through the inline query, which carries
