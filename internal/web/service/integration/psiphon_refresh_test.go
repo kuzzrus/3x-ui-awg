@@ -22,12 +22,12 @@ func refreshLines(text string) int {
 	return n
 }
 
-// withBinaryRetry shortens the retry of the refresh for the length of the test.
-func withBinaryRetry(t *testing.T, attempts int, delay time.Duration) {
+// withBinaryRetry shortens the retry of the refresh for the length of the test: one delay per retry, so none is one attempt.
+func withBinaryRetry(t *testing.T, delays ...time.Duration) {
 	t.Helper()
-	realAttempts, realDelay := binaryRefreshAttempts, binaryRefreshDelay
-	binaryRefreshAttempts, binaryRefreshDelay = attempts, delay
-	t.Cleanup(func() { binaryRefreshAttempts, binaryRefreshDelay = realAttempts, realDelay })
+	was := binaryRefreshDelays
+	binaryRefreshDelays = delays
+	t.Cleanup(func() { binaryRefreshDelays = was })
 }
 
 // asks is how many times the refresh has asked for the build to be brought to the pinned one.
@@ -61,7 +61,7 @@ func TestRefreshBinaryFetchesTheBuildAgainAfterAFailedAttempt(t *testing.T) {
 		}
 		return true, nil
 	}
-	withBinaryRetry(t, 4, time.Millisecond)
+	withBinaryRetry(t, time.Millisecond, time.Millisecond, time.Millisecond)
 	const said = "the installed build was replaced by the pinned one"
 	const warned = "cannot bring the installed build to the pinned one:"
 	saidBefore, warnedBefore := refreshLines(said), refreshLines(warned)
@@ -84,7 +84,7 @@ func TestRefreshBinaryGivesUpAfterItsAttempts(t *testing.T) {
 	fake := useTunnels(t, nil)
 	installedPsiphon(t)
 	fake.upgrade = func(context.Context, *http.Client) (bool, error) { return false, errors.New("no route to github") }
-	withBinaryRetry(t, 3, time.Millisecond)
+	withBinaryRetry(t, time.Millisecond, time.Millisecond)
 	const warned = "cannot bring the installed build to the pinned one: no route to github"
 	before := refreshLines(warned)
 
@@ -101,7 +101,7 @@ func TestRefreshBinaryGivesUpAfterItsAttempts(t *testing.T) {
 func TestRefreshBinaryWarnsWhenTheBuildCannotBeFetched(t *testing.T) {
 	fake := useTunnels(t, nil)
 	installedPsiphon(t)
-	withBinaryRetry(t, 1, 0)
+	withBinaryRetry(t)
 	fake.upgrade = func(context.Context, *http.Client) (bool, error) { return false, errors.New("no route to github") }
 	const warned = "cannot bring the installed build to the pinned one: no route to github"
 	const replaced = "the installed build was replaced by the pinned one"
@@ -121,7 +121,7 @@ func TestRefreshBinaryWarnsWhenTheBuildCannotBeFetched(t *testing.T) {
 func TestRefreshBinarySaysWhenOnlyTheRestartFailed(t *testing.T) {
 	fake := useTunnels(t, nil)
 	installedPsiphon(t)
-	withBinaryRetry(t, 4, time.Millisecond)
+	withBinaryRetry(t, time.Millisecond, time.Millisecond, time.Millisecond)
 	fake.upgrade = func(context.Context, *http.Client) (bool, error) { return true, errors.New("country IT did not start") }
 	const said = "replaced by the pinned one, but restarting the tunnels failed: country IT did not start"
 	const misreported = "cannot bring the installed build to the pinned one"

@@ -59,31 +59,27 @@ func (s *PsiphonService) AutoStart() {
 	s.autoStartDefault()
 }
 
-// RefreshBinary brings an install made before the last update of the panel to the build the panel pins now. The boot calls
-// it once Xray is started, for the download goes through the panel's own outbound, and it returns at once: a slow download
-// holds nothing up, and a failed one leaves the installed build running until the next boot.
+// RefreshBinary brings an install made before the last panel update to the build this one pins. The boot calls it after
+// Xray is started, because the fetch goes through the panel's own outbound, and it returns at once instead of waiting.
 func (s *PsiphonService) RefreshBinary() { go s.refreshBinary() }
 
-// binaryRefreshAttempts and binaryRefreshDelay retry the fetch: Xray's start only execs the core, and a panel-only
-// restart never starts it, so the panel's own outbound may not carry the first attempt. Vars so tests can shorten them.
-var (
-	binaryRefreshAttempts = 4
-	binaryRefreshDelay    = 10 * time.Minute
-)
+// binaryRefreshDelays are the waits between fetch attempts, one per retry. The first failure is usually only the core
+// not listening on the panel's own bridge yet, which is seconds; a host that is really offline needs the longer ones.
+var binaryRefreshDelays = []time.Duration{15 * time.Second, 5 * time.Minute, 25 * time.Minute}
 
 func (s *PsiphonService) refreshBinary() {
 	if !psiphon.IsInstalled() {
 		return // nothing to bring up to date, and the egress proxy setting is not read at the boot of every panel
 	}
-	for attempt := 1; ; attempt++ {
+	for attempt := 0; ; attempt++ {
 		replaced, err := s.upgradeBinaryOnce()
 		switch {
 		case replaced && err != nil: // the file is in place, only a restart failed
 			logger.Warningf("psiphon: the installed build was replaced by the pinned one, but restarting the tunnels failed: %v", err)
 			return
-		case err != nil && attempt < binaryRefreshAttempts:
+		case err != nil && attempt < len(binaryRefreshDelays):
 			logger.Debugf("psiphon: cannot bring the installed build to the pinned one yet: %v", err)
-			time.Sleep(binaryRefreshDelay)
+			time.Sleep(binaryRefreshDelays[attempt])
 		case err != nil:
 			logger.Warningf("psiphon: cannot bring the installed build to the pinned one: %v", err)
 			return

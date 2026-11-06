@@ -811,9 +811,10 @@ func (s *Server) start(restartXray bool, startTgBot bool) (err error) {
 
 	s.startTask(restartXray, loc)
 
-	// After startTask, which starts Xray: the build is fetched through the panel's own outbound, whose loopback
-	// bridge exists only in the running core.
+	// After startTask, which starts Xray on a boot and leaves a panel-only restart the core it kept: the downloads go
+	// through the panel's own outbound, whose loopback bridge exists only in the running core.
 	(&integration.PsiphonService{}).RefreshBinary()
+	(&integration.NaiveProxyService{}).RefreshEngine()
 
 	if startTgBot {
 		isTgbotenabled, err := s.settingService.GetTgbotEnabled()
@@ -829,10 +830,6 @@ func (s *Server) start(restartXray bool, startTgBot bool) (err error) {
 	if (err == nil) && isDiscordEnabled && s.discordGateway != nil {
 		_ = s.discordGateway.Start(s.ctx)
 	}
-
-	// After startTask, which starts Xray: the engine is fetched through the panel's own outbound, whose loopback
-	// bridge exists only in the running core.
-	(&integration.NaiveProxyService{}).AutoStart()
 
 	return nil
 }

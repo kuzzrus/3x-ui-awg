@@ -44,35 +44,34 @@ func (s *NaiveProxyService) Install() error {
 // upgradeEngine brings the installed engine to the pinned release; a variable so that tests can answer for it.
 var upgradeEngine = naiveproxy.Upgrade
 
-// AutoStart brings an engine that an earlier version of the panel installed to the release this one pins. It runs
-// beside the boot and returns at once; the reconcile job restarts the inbounds that run from the old file.
-func (s *NaiveProxyService) AutoStart() { go s.refreshEngine() }
+// RefreshEngine brings an engine that an earlier version of the panel installed to the release this one pins. The boot
+// calls it after Xray is started, because the fetch goes through the panel's own outbound, and it returns at once;
+// the reconcile job restarts the inbounds that run from the old file.
+func (s *NaiveProxyService) RefreshEngine() { go s.refreshEngine() }
 
-// engineRefreshAttempts and engineRefreshDelay retry the fetch: Xray's start only execs the core, and a panel-only
-// restart never starts it, so the panel's own outbound may not carry the first attempt. Vars so tests can shorten them.
-var (
-	engineRefreshAttempts = 4
-	engineRefreshDelay    = 10 * time.Minute
-)
+// engineRefreshDelays are the waits between fetch attempts, one per retry. The first failure is usually only the core
+// not listening on the panel's own bridge yet, which is seconds; a host that is really offline needs the longer ones.
+var engineRefreshDelays = []time.Duration{15 * time.Second, 5 * time.Minute, 25 * time.Minute}
 
 func (s *NaiveProxyService) refreshEngine() {
 	if !naiveproxy.IsInstalled() {
 		return // nothing to bring up to date, and the egress proxy setting is not read at the boot of every panel
 	}
-	for attempt := 1; ; attempt++ {
+	for attempt := 0; ; attempt++ {
 		replaced, err := s.fetchPinnedEngine()
 		switch {
-		case err == nil && replaced:
-			logger.Info("naiveproxy: the installed engine was replaced by the pinned release")
-			return
-		case err == nil:
-			return
-		case attempt >= engineRefreshAttempts:
+		case err != nil && attempt < len(engineRefreshDelays):
+			logger.Debugf("naiveproxy: cannot bring the installed engine to the pinned release yet: %v", err)
+			time.Sleep(engineRefreshDelays[attempt])
+		case err != nil:
 			logger.Warningf("naiveproxy: cannot bring the installed engine to the pinned release: %v", err)
 			return
+		case replaced:
+			logger.Info("naiveproxy: the installed engine was replaced by the pinned release")
+			return
+		default:
+			return
 		}
-		logger.Debugf("naiveproxy: cannot bring the installed engine to the pinned release yet: %v", err)
-		time.Sleep(engineRefreshDelay)
 	}
 }
 
