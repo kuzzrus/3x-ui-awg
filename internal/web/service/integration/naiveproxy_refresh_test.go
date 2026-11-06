@@ -44,12 +44,12 @@ func useEngineUpgrade(t *testing.T, upgrade func(context.Context, *http.Client) 
 	t.Cleanup(func() { upgradeEngine = real })
 }
 
-// withRefreshRetry shortens the retry of the refresh for the length of the test.
-func withRefreshRetry(t *testing.T, attempts int, delay time.Duration) {
+// withRefreshRetry shortens the retry of the refresh for the length of the test: one delay per retry, so none is one attempt.
+func withRefreshRetry(t *testing.T, delays ...time.Duration) {
 	t.Helper()
-	realAttempts, realDelay := engineRefreshAttempts, engineRefreshDelay
-	engineRefreshAttempts, engineRefreshDelay = attempts, delay
-	t.Cleanup(func() { engineRefreshAttempts, engineRefreshDelay = realAttempts, realDelay })
+	was := engineRefreshDelays
+	engineRefreshDelays = delays
+	t.Cleanup(func() { engineRefreshDelays = was })
 }
 
 func TestRefreshEngineSaysWhenItReplacedTheEngine(t *testing.T) {
@@ -73,7 +73,7 @@ func TestRefreshEngineFetchesTheEngineAgainAfterAFailedAttempt(t *testing.T) {
 		}
 		return true, nil
 	})
-	withRefreshRetry(t, 4, time.Millisecond)
+	withRefreshRetry(t, time.Millisecond, time.Millisecond, time.Millisecond)
 	const said = "the installed engine was replaced by the pinned release"
 	const warned = "cannot bring the installed engine to the pinned release:"
 	saidBefore, warnedBefore := engineLines(said), engineLines(warned)
@@ -98,7 +98,7 @@ func TestRefreshEngineGivesUpAfterItsAttempts(t *testing.T) {
 		asked.Add(1)
 		return false, errors.New("no route to github")
 	})
-	withRefreshRetry(t, 3, time.Millisecond)
+	withRefreshRetry(t, time.Millisecond, time.Millisecond)
 	const warned = "cannot bring the installed engine to the pinned release: no route to github"
 	before := engineLines(warned)
 
@@ -114,7 +114,7 @@ func TestRefreshEngineGivesUpAfterItsAttempts(t *testing.T) {
 
 func TestRefreshEngineWarnsWhenTheEngineCannotBeFetched(t *testing.T) {
 	useEngineUpgrade(t, func(context.Context, *http.Client) (bool, error) { return false, errors.New("no route to github") })
-	withRefreshRetry(t, 1, 0)
+	withRefreshRetry(t)
 	const warned = "cannot bring the installed engine to the pinned release: no route to github"
 	const replaced = "the installed engine was replaced by the pinned release"
 	warnedBefore, replacedBefore := engineLines(warned), engineLines(replaced)
@@ -162,7 +162,7 @@ func TestRefreshEngineIsQuietWhenThereIsNothingToDo(t *testing.T) {
 }
 
 // The boot must not wait for a download: a slow host would hold up the whole panel.
-func TestAutoStartBringsTheEngineToThePinnedReleaseBesideTheBoot(t *testing.T) {
+func TestRefreshEngineReturnsAtOnceBesideTheBoot(t *testing.T) {
 	asked, release := make(chan struct{}), make(chan struct{})
 	useEngineUpgrade(t, func(context.Context, *http.Client) (bool, error) {
 		close(asked)
@@ -173,18 +173,18 @@ func TestAutoStartBringsTheEngineToThePinnedReleaseBesideTheBoot(t *testing.T) {
 
 	returned := make(chan struct{})
 	go func() {
-		(&NaiveProxyService{}).AutoStart()
+		(&NaiveProxyService{}).RefreshEngine()
 		close(returned)
 	}()
 
 	select {
 	case <-returned:
 	case <-time.After(10 * time.Second):
-		t.Fatal("AutoStart waited for the download")
+		t.Fatal("RefreshEngine waited for the download")
 	}
 	select {
 	case <-asked:
 	case <-time.After(10 * time.Second):
-		t.Fatal("AutoStart never asked for the engine to be brought to the pinned release")
+		t.Fatal("RefreshEngine never asked for the engine to be brought to the pinned release")
 	}
 }
