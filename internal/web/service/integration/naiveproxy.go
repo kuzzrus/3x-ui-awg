@@ -50,7 +50,7 @@ func (s *NaiveProxyService) RefreshEngine() { go s.refreshEngine() }
 
 // engineRefreshDelays are the waits between fetch attempts, one per retry. The first failure is usually only the core
 // not listening on the panel's own bridge yet, which is seconds; a host that is really offline needs the longer ones.
-var engineRefreshDelays = []time.Duration{15 * time.Second, 5 * time.Minute, 25 * time.Minute}
+var engineRefreshDelays = []time.Duration{15 * time.Second, 90 * time.Second, 5 * time.Minute, 23 * time.Minute}
 
 func (s *NaiveProxyService) refreshEngine() {
 	if !naiveproxy.IsInstalled() {
