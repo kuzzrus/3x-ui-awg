@@ -24,6 +24,7 @@ func refreshLines(text string) int {
 
 func TestRefreshBinarySaysWhenItReplacedTheBuild(t *testing.T) {
 	fake := useTunnels(t, nil)
+	installedPsiphon(t)
 	fake.upgrade = func(context.Context, *http.Client) (bool, error) { return true, nil }
 	const said = "the installed build was replaced by the pinned one"
 	before := refreshLines(said)
@@ -37,6 +38,7 @@ func TestRefreshBinarySaysWhenItReplacedTheBuild(t *testing.T) {
 
 func TestRefreshBinaryWarnsWhenTheBuildCannotBeFetched(t *testing.T) {
 	fake := useTunnels(t, nil)
+	installedPsiphon(t)
 	fake.upgrade = func(context.Context, *http.Client) (bool, error) { return false, errors.New("no route to github") }
 	const warned = "cannot bring the installed build to the pinned one: no route to github"
 	const replaced = "the installed build was replaced by the pinned one"
@@ -55,6 +57,7 @@ func TestRefreshBinaryWarnsWhenTheBuildCannotBeFetched(t *testing.T) {
 // The file reached the disk and a tunnel did not come back: the log must not say that the build could not be fetched.
 func TestRefreshBinarySaysWhenOnlyTheRestartFailed(t *testing.T) {
 	fake := useTunnels(t, nil)
+	installedPsiphon(t)
 	fake.upgrade = func(context.Context, *http.Client) (bool, error) { return true, errors.New("country IT did not start") }
 	const said = "replaced by the pinned one, but restarting the tunnels failed: country IT did not start"
 	const misreported = "cannot bring the installed build to the pinned one"
@@ -70,8 +73,23 @@ func TestRefreshBinarySaysWhenOnlyTheRestartFailed(t *testing.T) {
 	}
 }
 
+// A panel that never installed Psiphon asks nothing of anyone at its boot, and reads no setting for it.
+func TestRefreshBinaryDoesNothingWithoutAnInstall(t *testing.T) {
+	fake := useTunnels(t, nil)
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+
+	(&PsiphonService{}).refreshBinary()
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if fake.upgrades != 0 {
+		t.Errorf("the refresh asked %d times for the build to be brought to the pinned one, want none without an install", fake.upgrades)
+	}
+}
+
 func TestRefreshBinaryIsQuietWhenThereIsNothingToDo(t *testing.T) {
 	useTunnels(t, nil)
+	installedPsiphon(t)
 	before := refreshLines("the installed build") + refreshLines("cannot bring the installed build")
 
 	(&PsiphonService{}).refreshBinary()
@@ -84,6 +102,7 @@ func TestRefreshBinaryIsQuietWhenThereIsNothingToDo(t *testing.T) {
 // The boot must not wait for a download: a slow host would hold up the whole panel.
 func TestAutoStartBringsTheBuildToThePinnedOneBesideTheBoot(t *testing.T) {
 	fake := useTunnels(t, nil)
+	installedPsiphon(t)
 	asked, release := make(chan struct{}), make(chan struct{})
 	fake.upgrade = func(context.Context, *http.Client) (bool, error) {
 		close(asked)

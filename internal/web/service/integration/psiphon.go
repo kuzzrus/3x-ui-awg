@@ -63,6 +63,9 @@ func (s *PsiphonService) AutoStart() {
 // refreshBinary brings an install made before the last update of the panel to the build the panel pins now. It runs beside
 // the boot, so a slow download holds nothing up, and a failed one leaves the installed build running until the next boot.
 func (s *PsiphonService) refreshBinary() {
+	if !psiphon.IsInstalled() {
+		return // nothing to bring up to date, and the egress proxy setting is not read at the boot of every panel
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), installTimeout)
 	defer cancel()
 	replaced, err := tunnels.upgradeBinary(ctx, s.NewProxiedHTTPClient(installTimeout))

@@ -120,9 +120,9 @@ func (m *Manager) afterUpgrade(replaced bool, err error) (bool, error) {
 	return true, m.restartRunning()
 }
 
-// restartRunning restarts the default process when it runs or is meant to, and the countries likewise; what is stopped stays stopped.
+// restartRunning restarts the default process and the countries that run or are meant to; what is stopped stays stopped.
 func (m *Manager) restartRunning() error {
-	return errors.Join(m.def.restartIfWantedUp(time.Now()), m.RestartCountries())
+	return errors.Join(m.def.restartIfWantedUp(time.Now()), m.restartCountries((*instance).restartIfWantedUp))
 }
 
 // StopAll ends a scan, then stops the default process and every country together, each waiting for its process to
@@ -257,8 +257,13 @@ func (m *Manager) forgetCountries() {
 	}
 }
 
-// RestartCountries restarts the country tunnels that run or are meant to, which is how a new base config reaches them.
+// RestartCountries restarts the country tunnels that are running, which is how a new base config reaches them: one that
+// is down is the supervisor's to start, from the new config, on its own back-off.
 func (m *Manager) RestartCountries() error {
+	return m.restartCountries((*instance).restartIfRunning)
+}
+
+func (m *Manager) restartCountries(restart func(*instance, time.Time) error) error {
 	var (
 		wg   sync.WaitGroup
 		mu   sync.Mutex
@@ -271,7 +276,7 @@ func (m *Manager) RestartCountries() error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := in.restartIfWantedUp(time.Now()); err != nil {
+			if err := restart(in, time.Now()); err != nil {
 				mu.Lock()
 				errs = append(errs, err)
 				mu.Unlock()

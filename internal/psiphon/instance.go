@@ -234,6 +234,17 @@ func (in *instance) restartIfWantedUp(now time.Time) error {
 	return in.restartLocked(now)
 }
 
+// restartIfRunning restarts a tunnel whose process is up, deciding under the lifecycle lock so that a start or a
+// stop in flight is looked at after it ends.
+func (in *instance) restartIfRunning(now time.Time) error {
+	in.lifecycle.Lock()
+	defer in.lifecycle.Unlock()
+	if !in.isRunning() {
+		return nil
+	}
+	return in.restartLocked(now)
+}
+
 // restartLocked is restart for a caller that holds the lifecycle lock.
 func (in *instance) restartLocked(now time.Time) error {
 	in.mu.Lock()

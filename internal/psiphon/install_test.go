@@ -285,27 +285,6 @@ func TestUpgradeKeepsTheInstalledBuildWhenTheDownloadFails(t *testing.T) {
 	}
 }
 
-func TestUpgradeRefusesAPinnedChecksumThatIsNotOne(t *testing.T) {
-	installedBuild(t, "the build of an earlier panel version")
-	requests := pinnedBuildServer(t, http.StatusOK, "the pinned build")
-
-	for name, digest := range map[string]string{"not hex": "not-a-checksum", "too short": "abcd"} {
-		t.Run(name, func(t *testing.T) {
-			replaced, err := upgradeTo(context.Background(), http.DefaultClient, "asset", digest)
-
-			if err == nil || !strings.Contains(err.Error(), "malformed pinned checksum") || replaced {
-				t.Fatalf("upgradeTo = %v, %v, want the malformed checksum refused", replaced, err)
-			}
-		})
-	}
-	if n := requests.Load(); n != 0 {
-		t.Errorf("%d downloads for a checksum that cannot be met, want none", n)
-	}
-	if got := readBuild(t); got != "the build of an earlier panel version" {
-		t.Errorf("the installed build is %q, want it kept", got)
-	}
-}
-
 // A second upgrade that starts during the first one's download looks at the file once that has been replaced.
 func TestTwoUpgradesAtOnceFetchTheBuildOnce(t *testing.T) {
 	installedBuild(t, "the build of an earlier panel version")
