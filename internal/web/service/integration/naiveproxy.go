@@ -44,9 +44,8 @@ func (s *NaiveProxyService) Install() error {
 // upgradeEngine brings the installed engine to the pinned release; a variable so that tests can answer for it.
 var upgradeEngine = naiveproxy.Upgrade
 
-// RefreshEngine brings an engine that an earlier version of the panel installed to the release this one pins. The boot
-// calls it after Xray is started, because the fetch goes through the panel's own outbound, and it returns at once;
-// the reconcile job restarts the inbounds that run from the old file.
+// RefreshEngine brings an engine installed before the last panel update to the release this one pins. The boot calls it
+// after Xray is started, because the fetch goes through the panel's own outbound, and it returns at once instead of waiting.
 func (s *NaiveProxyService) RefreshEngine() { go s.refreshEngine() }
 
 // engineRefreshDelays are the waits between fetch attempts, one per retry. The first failure is usually only the core
