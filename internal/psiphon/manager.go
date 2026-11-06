@@ -15,8 +15,10 @@
 package psiphon
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -101,9 +103,31 @@ func (m *Manager) IsRunning() bool { return m.def.isRunning() }
 // Psiphon process, or why it could not start, or "" if none has run yet this session.
 func (m *Manager) LastResult() string { return m.def.result() }
 
-// Restart stops and starts the default Psiphon process, used after SaveConfig changes EgressRegion
-// or the config itself -- Psiphon does not hot-reload either.
+// Restart stops and starts the default Psiphon process whatever its state, which is how a changed EgressRegion
+// reaches it -- Psiphon does not hot-reload. A config save uses RestartIfRunning instead.
 func (m *Manager) Restart() error { return m.def.restart(time.Now()) }
+
+// RestartIfRunning restarts the default process when it is up, deciding under its lifecycle lock so a stop that lands
+// first is not undone; one that is down is the supervisor's to bring up with the new config.
+func (m *Manager) RestartIfRunning() error { return m.def.restartIfRunning(time.Now()) }
+
+// UpgradeBinary brings the installed build to the pinned one and, when it put a new file in place, restarts the tunnels
+// that run, which started from the old one.
+func (m *Manager) UpgradeBinary(ctx context.Context, client *http.Client) (bool, error) {
+	return m.afterUpgrade(Upgrade(ctx, client))
+}
+
+func (m *Manager) afterUpgrade(replaced bool, err error) (bool, error) {
+	if err != nil || !replaced {
+		return false, err
+	}
+	return true, m.restartRunning()
+}
+
+// restartRunning restarts the default process and the countries that run or are meant to; what is stopped stays stopped.
+func (m *Manager) restartRunning() error {
+	return errors.Join(m.def.restartIfWantedUp(time.Now()), m.restartCountries((*instance).restartIfWantedUp))
+}
 
 // StopAll ends a scan, then stops the default process and every country together, each waiting for its process to
 // end; web.go's shutdown calls it like the StopAll of every sidecar manager.
@@ -237,21 +261,26 @@ func (m *Manager) forgetCountries() {
 	}
 }
 
-// RestartCountries restarts the country tunnels that are running, which is how a new base config reaches them.
+// RestartCountries restarts the country tunnels that are running, which is how a new base config reaches them: one that
+// is down is the supervisor's to start, from the new config, on its own back-off.
 func (m *Manager) RestartCountries() error {
+	return m.restartCountries((*instance).restartIfRunning)
+}
+
+func (m *Manager) restartCountries(restart func(*instance, time.Time) error) error {
 	var (
 		wg   sync.WaitGroup
 		mu   sync.Mutex
 		errs []error
 	)
 	for _, in := range m.instances() {
-		if in == m.def || !in.isRunning() {
+		if in == m.def {
 			continue
 		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := in.restart(time.Now()); err != nil {
+			if err := restart(in, time.Now()); err != nil {
 				mu.Lock()
 				errs = append(errs, err)
 				mu.Unlock()

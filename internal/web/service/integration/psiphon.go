@@ -59,6 +59,50 @@ func (s *PsiphonService) AutoStart() {
 	s.autoStartDefault()
 }
 
+// RefreshBinary brings an install made before the last update of the panel to the build the panel pins now. The boot calls
+// it once Xray is started, for the download goes through the panel's own outbound, and it returns at once: a slow download
+// holds nothing up, and a failed one leaves the installed build running until the next boot.
+func (s *PsiphonService) RefreshBinary() { go s.refreshBinary() }
+
+// binaryRefreshAttempts and binaryRefreshDelay retry the fetch: Xray's start only execs the core, and a panel-only
+// restart never starts it, so the panel's own outbound may not carry the first attempt. Vars so tests can shorten them.
+var (
+	binaryRefreshAttempts = 4
+	binaryRefreshDelay    = 10 * time.Minute
+)
+
+func (s *PsiphonService) refreshBinary() {
+	if !psiphon.IsInstalled() {
+		return // nothing to bring up to date, and the egress proxy setting is not read at the boot of every panel
+	}
+	for attempt := 1; ; attempt++ {
+		replaced, err := s.upgradeBinaryOnce()
+		switch {
+		case replaced && err != nil: // the file is in place, only a restart failed
+			logger.Warningf("psiphon: the installed build was replaced by the pinned one, but restarting the tunnels failed: %v", err)
+			return
+		case err != nil && attempt < binaryRefreshAttempts:
+			logger.Debugf("psiphon: cannot bring the installed build to the pinned one yet: %v", err)
+			time.Sleep(binaryRefreshDelay)
+		case err != nil:
+			logger.Warningf("psiphon: cannot bring the installed build to the pinned one: %v", err)
+			return
+		case replaced:
+			logger.Info("psiphon: the installed build was replaced by the pinned one")
+			return
+		default:
+			return
+		}
+	}
+}
+
+// upgradeBinaryOnce is one attempt, through the outbound the panel has at that moment.
+func (s *PsiphonService) upgradeBinaryOnce() (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), installTimeout)
+	defer cancel()
+	return tunnels.upgradeBinary(ctx, s.NewProxiedHTTPClient(installTimeout))
+}
+
 func (s *PsiphonService) autoStartDefault() {
 	enabled, err := s.GetPsiphonEnable()
 	if err != nil || !enabled {
@@ -135,12 +179,7 @@ func (s *PsiphonService) SaveConfig(raw []byte) error {
 	if err := psiphon.SaveConfig(raw); err != nil {
 		return err
 	}
-	var restarts []error
-	if psiphon.GetManager().IsRunning() {
-		restarts = append(restarts, psiphon.GetManager().Restart())
-	}
-	restarts = append(restarts, psiphon.GetManager().RestartCountries())
-	return errors.Join(restarts...)
+	return errors.Join(psiphon.GetManager().RestartIfRunning(), psiphon.GetManager().RestartCountries())
 }
 
 // Region is one entry of the ISO 3166-1 list (states plus common territories) behind the picker: an alpha-2 code and its display

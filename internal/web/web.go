@@ -811,6 +811,10 @@ func (s *Server) start(restartXray bool, startTgBot bool) (err error) {
 
 	s.startTask(restartXray, loc)
 
+	// After startTask, which starts Xray: the build is fetched through the panel's own outbound, whose loopback
+	// bridge exists only in the running core.
+	(&integration.PsiphonService{}).RefreshBinary()
+
 	if startTgBot {
 		isTgbotenabled, err := s.settingService.GetTgbotEnabled()
 		if (err == nil) && isTgbotenabled {

@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -26,6 +27,8 @@ type answeringTunnels struct {
 	prepared        []string
 	restored        []string
 	restoredDefault int
+	upgrade         func(ctx context.Context, client *http.Client) (bool, error) // what a call to upgradeBinary answers
+	upgrades        int
 }
 
 func useTunnels(t *testing.T, failing map[string]error) *answeringTunnels {
@@ -84,6 +87,16 @@ func useTunnels(t *testing.T, failing map[string]error) *answeringTunnels {
 			defer fake.mu.Unlock()
 			fake.restoredDefault++
 			return nil
+		},
+		upgradeBinary: func(ctx context.Context, client *http.Client) (bool, error) {
+			fake.mu.Lock()
+			fake.upgrades++
+			upgrade := fake.upgrade
+			fake.mu.Unlock()
+			if upgrade == nil {
+				return false, nil
+			}
+			return upgrade(ctx, client)
 		},
 	}
 	return fake

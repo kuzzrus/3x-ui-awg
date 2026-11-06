@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
 )
@@ -94,7 +95,45 @@ func Install(ctx context.Context, client *http.Client) error {
 	if err != nil {
 		return err
 	}
-	want, err := hex.DecodeString(releaseSHA256)
+	return fetchPinned(ctx, client, asset, releaseSHA256)
+}
+
+// Upgrade fetches the pinned build again when the binary in place is another one, an earlier build's or one damaged
+// since, and says whether it put a new file there. Where no build is pinned for the platform the binary is the admin's own.
+func Upgrade(ctx context.Context, client *http.Client) (bool, error) {
+	asset, err := assetPath(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return false, nil
+	}
+	return upgradeTo(ctx, client, asset, releaseSHA256)
+}
+
+func upgradeTo(ctx context.Context, client *http.Client, asset, digest string) (bool, error) {
+	fetchMu.Lock()
+	defer fetchMu.Unlock()
+	if !IsInstalled() || hasDigest(BinPath(), digest) {
+		return false, nil
+	}
+	if err := fetchLocked(ctx, client, asset, digest); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// fetchMu holds a decision and its download together, so what the next upgrade looks at is the build this one left.
+var fetchMu sync.Mutex
+
+// fetchPinned is fetchLocked for the install, which has no decision of its own to hold with the download.
+func fetchPinned(ctx context.Context, client *http.Client, asset, digest string) error {
+	fetchMu.Lock()
+	defer fetchMu.Unlock()
+	return fetchLocked(ctx, client, asset, digest)
+}
+
+// fetchLocked downloads the build with the given checksum next to the binary and renames it into place, which a
+// running process does not mind: it keeps the file it started from. The caller holds fetchMu.
+func fetchLocked(ctx context.Context, client *http.Client, asset, digest string) error {
+	want, err := hex.DecodeString(digest)
 	if err != nil {
 		return fmt.Errorf("malformed pinned checksum: %w", err)
 	}

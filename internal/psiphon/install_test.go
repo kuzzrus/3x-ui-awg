@@ -9,7 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func sha256Sum(t *testing.T, s string) []byte {
@@ -161,5 +164,176 @@ func TestDownloadBinaryRejectsWrongDigest(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "checksum verification") {
 		t.Errorf("downloadBinary error = %q, want it to mention checksum verification", err.Error())
+	}
+}
+
+// installedBuild puts body at BinPath(), in a bin folder of its own, as the build an earlier panel version downloaded.
+func installedBuild(t *testing.T, body string) {
+	t.Helper()
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+	if err := os.MkdirAll(Dir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(BinPath(), []byte(body), 0o750); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// pinnedBuildServer answers every download with status and, when that is 200, body; the count is of the requests.
+func pinnedBuildServer(t *testing.T, status int, body string) *atomic.Int32 {
+	t.Helper()
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		if status != http.StatusOK {
+			w.WriteHeader(status)
+			return
+		}
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	realURL := downloadURL
+	downloadURL = func(string) string { return srv.URL }
+	t.Cleanup(func() { downloadURL = realURL })
+	return &requests
+}
+
+func readBuild(t *testing.T) string {
+	t.Helper()
+	got, err := os.ReadFile(BinPath())
+	if err != nil {
+		t.Fatalf("reading the installed build: %v", err)
+	}
+	return string(got)
+}
+
+func TestUpgradeReplacesABuildThatIsNotThePinnedOne(t *testing.T) {
+	installedBuild(t, "the build of an earlier panel version")
+	requests := pinnedBuildServer(t, http.StatusOK, "the pinned build")
+	digest := hex.EncodeToString(sha256Sum(t, "the pinned build"))
+
+	replaced, err := upgradeTo(context.Background(), http.DefaultClient, "asset", digest)
+
+	if err != nil || !replaced {
+		t.Fatalf("upgradeTo = %v, %v, want a replacement", replaced, err)
+	}
+	if got := readBuild(t); got != "the pinned build" {
+		t.Errorf("the installed build is %q, want the pinned one", got)
+	}
+	if info, err := os.Stat(BinPath()); err != nil || info.Mode().Perm()&0o100 == 0 {
+		t.Errorf("the replacement is not executable (%v, %v)", info, err)
+	}
+	if _, err := os.Stat(BinPath() + ".new"); !os.IsNotExist(err) {
+		t.Errorf("the staging file is still there (%v)", err)
+	}
+	if n := requests.Load(); n != 1 {
+		t.Errorf("%d downloads, want 1", n)
+	}
+}
+
+func TestUpgradeLeavesTheBuildThatIsThePinnedOneAlone(t *testing.T) {
+	installedBuild(t, "the pinned build")
+	requests := pinnedBuildServer(t, http.StatusOK, "the pinned build")
+	digest := hex.EncodeToString(sha256Sum(t, "the pinned build"))
+
+	replaced, err := upgradeTo(context.Background(), http.DefaultClient, "asset", digest)
+
+	if err != nil || replaced {
+		t.Fatalf("upgradeTo = %v, %v, want nothing to do", replaced, err)
+	}
+	if n := requests.Load(); n != 0 {
+		t.Errorf("%d downloads, want none for the build that is the pinned one", n)
+	}
+}
+
+func TestUpgradeDoesNothingWithoutAnInstall(t *testing.T) {
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+	requests := pinnedBuildServer(t, http.StatusOK, "the pinned build")
+
+	replaced, err := upgradeTo(context.Background(), http.DefaultClient, "asset", hex.EncodeToString(sha256Sum(t, "the pinned build")))
+
+	if err != nil || replaced {
+		t.Fatalf("upgradeTo = %v, %v, want nothing to do", replaced, err)
+	}
+	if IsInstalled() || requests.Load() != 0 {
+		t.Errorf("an upgrade installed something (%v) or downloaded (%d), it is no install", IsInstalled(), requests.Load())
+	}
+}
+
+func TestUpgradeKeepsTheInstalledBuildWhenTheDownloadFails(t *testing.T) {
+	digest := hex.EncodeToString(sha256Sum(t, "the pinned build"))
+	for name, serve := range map[string]func(t *testing.T){
+		"the host refuses":   func(t *testing.T) { pinnedBuildServer(t, http.StatusInternalServerError, "") },
+		"it is another file": func(t *testing.T) { pinnedBuildServer(t, http.StatusOK, "not the pinned build") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			installedBuild(t, "the build of an earlier panel version")
+			serve(t)
+
+			replaced, err := upgradeTo(context.Background(), http.DefaultClient, "asset", digest)
+
+			if err == nil || replaced {
+				t.Fatalf("upgradeTo = %v, %v, want the failure", replaced, err)
+			}
+			if got := readBuild(t); got != "the build of an earlier panel version" {
+				t.Errorf("the installed build is %q after a failed download, want it kept", got)
+			}
+			if _, err := os.Stat(BinPath() + ".new"); !os.IsNotExist(err) {
+				t.Errorf("the staging file is still there (%v)", err)
+			}
+		})
+	}
+}
+
+// A second upgrade that starts during the first one's download looks at the file once that has been replaced.
+func TestTwoUpgradesAtOnceFetchTheBuildOnce(t *testing.T) {
+	installedBuild(t, "the build of an earlier panel version")
+	digest := hex.EncodeToString(sha256Sum(t, "the pinned build"))
+	var requests atomic.Int32
+	arrived, hold := make(chan struct{}, 2), make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		arrived <- struct{}{}
+		<-hold
+		_, _ = w.Write([]byte("the pinned build"))
+	}))
+	t.Cleanup(srv.Close)
+	realURL := downloadURL
+	downloadURL = func(string) string { return srv.URL }
+	t.Cleanup(func() { downloadURL = realURL })
+
+	var (
+		wg       sync.WaitGroup
+		replaced [2]bool
+		errs     [2]error
+	)
+	upgrade := func(i int) {
+		defer wg.Done()
+		replaced[i], errs[i] = upgradeTo(context.Background(), http.DefaultClient, "asset", digest)
+	}
+	wg.Add(1)
+	go upgrade(0)
+	select {
+	case <-arrived:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first download never started")
+	}
+	wg.Add(1)
+	go upgrade(1)
+	time.Sleep(50 * time.Millisecond) // long enough for a second download to start, were one going to
+	close(hold)
+	wg.Wait()
+
+	if errs[0] != nil || errs[1] != nil {
+		t.Fatalf("upgradeTo errors = %v, %v", errs[0], errs[1])
+	}
+	if replaced[0] == replaced[1] {
+		t.Errorf("replaced = %v, want exactly one of the two upgrades to have put the build there", replaced)
+	}
+	if n := requests.Load(); n != 1 {
+		t.Errorf("%d downloads for two upgrades at once, want 1", n)
+	}
+	if got := readBuild(t); got != "the pinned build" {
+		t.Errorf("the installed build is %q, want the pinned one", got)
 	}
 }

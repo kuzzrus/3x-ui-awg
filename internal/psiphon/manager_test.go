@@ -3,10 +3,12 @@
 package psiphon
 
 import (
+	"errors"
 	"net"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -476,5 +478,323 @@ func TestACountryCannotBeMovedToAnotherPortWhileItRuns(t *testing.T) {
 	}
 	if !listening(19109) {
 		t.Fatal("the country is not on its new port")
+	}
+}
+
+// startedAt is when the process of in came up, as the manager wrote it down at the start.
+func startedAt(in *instance) time.Time {
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	return in.life.startedAt
+}
+
+func TestRestartRunningRestartsWhatRunsAndLeavesWhatIsStopped(t *testing.T) {
+	useFakeCore(t)
+	if !portFree(SocksPort) || !portFree(19110) || !portFree(19111) {
+		t.Skip("ports 19060 and 19110-19111 are not free on this host")
+	}
+	m := newTestManager(t)
+	if err := m.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := m.StartCountry(Country{Region: "IT", Port: 19110}); err != nil {
+		t.Fatalf("StartCountry IT: %v", err)
+	}
+	if err := m.StartCountry(Country{Region: "ES", Port: 19111}); err != nil {
+		t.Fatalf("StartCountry ES: %v", err)
+	}
+	if err := m.StopCountry("ES"); err != nil {
+		t.Fatalf("StopCountry ES: %v", err)
+	}
+	defBefore, itBefore := startedAt(m.def), startedAt(m.existingCountry("IT"))
+	time.Sleep(20 * time.Millisecond)
+
+	if err := m.restartRunning(); err != nil {
+		t.Fatalf("restartRunning: %v", err)
+	}
+
+	if !startedAt(m.def).After(defBefore) || !m.IsRunning() || !listening(SocksPort) {
+		t.Error("the default process was not restarted")
+	}
+	if !startedAt(m.existingCountry("IT")).After(itBefore) || !m.CountryState("IT").Running || !listening(19110) {
+		t.Error("the running country was not restarted")
+	}
+	if m.CountryState("ES").Running || listening(19111) {
+		t.Error("restartRunning started a country that had been stopped")
+	}
+}
+
+func TestRestartRunningDoesNotStartTheDefaultProcessThatIsStopped(t *testing.T) {
+	useFakeCore(t)
+	if !portFree(SocksPort) {
+		t.Skip("port 19060 is not free on this host")
+	}
+	m := newTestManager(t)
+
+	if err := m.restartRunning(); err != nil {
+		t.Fatalf("restartRunning: %v", err)
+	}
+
+	if m.IsRunning() || listening(SocksPort) {
+		t.Fatal("restartRunning started the default process that was stopped")
+	}
+}
+
+func TestAfterUpgradeRestartsTheTunnelsOnlyWhenTheFileWasReplaced(t *testing.T) {
+	useFakeCore(t)
+	if !portFree(SocksPort) {
+		t.Skip("port 19060 is not free on this host")
+	}
+	m := newTestManager(t)
+	if err := m.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	before := startedAt(m.def)
+	time.Sleep(20 * time.Millisecond)
+
+	if replaced, err := m.afterUpgrade(false, nil); replaced || err != nil {
+		t.Fatalf("afterUpgrade(false, nil) = %v, %v, want nothing", replaced, err)
+	}
+	if replaced, err := m.afterUpgrade(false, errors.New("no network")); replaced || err == nil || err.Error() != "no network" {
+		t.Fatalf("afterUpgrade(false, error) = %v, %v, want the error passed on", replaced, err)
+	}
+	if !startedAt(m.def).Equal(before) {
+		t.Fatal("a build that was not replaced restarted the tunnel")
+	}
+
+	if replaced, err := m.afterUpgrade(true, nil); !replaced || err != nil {
+		t.Fatalf("afterUpgrade(true, nil) = %v, %v, want the replacement reported", replaced, err)
+	}
+	if !startedAt(m.def).After(before) || !m.IsRunning() {
+		t.Fatal("a replaced build did not restart the tunnel that ran from the old file")
+	}
+}
+
+func TestRestartRunningRestartsATunnelThatIsStillStarting(t *testing.T) {
+	useFakeCore(t)
+	if !portFree(19112) {
+		t.Skip("port 19112 is not free on this host")
+	}
+	m := newTestManager(t)
+	nl := Country{Region: "NL", Port: 19112}
+	if err := m.PrepareCountry(nl); err != nil {
+		t.Fatalf("PrepareCountry: %v", err)
+	}
+	in := m.existingCountry("NL")
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	render := in.prepare
+	in.prepare = func() error {
+		once.Do(func() { close(entered) })
+		<-release
+		return render()
+	}
+	started := make(chan error, 1)
+	go func() { started <- m.StartCountrySupervised(nl) }()
+	// The start is under way: the tunnel is meant to run and has no process yet.
+	select {
+	case <-entered:
+	case err := <-started:
+		t.Fatalf("StartCountrySupervised ended before it reached the config it was to hold: %v", err)
+	}
+
+	beforeRestart := time.Now()
+	restarted := make(chan error, 1)
+	go func() { restarted <- m.restartRunning() }()
+	close(release)
+
+	if err := <-started; err != nil {
+		t.Fatalf("StartCountrySupervised: %v", err)
+	}
+	if err := <-restarted; err != nil {
+		t.Fatalf("restartRunning: %v", err)
+	}
+	if startedAt(in).Before(beforeRestart) {
+		t.Fatal("a tunnel that was still starting was skipped, so it runs from the file it began with")
+	}
+	if !m.CountryState("NL").Running || !listening(19112) {
+		t.Fatal("the country is not running after the restart")
+	}
+}
+
+// A restart that arrives while a stop holds the lifecycle lock decides once the stop is over, and does not undo it.
+func TestRestartRunningDoesNotUndoAStopThatLandsFirst(t *testing.T) {
+	for name, restart := range map[string]func(m *Manager) error{
+		"the upgrade":   (*Manager).restartRunning,
+		"a config save": (*Manager).RestartCountries,
+	} {
+		t.Run(name, func(t *testing.T) {
+			useFakeCore(t)
+			if !portFree(19113) {
+				t.Skip("port 19113 is not free on this host")
+			}
+			m := newTestManager(t)
+			if err := m.StartCountry(Country{Region: "IT", Port: 19113}); err != nil {
+				t.Fatalf("StartCountry: %v", err)
+			}
+			in := m.existingCountry("IT")
+
+			in.lifecycle.Lock() // the stop is under way
+			restarted := make(chan error, 1)
+			go func() { restarted <- restart(m) }()
+			time.Sleep(50 * time.Millisecond) // long enough for a restart that decides before the lock to have decided
+			stopErr := in.stopLocked()
+			in.lifecycle.Unlock()
+
+			if stopErr != nil {
+				t.Fatalf("stopLocked: %v", stopErr)
+			}
+			if err := <-restarted; err != nil {
+				t.Fatalf("restart: %v", err)
+			}
+			if m.CountryState("IT").Running || listening(19113) {
+				t.Fatal("the restart started again a tunnel that had been stopped")
+			}
+		})
+	}
+}
+
+func TestRestartRunningStartsADefaultProcessThatShouldRunButIsDown(t *testing.T) {
+	useFakeCore(t)
+	if !portFree(SocksPort) {
+		t.Skip("port 19060 is not free on this host")
+	}
+	m := newTestManager(t)
+	t.Setenv(fakeFailStartEnv, "1")
+	if err := m.StartSupervised(); err == nil {
+		t.Fatal("setup: a process that ends at once was reported as started")
+	}
+	t.Setenv(fakeFailStartEnv, "")
+	if m.IsRunning() {
+		t.Fatal("setup: the default process runs")
+	}
+
+	if err := m.restartRunning(); err != nil {
+		t.Fatalf("restartRunning: %v", err)
+	}
+
+	if !m.IsRunning() || !listening(SocksPort) {
+		t.Fatal("a default process that is meant to run, and was down, was not brought up by the restart")
+	}
+}
+
+// The upgrade starts a country that should run and is down, from the new file; the supervisor would do it later.
+func TestRestartRunningStartsACountryThatShouldRunButIsDown(t *testing.T) {
+	useFakeCore(t)
+	if !portFree(19117) {
+		t.Skip("port 19117 is not free on this host")
+	}
+	m := newTestManager(t)
+	fr := Country{Region: "FR", Port: 19117}
+	t.Setenv(fakeFailStartEnv, "1")
+	if err := m.StartCountrySupervised(fr); err == nil {
+		t.Fatal("setup: a process that ends at once was reported as started")
+	}
+	t.Setenv(fakeFailStartEnv, "")
+
+	if err := m.restartRunning(); err != nil {
+		t.Fatalf("restartRunning: %v", err)
+	}
+
+	if !m.CountryState("FR").Running || !listening(fr.Port) {
+		t.Error("a country that is meant to run, and was down, was not brought up by the restart")
+	}
+}
+
+// A config save reaches the countries that run; one that is down is the supervisor's to start, and its failure is no
+// reason to answer a saved config with an error.
+func TestRestartCountriesLeavesACountryThatIsDownToTheSupervisor(t *testing.T) {
+	useFakeCore(t)
+	if !portFree(19116) {
+		t.Skip("port 19116 is not free on this host")
+	}
+	m := newTestManager(t)
+	de := Country{Region: "DE", Port: 19116}
+	t.Setenv(fakeFailStartEnv, "1")
+	if err := m.StartCountrySupervised(de); err == nil {
+		t.Fatal("setup: a process that ends at once was reported as started")
+	}
+	t.Setenv(fakeFailStartEnv, "")
+
+	if err := m.RestartCountries(); err != nil {
+		t.Fatalf("RestartCountries: %v", err)
+	}
+
+	if m.CountryState("DE").Running || listening(de.Port) {
+		t.Error("a config save started a country that was down, which is the supervisor's to start")
+	}
+}
+
+// A config save that found the default process up decides again under the lifecycle lock, so a stop that lands first
+// is not undone.
+func TestRestartIfRunningDoesNotUndoAStopThatLandsFirst(t *testing.T) {
+	useFakeCore(t)
+	if !portFree(SocksPort) {
+		t.Skip("port 19060 is not free on this host")
+	}
+	m := newTestManager(t)
+	if err := m.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	m.def.lifecycle.Lock() // the stop is under way
+	restarted := make(chan error, 1)
+	go func() { restarted <- m.RestartIfRunning() }()
+	time.Sleep(50 * time.Millisecond) // long enough for a restart that decides before the lock to have decided
+	stopErr := m.def.stopLocked()
+	m.def.lifecycle.Unlock()
+
+	if stopErr != nil {
+		t.Fatalf("stopLocked: %v", stopErr)
+	}
+	if err := <-restarted; err != nil {
+		t.Fatalf("RestartIfRunning: %v", err)
+	}
+	if m.IsRunning() || listening(SocksPort) {
+		t.Fatal("the restart started again the default process that had been stopped")
+	}
+}
+
+// A config save leaves a default process that is down to the supervisor, and its failure to start is not the save's.
+func TestRestartIfRunningLeavesTheDefaultProcessThatIsDownToTheSupervisor(t *testing.T) {
+	useFakeCore(t)
+	if !portFree(SocksPort) {
+		t.Skip("port 19060 is not free on this host")
+	}
+	m := newTestManager(t)
+	t.Setenv(fakeFailStartEnv, "1")
+	if err := m.StartSupervised(); err == nil {
+		t.Fatal("setup: a process that ends at once was reported as started")
+	}
+	t.Setenv(fakeFailStartEnv, "")
+
+	if err := m.RestartIfRunning(); err != nil {
+		t.Fatalf("RestartIfRunning: %v", err)
+	}
+
+	if m.IsRunning() || listening(SocksPort) {
+		t.Error("a config save started the default process that was down, which is the supervisor's to start")
+	}
+}
+
+// A config save restarts the default process that is up, which is how the new config reaches it.
+func TestRestartIfRunningRestartsTheDefaultProcessThatIsUp(t *testing.T) {
+	useFakeCore(t)
+	if !portFree(SocksPort) {
+		t.Skip("port 19060 is not free on this host")
+	}
+	m := newTestManager(t)
+	if err := m.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	before := startedAt(m.def)
+	time.Sleep(20 * time.Millisecond)
+
+	if err := m.RestartIfRunning(); err != nil {
+		t.Fatalf("RestartIfRunning: %v", err)
+	}
+
+	if !startedAt(m.def).After(before) || !m.IsRunning() || !listening(SocksPort) {
+		t.Error("the default process that was up was not restarted")
 	}
 }

@@ -117,8 +117,12 @@ and install it: 3x-ui downloads the official ConsoleClient build and runs it as 
 proxy on `127.0.0.1:19060`, on a bundled config unless you upload your own `psiphon.config`.
 **Add outbound** gives you a `socks` outbound tagged `psiphon` that points at it, and
 **Egress region** picks the country the tunnel leaves from (or *Auto*, the best server).
-The panel starts the tunnel again after a restart and after a crash. Do not run it on a
-server located in Russia.
+The panel starts the tunnel again after a restart and after a crash. The build is pinned by its
+checksum: when an update of the panel moves the pin, the panel fetches the new build at its next
+start, replaces the file and restarts the tunnels that run, and brings back the ones that should be
+running and are down. If the download fails, the installed build keeps running, the panel tries
+again a few times over the next half hour (the first try can come before the panel's own outbound
+is up), and the next start tries once more. Do not run it on a server located in Russia.
 
 Once a tunnel has connected or a region scan has run, the pickers of **Egress region** and of
 the countries show where Psiphon has servers: the regions without any are greyed out, marked
