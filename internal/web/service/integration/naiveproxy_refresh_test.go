@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database/dbtest"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
+	"github.com/mhsanaei/3x-ui/v3/internal/naiveproxy"
 )
 
 // engineLines counts the lines of the log that mention text.
@@ -24,11 +26,18 @@ func engineLines(text string) int {
 	return n
 }
 
-// useEngineUpgrade makes upgrade the answer of the engine upgrade for the length of the test; the service reads
-// the proxy setting from a database, so each test gets one of its own.
+// useEngineUpgrade makes upgrade the answer of the engine upgrade for the length of the test, with an engine in place:
+// the refresh looks at an install, and the service reads the proxy setting from a database, one of its own.
 func useEngineUpgrade(t *testing.T, upgrade func(context.Context, *http.Client) (bool, error)) {
 	t.Helper()
 	dbtest.InitDB(t, filepath.Join(t.TempDir(), "x-ui.db"))
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+	if err := os.MkdirAll(naiveproxy.Dir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(naiveproxy.BinPath(), []byte("an engine"), 0o750); err != nil {
+		t.Fatal(err)
+	}
 	real := upgradeEngine
 	upgradeEngine = upgrade
 	t.Cleanup(func() { upgradeEngine = real })
@@ -59,6 +68,24 @@ func TestRefreshEngineWarnsWhenTheEngineCannotBeFetched(t *testing.T) {
 	}
 	if got := engineLines(replaced) - replacedBefore; got != 0 {
 		t.Errorf("%d lines say that the engine was replaced, want none for a failed fetch", got)
+	}
+}
+
+// A panel that never installed the engine asks nothing of anyone at its boot, and reads no setting for it.
+func TestRefreshEngineDoesNothingWithoutAnEngine(t *testing.T) {
+	asked := 0
+	useEngineUpgrade(t, func(context.Context, *http.Client) (bool, error) {
+		asked++
+		return false, nil
+	})
+	if err := os.Remove(naiveproxy.BinPath()); err != nil {
+		t.Fatal(err)
+	}
+
+	(&NaiveProxyService{}).refreshEngine()
+
+	if asked != 0 {
+		t.Errorf("the refresh asked %d times for the engine to be brought to the pinned release, want none without an engine", asked)
 	}
 }
 

@@ -48,6 +48,9 @@ var upgradeEngine = naiveproxy.Upgrade
 func (s *NaiveProxyService) AutoStart() { go s.refreshEngine() }
 
 func (s *NaiveProxyService) refreshEngine() {
+	if !naiveproxy.IsInstalled() {
+		return // nothing to bring up to date, and the egress proxy setting is not read at the boot of every panel
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), installTimeout)
 	defer cancel()
 	replaced, err := upgradeEngine(ctx, s.NewProxiedHTTPClient(installTimeout))

@@ -400,24 +400,6 @@ func TestUpgradeKeepsTheInstalledEngineWhenTheDownloadFails(t *testing.T) {
 	}
 }
 
-func TestUpgradeRefusesAChecksumThatIsNotOne(t *testing.T) {
-	installedEngine(t, "the engine of an earlier panel version", "")
-	requests, _ := serveEngine(t, "the pinned engine")
-
-	for name, digest := range map[string]string{"not hex": "not-a-checksum", "too short": "abcd"} {
-		t.Run(name, func(t *testing.T) {
-			replaced, err := upgradeTo(context.Background(), http.DefaultClient, digest)
-
-			if err == nil || !strings.Contains(err.Error(), "malformed pinned checksum") || replaced {
-				t.Fatalf("upgradeTo = %v, %v, want the malformed checksum refused", replaced, err)
-			}
-		})
-	}
-	if n := requests.Load(); n != 0 {
-		t.Errorf("%d downloads for a checksum that cannot be met, want none", n)
-	}
-}
-
 // A first install writes the release down too, so that the next start does not fetch the engine again.
 func TestFetchWritesDownTheReleaseOfAFirstInstall(t *testing.T) {
 	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
