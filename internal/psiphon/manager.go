@@ -103,8 +103,8 @@ func (m *Manager) IsRunning() bool { return m.def.isRunning() }
 // Psiphon process, or why it could not start, or "" if none has run yet this session.
 func (m *Manager) LastResult() string { return m.def.result() }
 
-// Restart stops and starts the default Psiphon process, used after SaveConfig changes EgressRegion
-// or the config itself -- Psiphon does not hot-reload either.
+// Restart stops and starts the default Psiphon process whatever its state, which is how a changed EgressRegion
+// reaches it -- Psiphon does not hot-reload. A config save uses RestartIfRunning instead.
 func (m *Manager) Restart() error { return m.def.restart(time.Now()) }
 
 // RestartIfRunning restarts the default process when it is up, deciding under its lifecycle lock so a stop that lands
