@@ -184,6 +184,70 @@ func TestNodeResetDeliveredRightAway(t *testing.T) {
 	}
 }
 
+// gatedResetRuntime holds a reset in hand until the test lets it go, or the context of the delivery ends.
+type gatedResetRuntime struct {
+	resetRecordingRuntime
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (g *gatedResetRuntime) ResetClientTraffic(ctx context.Context, ib *model.Inbound, email string) error {
+	select {
+	case g.entered <- struct{}{}:
+	default:
+	}
+	select {
+	case <-g.release:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return g.resetRecordingRuntime.ResetClientTraffic(ctx, ib, email)
+}
+
+// A node that answers has the reset before the request returns: a sub-node that returned first would let its
+// master time the reset out and send it again. The hold is far below the second the request waits at most.
+func TestNodeResetRequestWaitsForTheNodeToAnswer(t *testing.T) {
+	setupBulkDB(t)
+	mgr := useTestRuntimeManager(t)
+	node := &model.Node{Id: 32, Name: "answering", Address: "127.0.0.1", Port: 2096, ApiToken: "tok", Enable: true, Status: "online"}
+	if err := database.GetDB().Create(node).Error; err != nil {
+		t.Fatalf("create node: %v", err)
+	}
+	gate := &gatedResetRuntime{entered: make(chan struct{}, 1), release: make(chan struct{})}
+	mgr.SetRuntimeOverride(node.Id, gate)
+	ib := nodeInbound(t, node.Id, 41913, []model.Client{{Email: "waited", ID: "11111111-1111-1111-1111-1111111111ac", Enable: true}})
+	if err := (&InboundService{}).AddClientStat(database.GetDB(), ib.Id, &model.Client{Email: "waited", Enable: true}); err != nil {
+		t.Fatalf("AddClientStat: %v", err)
+	}
+
+	returned := make(chan error, 1)
+	go func() {
+		_, err := (&InboundService{}).ResetClientTraffic(ib.Id, "waited")
+		returned <- err
+	}()
+	select {
+	case <-gate.entered:
+	case <-time.After(5 * time.Second):
+		close(gate.release)
+		t.Fatal("the node was never told about the reset")
+	}
+	select {
+	case err := <-returned:
+		close(gate.release)
+		t.Fatalf("the request returned (%v) while the node still had the reset in hand", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(gate.release)
+
+	if err := <-returned; err != nil {
+		t.Fatalf("ResetClientTraffic: %v", err)
+	}
+	awaitNodeReset(t, &gate.resetRecordingRuntime, node.Id)
+	if got := gate.delivered(); !slices.Equal(got, []string{"waited"}) {
+		t.Fatalf("node received resets %v, want [waited]", got)
+	}
+}
+
 // bulkResetRuntime also takes a batch in one call.
 type bulkResetRuntime struct {
 	resetRecordingRuntime
