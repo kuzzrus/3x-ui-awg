@@ -117,13 +117,14 @@ func Install(ctx context.Context, client *http.Client) error {
 // Upgrade fetches the pinned release again when the engine in place came from another one, or from one that was never
 // written down, and says whether it put a new file there. A running process keeps the file it started from.
 func Upgrade(ctx context.Context, client *http.Client) (bool, error) {
-	if !Supported() {
-		return false, nil
-	}
-	return upgradeTo(ctx, client, releaseSHA256)
+	return upgradeTo(ctx, client, runtime.GOOS, runtime.GOARCH, releaseSHA256)
 }
 
-func upgradeTo(ctx context.Context, client *http.Client, digest string) (bool, error) {
+// upgradeTo takes the platform as a parameter so that the one where no build is published can be tried on this one.
+func upgradeTo(ctx context.Context, client *http.Client, goos, goarch, digest string) (bool, error) {
+	if checkPlatform(goos, goarch) != nil {
+		return false, nil // the engine there, if any, is the admin's own
+	}
 	installMu.Lock()
 	defer installMu.Unlock()
 	if !IsInstalled() || installedRelease() == digest {

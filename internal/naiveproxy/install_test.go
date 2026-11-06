@@ -309,7 +309,7 @@ func TestUpgradeReplacesAnEngineOfAnotherRelease(t *testing.T) {
 			installedEngine(t, "the engine of an earlier panel version", release)
 			requests, digest := serveEngine(t, "the pinned engine")
 
-			replaced, err := upgradeTo(context.Background(), http.DefaultClient, digest)
+			replaced, err := upgradeTo(context.Background(), http.DefaultClient, "linux", "amd64", digest)
 
 			if err != nil || !replaced {
 				t.Fatalf("upgradeTo = %v, %v, want a replacement", replaced, err)
@@ -339,7 +339,7 @@ func TestUpgradeLeavesAnEngineOfThePinnedReleaseAlone(t *testing.T) {
 	requests, digest := serveEngine(t, "the pinned engine")
 	installedEngine(t, "the pinned engine", digest)
 
-	replaced, err := upgradeTo(context.Background(), http.DefaultClient, digest)
+	replaced, err := upgradeTo(context.Background(), http.DefaultClient, "linux", "amd64", digest)
 
 	if err != nil || replaced {
 		t.Fatalf("upgradeTo = %v, %v, want nothing to do", replaced, err)
@@ -353,13 +353,31 @@ func TestUpgradeDoesNothingWithoutAnEngine(t *testing.T) {
 	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
 	requests, digest := serveEngine(t, "the pinned engine")
 
-	replaced, err := upgradeTo(context.Background(), http.DefaultClient, digest)
+	replaced, err := upgradeTo(context.Background(), http.DefaultClient, "linux", "amd64", digest)
 
 	if err != nil || replaced {
 		t.Fatalf("upgradeTo = %v, %v, want nothing to do", replaced, err)
 	}
 	if IsInstalled() || requests.Load() != 0 {
 		t.Errorf("an upgrade installed something (%v) or downloaded (%d), it is no install", IsInstalled(), requests.Load())
+	}
+}
+
+// Where no build is published the engine is the admin's own, not an old one of the panel's to be put right.
+func TestUpgradeLeavesAnEngineAloneWhereNoBuildIsPublished(t *testing.T) {
+	installedEngine(t, "an engine put there by hand", "")
+	requests, digest := serveEngine(t, "the pinned engine")
+
+	replaced, err := upgradeTo(context.Background(), http.DefaultClient, "linux", "arm64", digest)
+
+	if err != nil || replaced {
+		t.Fatalf("upgradeTo = %v, %v, want nothing to do where no build is published", replaced, err)
+	}
+	if got := readEngine(t); got != "an engine put there by hand" {
+		t.Errorf("the installed engine is %q, want the admin's own", got)
+	}
+	if n := requests.Load(); n != 0 {
+		t.Errorf("%d downloads where no build is published, want none", n)
 	}
 }
 
@@ -380,7 +398,7 @@ func TestUpgradeKeepsTheInstalledEngineWhenTheDownloadFails(t *testing.T) {
 			installedEngine(t, "the engine of an earlier panel version", "")
 			serve(t)
 
-			replaced, err := upgradeTo(context.Background(), http.DefaultClient, otherDigest)
+			replaced, err := upgradeTo(context.Background(), http.DefaultClient, "linux", "amd64", otherDigest)
 
 			if err == nil || replaced {
 				t.Fatalf("upgradeTo = %v, %v, want the failure", replaced, err)
@@ -446,7 +464,7 @@ func TestTwoUpgradesAtOnceFetchTheEngineOnce(t *testing.T) {
 	)
 	upgrade := func(i int) {
 		defer wg.Done()
-		replaced[i], errs[i] = upgradeTo(context.Background(), http.DefaultClient, digest)
+		replaced[i], errs[i] = upgradeTo(context.Background(), http.DefaultClient, "linux", "amd64", digest)
 	}
 	wg.Add(1)
 	go upgrade(0)
