@@ -33,8 +33,8 @@ func Install(ctx context.Context) error {
 	return err
 }
 
-// placeScript replaces the script at path with body, executable. It renames a staged copy over the target: the
-// scheduler runs these scripts directly, and bash reads a script as it executes it.
+// placeScript replaces the script at path with body, executable. It syncs a staged copy and renames it over the target:
+// the scheduler runs these scripts directly, and bash reads a script as it executes it.
 func placeScript(path string, body []byte) error {
 	stage, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".new.*")
 	if err != nil {
@@ -45,6 +45,9 @@ func placeScript(path string, body []byte) error {
 	_, err = stage.Write(body)
 	if err == nil {
 		err = stage.Chmod(0o755)
+	}
+	if err == nil {
+		err = stage.Sync()
 	}
 	if closeErr := stage.Close(); err == nil {
 		err = closeErr

@@ -221,6 +221,8 @@ func TestInstallLeavesNoStagedCopyWhenPlacingFails(t *testing.T) {
 // a line in $WIREPROXY_TEST_RECORD, so a test sees what the real script does for the arguments the panel sends.
 const sandboxedManager = `#!/usr/bin/env bash
 source "$WIREPROXY_TEST_MANAGER"
+MANAGER_BIN=/nonexistent/warpwp
+NATIVE_BIN=/nonexistent/warp-wireproxy-native.sh
 need_root() { :; }
 acquire_admin_lock() { :; }
 acquire_maintenance_locks() { :; }
@@ -232,11 +234,14 @@ systemctl() { echo "systemctl $*" >> "$WIREPROXY_TEST_RECORD"; [[ "${1:-}" != is
 ip() { echo "ip $*" >> "$WIREPROXY_TEST_RECORD"; return 1; }
 rm() { echo "rm $*" >> "$WIREPROXY_TEST_RECORD"; }
 rmdir() { echo "rmdir $*" >> "$WIREPROXY_TEST_RECORD"; return 1; }
-main "$@"
 `
 
-// withSandboxedManager makes the sandboxed stand-in the manager the package runs, and returns the record it writes.
-func withSandboxedManager(t *testing.T) (record string) {
+// sandboxedManagerRun ends the stand-in; a test adds its own overrides before it.
+const sandboxedManagerRun = "main \"$@\"\n"
+
+// withSandboxedManager makes the sandboxed stand-in, with the overrides a test adds, the manager the package runs, and
+// returns the record it writes.
+func withSandboxedManager(t *testing.T, overrides ...string) (record string) {
 	t.Helper()
 	dir := t.TempDir()
 	manager := filepath.Join(dir, "warpwp.sh")
@@ -246,8 +251,10 @@ func withSandboxedManager(t *testing.T) (record string) {
 	record = filepath.Join(dir, "record")
 	t.Setenv("WIREPROXY_TEST_MANAGER", manager)
 	t.Setenv("WIREPROXY_TEST_RECORD", record)
+	t.Setenv("WG_DIR", filepath.Join(dir, "wireguard"))
 	withFakeManagerBin(t, false)
-	if err := os.WriteFile(managerBinPath, []byte(sandboxedManager), 0o755); err != nil {
+	script := sandboxedManager + strings.Join(overrides, "") + sandboxedManagerRun
+	if err := os.WriteFile(managerBinPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("writing the sandboxed manager: %v", err)
 	}
 	return record
@@ -264,6 +271,33 @@ func TestFixRoutingClearsTheSystemWarpRouting(t *testing.T) {
 
 	if got := readRecord(t, record); !strings.Contains(got, "systemctl disable --now wg-quick@warp wg-quick@wgcf warp-svc\n") {
 		t.Errorf("the manager did not remove the system WARP routing; it ran:\n%s", got)
+	}
+}
+
+// --install-current is the half of --install that fetches nothing; plain --install replaces both scripts with the latest
+// release first, so a panel build would run a manager it never shipped.
+func TestTheInstallActionFetchesNoScript(t *testing.T) {
+	native := filepath.Join(t.TempDir(), "warp-wireproxy-native.sh")
+	if err := os.WriteFile(native, []byte("#!/usr/bin/env bash\necho native >> \"$WIREPROXY_TEST_RECORD\"\n"), 0o755); err != nil {
+		t.Fatalf("writing the native stand-in: %v", err)
+	}
+	record := withSandboxedManager(t,
+		"update_local_scripts() { echo update_local_scripts >> \"$WIREPROXY_TEST_RECORD\"; }\n",
+		"install_cron_check() { echo install_cron_check >> \"$WIREPROXY_TEST_RECORD\"; }\n",
+		"NATIVE_BIN=\""+native+"\"\n",
+	)
+
+	_, err := run(context.Background(), actionInstall)
+
+	got := readRecord(t, record)
+	if strings.Contains(got, "update_local_scripts") {
+		t.Fatalf("the install action fetched the scripts from the network; it ran:\n%s", got)
+	}
+	if err != nil {
+		t.Fatalf("the install action: %v", err)
+	}
+	if !strings.Contains(got, "native\n") {
+		t.Errorf("the install action never ran the native installer; it ran:\n%s", got)
 	}
 }
 

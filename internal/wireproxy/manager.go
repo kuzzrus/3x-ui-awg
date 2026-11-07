@@ -50,9 +50,8 @@ import (
 	"os/exec"
 )
 
-// SocksPort is fixed by the vendored warpwp.sh itself (SOCKS_PORT="40000"),
-// not something this package chooses independently -- changing it here alone
-// would not change what warpwp actually binds.
+// SocksPort is the default the vendored warpwp.sh binds (SOCKS_PORT="40000"); the port wireproxy really listens on is
+// the one in its proxy.conf, which Status.Socks5.Port reports.
 const SocksPort = 40000
 
 // serviceName is the systemd unit warp-wireproxy-native.sh installs.
