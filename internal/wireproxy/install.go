@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // The warpwp actions this package runs; the vendored manager script has to answer to each of them.
@@ -21,14 +22,26 @@ const (
 // (see this package's doc for what that touches on the host). Already installed is no no-op, unlike Tor, AdGuard and
 // Psiphon: the action is idempotent, and an admin may want to run it again to repair or update the setup.
 func Install(ctx context.Context) error {
-	if err := os.WriteFile(managerBinPath, managerScript, 0o755); err != nil {
-		return fmt.Errorf("placing %s: %w", managerBinPath, err)
+	if err := placeScript(managerBinPath, managerScript); err != nil {
+		return err
 	}
-	if err := os.WriteFile(nativeBinPath, nativeScript, 0o755); err != nil {
-		return fmt.Errorf("placing %s: %w", nativeBinPath, err)
+	if err := placeScript(nativeBinPath, nativeScript); err != nil {
+		return err
 	}
 	_, err := run(ctx, actionInstall)
 	return err
+}
+
+// placeScript writes an embedded script and makes it executable: WriteFile applies the mode only to a file it creates,
+// and warpwp runs the native script directly.
+func placeScript(path string, body []byte) error {
+	if err := os.WriteFile(path, body, 0o755); err != nil {
+		return fmt.Errorf("placing %s: %w", path, err)
+	}
+	if err := os.Chmod(path, 0o755); err != nil {
+		return fmt.Errorf("making %s executable: %w", path, err)
+	}
+	return nil
 }
 
 // Uninstall runs warpwp's own safe removal (--remove): stops and disables
@@ -39,6 +52,7 @@ func Install(ctx context.Context) error {
 // down wgcf/warp-cli/fscarmen traces -- a much larger blast radius this
 // package has no way to scope down to just what it installed.
 func Uninstall(ctx context.Context) error {
-	_, err := run(ctx, actionRemove)
+	// The script asks y/N before it removes anything; the panel's own dialog is where the admin confirmed.
+	_, err := runWithInput(ctx, strings.NewReader("y\n"), actionRemove)
 	return err
 }

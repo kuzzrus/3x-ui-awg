@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -95,10 +97,21 @@ func TestEmbeddedManagerAnswersEveryActionThePanelRuns(t *testing.T) {
 	}
 }
 
-// Install runs the manager with the action that fetches no script, and leaves both scripts where warpwp expects them.
-func TestInstallPlacesTheScriptsAndRunsInstallCurrent(t *testing.T) {
+func readRecord(t *testing.T, path string) string {
+	t.Helper()
+	out, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	return string(out)
+}
+
+// withEmbeddedStandIns swaps the embedded scripts for stand-ins and the paths Install writes them to for a temp dir.
+// The manager stand-in records the arguments it is run with in the returned file.
+func withEmbeddedStandIns(t *testing.T) (record string) {
+	t.Helper()
 	dir := t.TempDir()
-	record := filepath.Join(dir, "args")
+	record = filepath.Join(dir, "args")
 	t.Setenv("WIREPROXY_TEST_RECORD", record)
 	realManager, realNative, realManagerBin, realNativeBin := managerScript, nativeScript, managerBinPath, nativeBinPath
 	t.Cleanup(func() {
@@ -108,19 +121,107 @@ func TestInstallPlacesTheScriptsAndRunsInstallCurrent(t *testing.T) {
 	nativeScript = []byte("#!/usr/bin/env bash\n# the native script\n")
 	managerBinPath = filepath.Join(dir, "warpwp")
 	nativeBinPath = filepath.Join(dir, "warp-wireproxy-native.sh")
+	return record
+}
+
+// Install runs the manager with the action that fetches no script, and leaves both scripts where warpwp expects them.
+func TestInstallPlacesTheScriptsAndRunsInstallCurrent(t *testing.T) {
+	record := withEmbeddedStandIns(t)
 
 	if err := Install(context.Background()); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 
-	args, err := os.ReadFile(record)
-	if err != nil {
-		t.Fatalf("the manager was not run: %v", err)
-	}
-	if got := strings.TrimSpace(string(args)); got != "--install-current" {
+	if got := strings.TrimSpace(readRecord(t, record)); got != "--install-current" {
 		t.Errorf("the manager was run with %q, want --install-current", got)
 	}
 	if native, err := os.ReadFile(nativeBinPath); err != nil || string(native) != string(nativeScript) {
 		t.Errorf("the native script was not placed as embedded (%q, %v)", native, err)
+	}
+}
+
+// WriteFile leaves the mode of a file that exists, and warpwp runs the native script directly, not through bash.
+func TestInstallMakesAnOlderScriptExecutable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file modes mean nothing on Windows")
+	}
+	withEmbeddedStandIns(t)
+	for _, path := range []string{managerBinPath, nativeBinPath} {
+		if err := os.WriteFile(path, []byte("an older copy\n"), 0o644); err != nil {
+			t.Fatalf("seeding %s: %v", path, err)
+		}
+	}
+
+	if err := Install(context.Background()); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	for _, path := range []string{managerBinPath, nativeBinPath} {
+		if info, err := os.Stat(path); err != nil || info.Mode().Perm()&0o111 == 0 {
+			t.Errorf("%s is not executable after Install (%v, %v)", path, info, err)
+		}
+	}
+}
+
+// A stand-in for warpwp that runs the vendored manager's own code with everything that would touch the host replaced by
+// a line in $WIREPROXY_TEST_RECORD, so a test sees what the real script does for the arguments the panel sends.
+const sandboxedManager = `#!/usr/bin/env bash
+source "$WIREPROXY_TEST_MANAGER"
+need_root() { :; }
+acquire_admin_lock() { :; }
+acquire_maintenance_locks() { :; }
+release_maintenance_locks() { :; }
+remove_timer_check_quiet() { :; }
+remove_cron_check() { :; }
+remove_project_wg_files() { :; }
+systemctl() { echo "systemctl $*" >> "$WIREPROXY_TEST_RECORD"; [[ "${1:-}" != is-* ]]; }
+ip() { echo "ip $*" >> "$WIREPROXY_TEST_RECORD"; return 1; }
+rm() { echo "rm $*" >> "$WIREPROXY_TEST_RECORD"; }
+rmdir() { echo "rmdir $*" >> "$WIREPROXY_TEST_RECORD"; return 1; }
+main "$@"
+`
+
+// withSandboxedManager makes the sandboxed stand-in the manager the package runs, and returns the record it writes.
+func withSandboxedManager(t *testing.T) (record string) {
+	t.Helper()
+	dir := t.TempDir()
+	manager := filepath.Join(dir, "warpwp.sh")
+	if err := os.WriteFile(manager, managerScript, 0o644); err != nil {
+		t.Fatalf("writing the vendored manager: %v", err)
+	}
+	record = filepath.Join(dir, "record")
+	t.Setenv("WIREPROXY_TEST_MANAGER", manager)
+	t.Setenv("WIREPROXY_TEST_RECORD", record)
+	withFakeManagerBin(t, false)
+	if err := os.WriteFile(managerBinPath, []byte(sandboxedManager), 0o755); err != nil {
+		t.Fatalf("writing the sandboxed manager: %v", err)
+	}
+	return record
+}
+
+// The manager (v1.3.9) removes the system WARP routing only when told --force and otherwise warns and succeeds, which
+// would leave the panel's fix button reporting a cleanup that never happened.
+func TestFixRoutingClearsTheSystemWarpRouting(t *testing.T) {
+	record := withSandboxedManager(t)
+
+	if err := FixRouting(context.Background()); err != nil {
+		t.Fatalf("FixRouting: %v", err)
+	}
+
+	if got := readRecord(t, record); !strings.Contains(got, "systemctl disable --now wg-quick@warp wg-quick@wgcf warp-svc\n") {
+		t.Errorf("the manager did not remove the system WARP routing; it ran:\n%s", got)
+	}
+}
+
+// --remove asks y/N on stdin, and the script's set -e aborts at the read when nothing answers.
+func TestUninstallStopsTheService(t *testing.T) {
+	record := withSandboxedManager(t)
+
+	if err := Uninstall(context.Background()); err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+
+	if got := readRecord(t, record); !strings.Contains(got, "systemctl stop wireproxy\n") {
+		t.Errorf("the manager never reached the removal; it ran:\n%s", got)
 	}
 }

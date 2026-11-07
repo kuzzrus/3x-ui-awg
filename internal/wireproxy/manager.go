@@ -25,12 +25,13 @@
 //
 // warpwp.sh/warp-wireproxy-native.sh are vendored via go:embed, byte for byte
 // the assets of one signed release of the manager (manager_test.go pins their
-// digests), and Install runs warpwp's --install-current,
-// which sets up with the scripts on disk and fetches none. Plain --install
-// would first replace them with the latest signed release, so a panel build
-// could run scripts it never shipped or reviewed. What the native script
-// downloads itself (wgcf, wireproxy, OS packages) is not pinned by the panel.
-// An admin's own warpwp --update still moves the scripts, which is theirs to do.
+// digests). Install runs warpwp's --install-current, which sets up with the
+// scripts on disk and fetches none; plain --install would first replace them
+// with the latest signed release, so a panel build could run scripts it never
+// shipped or reviewed. Outside that pin stay what the native script downloads
+// itself (wgcf, wireproxy, OS packages), an admin's own warpwp --update, and a
+// Repair that finds the native script gone (after Uninstall), where warpwp
+// fetches the latest signed release itself.
 //
 // This carries real system-level blast radius none of Tor/AdGuard/Psiphon
 // do: warpwp runs as root, installs OS packages via the host's own package
@@ -44,6 +45,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 )
@@ -87,7 +89,14 @@ func IsInstalled() bool {
 // runs as root, the same precondition every other host-level action here
 // (AmneziaWG, frontproxy certs, etc.) already relies on.
 func run(ctx context.Context, args ...string) ([]byte, error) {
+	return runWithInput(ctx, nil, args...)
+}
+
+// runWithInput is run for an action that asks a question on stdin. Without an answer the script's set -e aborts at the
+// read, so --remove would exit before it stops or deletes anything.
+func runWithInput(ctx context.Context, stdin io.Reader, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "bash", append([]string{managerBinPath}, args...)...)
+	cmd.Stdin = stdin
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -147,8 +156,9 @@ func Repair(ctx context.Context, mode RepairMode) error {
 // FixRouting clears dangerous system-wide WARP routing outside wireproxy's
 // own management (see Status.RoutingGuard.Danger and this package's own doc
 // comment) without touching wireproxy's own SOCKS5 setup -- the UI exposes
-// this specifically so clearing it never requires SSH either.
+// this specifically so clearing it never requires SSH either. The manager
+// (v1.3.9) only cleans up when told --force and otherwise warns and succeeds.
 func FixRouting(ctx context.Context) error {
-	_, err := run(ctx, actionFixRouting)
+	_, err := run(ctx, actionFixRouting, "--force")
 	return err
 }

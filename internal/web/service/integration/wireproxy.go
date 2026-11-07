@@ -17,13 +17,17 @@ import (
 type WireproxyService struct{}
 
 // wireproxyInstallTimeout is longer than the shared installTimeout
-// (adguard.go) -- warpwp --install does OS package installs, a WARP
+// (adguard.go) -- warpwp --install-current does OS package installs, a WARP
 // registration, and an initial endpoint scan inline, not just one download.
 const wireproxyInstallTimeout = 8 * time.Minute
 
-// wireproxyActionTimeout bounds Start/Stop/Uninstall/Status -- all systemctl
-// calls or a single warpwp status/remove invocation, not a package install.
+// wireproxyActionTimeout bounds Start/Stop/Status/FixRouting -- systemctl calls
+// or a single quick warpwp invocation, not a package install.
 const wireproxyActionTimeout = 30 * time.Second
+
+// wireproxyRemoveTimeout leaves room for warpwp --remove, which waits up to 15s
+// on each of two maintenance locks before it stops or deletes anything.
+const wireproxyRemoveTimeout = 2 * time.Minute
 
 // WireproxyStatus is the panel-facing status shape: a curated subset of
 // wireproxy.Status (which mirrors `warpwp --status-json`'s own field names
@@ -81,7 +85,7 @@ func (s *WireproxyService) Install() error {
 }
 
 func (s *WireproxyService) Uninstall() error {
-	ctx, cancel := context.WithTimeout(context.Background(), wireproxyActionTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), wireproxyRemoveTimeout)
 	defer cancel()
 	return wireproxy.Uninstall(ctx)
 }
