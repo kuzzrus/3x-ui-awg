@@ -5,7 +5,7 @@ go 1.27.3
 require (
 	github.com/amnezia-vpn/amneziawg-go/v3 v3.1.20260828
 	github.com/apernet/quic-go v0.61.1-0.20260806010916-184d081eef3e
-	github.com/caddyserver/certmagic v0.25.4
+	github.com/caddyserver/certmagic v0.25.6
 	github.com/gin-contrib/gzip v1.2.9
 	github.com/gin-contrib/sessions v1.1.3
 	github.com/gin-gonic/gin v1.12.0
@@ -27,7 +27,7 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/shirou/gopsutil/v4 v4.26.10
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
-	github.com/ulikunitz/xz v0.5.16
+	github.com/ulikunitz/xz v0.5.17
 	github.com/valyala/fasthttp v1.77.0
 	github.com/xlzd/gotp v0.1.0
 	github.com/xtls/xray-core v1.260327.1-0.20261031132019-a4a3dff5b20c
@@ -53,7 +53,7 @@ require (
 	github.com/bytedance/gopkg v0.1.4 // indirect
 	github.com/bytedance/sonic v1.15.5 // indirect
 	github.com/bytedance/sonic/loader v0.5.3 // indirect
-	github.com/caddyserver/zerossl v0.1.5 // indirect
+	github.com/caddyserver/zerossl v0.1.6 // indirect
 	github.com/cloudwego/base64x v0.1.7 // indirect
 	github.com/ebitengine/purego v0.11.2 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.16 // indirect
@@ -84,7 +84,7 @@ require (
 	github.com/libp2p/go-netroute v0.4.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20261101121723-be84dd9509a0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
-	github.com/mholt/acmez/v3 v3.1.6 // indirect
+	github.com/mholt/acmez/v3 v3.1.7 // indirect
 	github.com/miekg/dns v1.1.73 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
@@ -114,7 +114,7 @@ require (
 	github.com/zeebo/blake3 v0.2.4 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.9.2 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.27.1 // indirect
+	go.uber.org/zap v1.28.0 // indirect
 	go.uber.org/zap/exp v0.3.0 // indirect
 	go4.org/netipx v0.0.0-20260823151212-3075585bcbeb // indirect
 	golang.org/x/arch v0.32.0 // indirect
