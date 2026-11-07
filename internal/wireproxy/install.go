@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -32,14 +33,27 @@ func Install(ctx context.Context) error {
 	return err
 }
 
-// placeScript writes an embedded script and makes it executable: WriteFile applies the mode only to a file it creates,
-// and warpwp runs the native script directly.
+// placeScript replaces the script at path with body, executable. It renames a staged copy over the target: the
+// scheduler runs these scripts directly, and bash reads a script as it executes it.
 func placeScript(path string, body []byte) error {
-	if err := os.WriteFile(path, body, 0o755); err != nil {
-		return fmt.Errorf("placing %s: %w", path, err)
+	stage, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".new.*")
+	if err != nil {
+		return fmt.Errorf("staging %s: %w", path, err)
 	}
-	if err := os.Chmod(path, 0o755); err != nil {
-		return fmt.Errorf("making %s executable: %w", path, err)
+	// After the rename there is nothing left at the staged path, and this does nothing.
+	defer os.Remove(stage.Name())
+	_, err = stage.Write(body)
+	if err == nil {
+		err = stage.Chmod(0o755)
+	}
+	if closeErr := stage.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return fmt.Errorf("staging %s: %w", path, err)
+	}
+	if err := os.Rename(stage.Name(), path); err != nil {
+		return fmt.Errorf("placing %s: %w", path, err)
 	}
 	return nil
 }

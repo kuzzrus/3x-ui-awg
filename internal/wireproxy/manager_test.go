@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -140,7 +141,8 @@ func TestInstallPlacesTheScriptsAndRunsInstallCurrent(t *testing.T) {
 	}
 }
 
-// WriteFile leaves the mode of a file that exists, and warpwp runs the native script directly, not through bash.
+// An older copy that lost its executable bit is replaced by one that has it: warpwp runs the native script directly,
+// not through bash.
 func TestInstallMakesAnOlderScriptExecutable(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("file modes mean nothing on Windows")
@@ -159,6 +161,58 @@ func TestInstallMakesAnOlderScriptExecutable(t *testing.T) {
 	for _, path := range []string{managerBinPath, nativeBinPath} {
 		if info, err := os.Stat(path); err != nil || info.Mode().Perm()&0o111 == 0 {
 			t.Errorf("%s is not executable after Install (%v, %v)", path, info, err)
+		}
+	}
+}
+
+// The scheduler runs $NATIVE_BIN directly every 10 minutes and bash reads a script as it executes it, so Install has to
+// replace the file rather than rewrite the one a check may be running.
+func TestInstallReplacesTheScriptTheSchedulerMayBeRunning(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a file that is open cannot be replaced on Windows")
+	}
+	withEmbeddedStandIns(t)
+	const running = "the copy a scheduled check is executing\n"
+	if err := os.WriteFile(nativeBinPath, []byte(running), 0o755); err != nil {
+		t.Fatalf("seeding %s: %v", nativeBinPath, err)
+	}
+	handle, err := os.Open(nativeBinPath)
+	if err != nil {
+		t.Fatalf("opening %s: %v", nativeBinPath, err)
+	}
+	defer handle.Close()
+
+	if err := Install(context.Background()); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	still, err := io.ReadAll(handle)
+	if err != nil {
+		t.Fatalf("reading the already-open copy: %v", err)
+	}
+	if string(still) != running {
+		t.Errorf("the already-open copy now reads %q; Install rewrote the file bash is executing", still)
+	}
+}
+
+// A placement that fails leaves no staged copy next to the target.
+func TestInstallLeavesNoStagedCopyWhenPlacingFails(t *testing.T) {
+	withEmbeddedStandIns(t)
+	if err := os.Mkdir(nativeBinPath, 0o755); err != nil {
+		t.Fatalf("making a directory where the native script goes: %v", err)
+	}
+
+	if err := Install(context.Background()); err == nil {
+		t.Fatal("Install succeeded although the native script's path is a directory")
+	}
+
+	entries, err := os.ReadDir(filepath.Dir(nativeBinPath))
+	if err != nil {
+		t.Fatalf("listing %s: %v", filepath.Dir(nativeBinPath), err)
+	}
+	for _, entry := range entries {
+		if strings.Contains(entry.Name(), ".new.") {
+			t.Errorf("a staged copy was left behind: %s", entry.Name())
 		}
 	}
 }

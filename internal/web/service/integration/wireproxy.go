@@ -25,9 +25,9 @@ const wireproxyInstallTimeout = 8 * time.Minute
 // or a single quick warpwp invocation, not a package install.
 const wireproxyActionTimeout = 30 * time.Second
 
-// wireproxyRemoveTimeout leaves room for warpwp --remove, which waits up to 15s
-// on each of two maintenance locks before it stops or deletes anything.
-const wireproxyRemoveTimeout = 2 * time.Minute
+// wireproxyRemoveTimeout covers warpwp --remove at its slowest: two 15s waits on maintenance locks, and systemd's
+// default 90s stop timeout for each of the two units (the check and wireproxy) that may ignore SIGTERM.
+const wireproxyRemoveTimeout = 5 * time.Minute
 
 // WireproxyStatus is the panel-facing status shape: a curated subset of
 // wireproxy.Status (which mirrors `warpwp --status-json`'s own field names
