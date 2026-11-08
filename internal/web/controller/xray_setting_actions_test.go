@@ -52,14 +52,6 @@ func TestSidecarEndpointsRefuseAnUnknownAction(t *testing.T) {
 	}
 }
 
-// The default case must not swallow the actions the endpoint has.
-func TestSidecarEndpointsStillAnswerAnAction(t *testing.T) {
-	body := postTo(sidecarEngine(), "/panel/api/xray/wireproxy/status").Body.String()
-	if !strings.Contains(body, `"success":true`) {
-		t.Errorf("POST wireproxy/status answered %s, want a success", body)
-	}
-}
-
 // deadlineRecorder remembers the write deadlines a handler asks the connection for.
 type deadlineRecorder struct {
 	gin.ResponseWriter

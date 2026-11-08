@@ -639,7 +639,7 @@ func (a *XraySettingController) pia(c *gin.Context) {
 	case "addKey":
 		resp, err = a.PiaService.AddKey(c.PostForm("hostname"))
 	default:
-		jsonMsg(c, "unknown action", common.NewError("unknown action"))
+		unknownAction(c)
 		return
 	}
 	if err != nil {
