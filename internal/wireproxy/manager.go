@@ -50,10 +50,6 @@ import (
 	"os/exec"
 )
 
-// SocksPort is the default the vendored warpwp.sh binds (SOCKS_PORT="40000"); the port wireproxy really listens on is
-// the one in its proxy.conf, which Status.Socks5.Port reports.
-const SocksPort = 40000
-
 // serviceName is the systemd unit warp-wireproxy-native.sh installs.
 const serviceName = "wireproxy"
 
@@ -99,7 +95,10 @@ func runWithInput(ctx context.Context, stdin io.Reader, args ...string) ([]byte,
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	finished := stopGroupOnCancel(cmd)
+	err := cmd.Run()
+	finished()
+	if err != nil {
 		return nil, fmt.Errorf("warpwp %v: %w: %s", args, err, bytes.TrimSpace(stderr.Bytes()))
 	}
 	return stdout.Bytes(), nil
