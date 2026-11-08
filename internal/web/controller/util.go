@@ -1,13 +1,16 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/netip"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/entity"
@@ -144,6 +147,51 @@ func jsonMsg(c *gin.Context, msg string, err error) {
 // jsonObj sends a JSON response with an object and error status.
 func jsonObj(c *gin.Context, obj any, err error) {
 	jsonMsgObj(c, "", obj, err)
+}
+
+// unknownAction answers a request for an action the endpoint does not have. A switch on the action without a default
+// case falls through to a success the request never earned.
+func unknownAction(c *gin.Context) {
+	jsonMsg(c, I18nWeb(c, "somethingWentWrong"), errors.New("unknown action"))
+}
+
+// slowActionDeadline is how long the response of a slow action may take to be written, above the longest budget of an
+// action behind allowSlowAction (the wireproxy install, 8 minutes); each action bounds itself.
+const slowActionDeadline = 10 * time.Minute
+
+// allowSlowAction lets the handler of a route answer after the server's WriteTimeout of 30 seconds: the installs behind
+// the sidecar routes download, scan and run package managers for minutes.
+func allowSlowAction(c *gin.Context) {
+	_ = http.NewResponseController(deadlineWriter(c.Writer)).SetWriteDeadline(time.Now().Add(slowActionDeadline))
+}
+
+// deadlineWriter finds, under the writers that middleware wrapped around the response, the one http.ResponseController can
+// set a deadline on. gin's writer can be unwrapped, but gin-contrib/gzip's cannot: it embeds gin's as a field and has no
+// Unwrap, and the panel puts it in front of every route.
+func deadlineWriter(w http.ResponseWriter) http.ResponseWriter {
+	for range 8 {
+		switch w.(type) {
+		case interface{ SetWriteDeadline(time.Time) error }, interface{ Unwrap() http.ResponseWriter }:
+			return w
+		}
+		v := reflect.ValueOf(w)
+		if v.Kind() == reflect.Pointer {
+			v = v.Elem()
+		}
+		if v.Kind() != reflect.Struct {
+			return w
+		}
+		inner := v.FieldByName("ResponseWriter")
+		if !inner.IsValid() || !inner.CanInterface() {
+			return w
+		}
+		next, ok := inner.Interface().(http.ResponseWriter)
+		if !ok {
+			return w
+		}
+		w = next
+	}
+	return w
 }
 
 func requestErrorContext(c *gin.Context) string {

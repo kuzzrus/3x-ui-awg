@@ -58,16 +58,17 @@ func (a *XraySettingController) initRouter(g *gin.RouterGroup) {
 	g.POST("/", a.getXraySetting)
 	g.POST("/warp/:action", a.warp)
 	g.POST("/nord/:action", a.nord)
-	g.POST("/tor/:action", a.tor)
-	g.POST("/psiphon/:action", a.psiphon)
+	// The installs behind these routes run for minutes, past the server's 30 second WriteTimeout.
+	g.POST("/tor/:action", allowSlowAction, a.tor)
+	g.POST("/psiphon/:action", allowSlowAction, a.psiphon)
 	g.POST("/psiphon/config/upload", a.psiphonConfigUpload)
-	g.POST("/naiveproxy/:action", a.naiveProxy)
-	g.POST("/wireproxy/:action", a.wireproxy)
+	g.POST("/naiveproxy/:action", allowSlowAction, a.naiveProxy)
+	g.POST("/wireproxy/:action", allowSlowAction, a.wireproxy)
 	g.POST("/frontproxy/:action", a.frontProxy)
 	g.POST("/frontproxy/decoy/upload", a.frontProxyDecoyUpload)
 	g.GET("/frontproxy/pathRoutes", a.getFrontProxyPathRoutes)
 	g.POST("/frontproxy/pathRoutes", a.setFrontProxyPathRoutes)
-	g.POST("/adguard/:action", a.adGuard)
+	g.POST("/adguard/:action", allowSlowAction, a.adGuard)
 	g.POST("/pia/:action", a.pia)
 	g.POST("/update", a.updateSetting)
 	g.POST("/resetOutboundsTraffic", a.resetOutboundsTraffic)
@@ -268,6 +269,9 @@ func (a *XraySettingController) warp(c *gin.Context) {
 			// otherwise the job would rotate on its next tick.
 			err = a.SettingService.SetWarpLastUpdate(time.Now().Unix())
 		}
+	default:
+		unknownAction(c)
+		return
 	}
 
 	jsonObj(c, resp, err)
@@ -294,6 +298,9 @@ func (a *XraySettingController) nord(c *gin.Context) {
 		resp, err = a.NordService.GetNordData()
 	case "del":
 		err = a.NordService.DelNordData()
+	default:
+		unknownAction(c)
+		return
 	}
 
 	jsonObj(c, resp, err)
@@ -319,6 +326,9 @@ func (a *XraySettingController) tor(c *gin.Context) {
 		resp, err = a.TorService.CurrentIP()
 	case "newIdentity":
 		err = a.TorService.NewIdentity()
+	default:
+		unknownAction(c)
+		return
 	}
 	jsonObj(c, resp, err)
 }
@@ -344,6 +354,9 @@ func (a *XraySettingController) psiphon(c *gin.Context) {
 		err = a.PsiphonService.SetEgressRegion(c.PostForm("region"))
 	case "verify":
 		resp, err = a.PsiphonService.CurrentExit()
+	default:
+		unknownAction(c)
+		return
 	}
 	jsonObj(c, resp, err)
 }
@@ -366,6 +379,9 @@ func (a *XraySettingController) naiveProxy(c *gin.Context) {
 		if inboundId, err = strconv.Atoi(c.PostForm("inboundId")); err == nil {
 			err = a.NaiveProxyService.RetryCert(inboundId)
 		}
+	default:
+		unknownAction(c)
+		return
 	}
 	jsonObj(c, resp, err)
 }
@@ -398,7 +414,7 @@ func (a *XraySettingController) psiphonCountry(c *gin.Context) {
 		jsonObj(c, resp, err)
 		return
 	default:
-		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), errors.New("unknown action"))
+		unknownAction(c)
 		return
 	}
 	// The list is read again even when the action failed: a start that failed in one country says why there.
@@ -432,7 +448,7 @@ func (a *XraySettingController) psiphonScanAction(c *gin.Context) {
 	case "schedule":
 		err = a.PsiphonService.SetScanWeekly(c.PostForm("weekly") == "true")
 	default:
-		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), errors.New("unknown action"))
+		unknownAction(c)
 		return
 	}
 	jsonObj(c, a.PsiphonService.ScanStatus(), err)
@@ -486,6 +502,9 @@ func (a *XraySettingController) wireproxy(c *gin.Context) {
 		err = a.WireproxyService.Repair(mode)
 	case "fixRouting":
 		err = a.WireproxyService.FixRouting()
+	default:
+		unknownAction(c)
+		return
 	}
 	jsonObj(c, resp, err)
 }
@@ -505,6 +524,9 @@ func (a *XraySettingController) frontProxy(c *gin.Context) {
 		err = a.FrontProxyService.Stop()
 	case "removeDecoy":
 		err = a.FrontProxyService.RemoveDecoy()
+	default:
+		unknownAction(c)
+		return
 	}
 	jsonObj(c, resp, err)
 }
@@ -529,6 +551,9 @@ func (a *XraySettingController) adGuard(c *gin.Context) {
 		err = a.AdGuardService.Stop()
 	case "credentials":
 		err = a.AdGuardService.SetCredentials(c.PostForm("user"), c.PostForm("password"))
+	default:
+		unknownAction(c)
+		return
 	}
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.adGuard"), err)
