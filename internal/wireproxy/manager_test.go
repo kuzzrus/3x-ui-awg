@@ -313,3 +313,57 @@ func TestUninstallStopsTheService(t *testing.T) {
 		t.Errorf("the manager never reached the removal; it ran:\n%s", got)
 	}
 }
+
+// After Uninstall the native script is gone, and warpwp answers a scan without it by replacing both scripts with the
+// latest release -- the one panel action left that could run a manager this build never shipped.
+func TestRepairRefusesToLetWarpwpFetchTheScripts(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		have bool
+	}{
+		{"missing", false},
+		{"not executable", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			record := withSandboxedManager(t,
+				"update_local_scripts() { echo update_local_scripts >> \"$WIREPROXY_TEST_RECORD\"; return 1; }\n",
+			)
+			realNativeBin := nativeBinPath
+			t.Cleanup(func() { nativeBinPath = realNativeBin })
+			nativeBinPath = filepath.Join(t.TempDir(), "warp-wireproxy-native.sh")
+			if tc.have {
+				if err := os.WriteFile(nativeBinPath, []byte("#!/usr/bin/env bash\n"), 0o644); err != nil {
+					t.Fatalf("placing the native script: %v", err)
+				}
+			}
+
+			err := Repair(context.Background(), RepairCheck)
+
+			if got := readRecord(t, record); strings.Contains(got, "update_local_scripts") {
+				t.Errorf("the repair action had warpwp fetch the scripts; it ran:\n%s", got)
+			}
+			if err == nil || !strings.Contains(err.Error(), nativeBinPath) {
+				t.Errorf("Repair error = %v, want it to name %s", err, nativeBinPath)
+			}
+		})
+	}
+}
+
+// With the native script in place Repair runs the scan its mode names.
+func TestRepairRunsTheScanWhenTheNativeScriptIsPlaced(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file modes mean nothing on Windows")
+	}
+	record := withEmbeddedStandIns(t)
+	if err := Install(context.Background()); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	if err := Repair(context.Background(), RepairDeepScan); err != nil {
+		t.Fatalf("Repair: %v", err)
+	}
+
+	if got := strings.TrimSpace(readRecord(t, record)); got != "--deep-scan" {
+		t.Errorf("the manager was run with %q, want --deep-scan", got)
+	}
+}

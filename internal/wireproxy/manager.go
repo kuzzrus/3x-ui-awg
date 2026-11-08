@@ -29,15 +29,15 @@
 // scripts on disk and fetches none; plain --install would first replace them
 // with the latest signed release, so a panel build could run scripts it never
 // shipped or reviewed. Outside that pin stay what the native script downloads
-// itself (wgcf, wireproxy, OS packages), an admin's own warpwp --update, and a
-// Repair that finds the native script gone (after Uninstall), where warpwp
-// fetches the latest signed release itself.
+// itself (wgcf, wireproxy, OS packages) and an admin's own warpwp --update; a
+// Repair that finds the native script gone (after Uninstall) refuses rather
+// than let warpwp fetch the latest signed release itself.
 //
 // This carries real system-level blast radius none of Tor/AdGuard/Psiphon
 // do: warpwp runs as root, installs OS packages via the host's own package
-// manager, and writes systemd units, cron/timer files, and WireGuard/routing
-// state. Install and Uninstall say so plainly to the admin in the frontend's
-// own confirm copy, not just here.
+// manager, and writes systemd units, cron/timer files, and WireGuard
+// configuration. Install and Uninstall say so plainly to the admin in the
+// frontend's own confirm copy, not just here.
 package wireproxy
 
 import (
@@ -148,8 +148,18 @@ func Repair(ctx context.Context, mode RepairMode) error {
 	default:
 		return fmt.Errorf("unknown repair mode %q", mode)
 	}
+	if !nativeScriptPlaced() {
+		return fmt.Errorf("%s is not in place: warpwp would replace both scripts with the latest release instead of scanning with the vendored ones -- run Install first", nativeBinPath)
+	}
 	_, err := run(ctx, "--"+string(mode))
 	return err
+}
+
+// nativeScriptPlaced reports whether the script warpwp execs is on disk and executable. Where it is not, a scan makes
+// warpwp replace both scripts with the latest release first: the fetch Install exists to avoid.
+func nativeScriptPlaced() bool {
+	info, err := os.Stat(nativeBinPath)
+	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0
 }
 
 // FixRouting clears dangerous system-wide WARP routing outside wireproxy's
