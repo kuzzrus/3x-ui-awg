@@ -23,22 +23,21 @@
 // parse `warpwp --status-json` -- already a rich, structured status blob --
 // instead of inventing a second source of truth.
 //
-// warpwp.sh/warp-wireproxy-native.sh are vendored via go:embed at a pinned
-// commit (see Install in install.go), not fetched live from "main" --
-// REPO_RAW inside the vendored warpwp.sh is itself repointed at that same
-// commit so even its own internal update_local_scripts call can't silently
-// pull different content than what this panel build shipped and reviewed.
-// That said, warpwp's own --install still re-fetches both scripts from that
-// pinned URL as its first step (update_local_scripts runs unconditionally),
-// so Install is not network-free the way a pure go:embed read would be --
-// it is pinned, not offline, the same tradeoff install.go's binary download
-// makes for Psiphon.
+// warpwp.sh/warp-wireproxy-native.sh are vendored via go:embed, byte for byte
+// the assets of one signed release of the manager (manager_test.go pins their
+// digests). Install runs warpwp's --install-current, which sets up with the
+// scripts on disk and fetches none; plain --install would first replace them
+// with the latest signed release, so a panel build could run scripts it never
+// shipped or reviewed. Outside that pin stay what the native script downloads
+// itself (wgcf, wireproxy, OS packages) and an admin's own warpwp --update; a
+// Repair that finds the native script gone (after Uninstall) refuses rather
+// than let warpwp fetch the latest signed release itself.
 //
 // This carries real system-level blast radius none of Tor/AdGuard/Psiphon
 // do: warpwp runs as root, installs OS packages via the host's own package
-// manager, and writes systemd units, cron/timer files, and WireGuard/routing
-// state. Install and Uninstall say so plainly to the admin in the frontend's
-// own confirm copy, not just here.
+// manager, and writes systemd units, cron/timer files, and WireGuard
+// configuration. Install and Uninstall say so plainly to the admin in the
+// frontend's own confirm copy, not just here.
 package wireproxy
 
 import (
@@ -46,13 +45,13 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 )
 
-// SocksPort is fixed by the vendored warpwp.sh itself (SOCKS_PORT="40000"),
-// not something this package chooses independently -- changing it here alone
-// would not change what warpwp actually binds.
+// SocksPort is the default the vendored warpwp.sh binds (SOCKS_PORT="40000"); the port wireproxy really listens on is
+// the one in its proxy.conf, which Status.Socks5.Port reports.
 const SocksPort = 40000
 
 // serviceName is the systemd unit warp-wireproxy-native.sh installs.
@@ -89,7 +88,14 @@ func IsInstalled() bool {
 // runs as root, the same precondition every other host-level action here
 // (AmneziaWG, frontproxy certs, etc.) already relies on.
 func run(ctx context.Context, args ...string) ([]byte, error) {
+	return runWithInput(ctx, nil, args...)
+}
+
+// runWithInput is run for an action that asks a question on stdin. Without an answer the script's set -e aborts at the
+// read, so --remove would exit before it stops or deletes anything.
+func runWithInput(ctx context.Context, stdin io.Reader, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "bash", append([]string{managerBinPath}, args...)...)
+	cmd.Stdin = stdin
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -142,15 +148,26 @@ func Repair(ctx context.Context, mode RepairMode) error {
 	default:
 		return fmt.Errorf("unknown repair mode %q", mode)
 	}
+	if !nativeScriptPlaced() {
+		return fmt.Errorf("%s is not in place: warpwp would replace both scripts with the latest release instead of scanning with the vendored ones -- run Install first", nativeBinPath)
+	}
 	_, err := run(ctx, "--"+string(mode))
 	return err
+}
+
+// nativeScriptPlaced reports whether the script warpwp execs is on disk and executable. Where it is not, a scan makes
+// warpwp replace both scripts with the latest release first: the fetch Install exists to avoid.
+func nativeScriptPlaced() bool {
+	info, err := os.Stat(nativeBinPath)
+	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0
 }
 
 // FixRouting clears dangerous system-wide WARP routing outside wireproxy's
 // own management (see Status.RoutingGuard.Danger and this package's own doc
 // comment) without touching wireproxy's own SOCKS5 setup -- the UI exposes
-// this specifically so clearing it never requires SSH either.
+// this specifically so clearing it never requires SSH either. The manager
+// (v1.3.9) only cleans up when told --force and otherwise warns and succeeds.
 func FixRouting(ctx context.Context) error {
-	_, err := run(ctx, "--fix-routing")
+	_, err := run(ctx, actionFixRouting, "--force")
 	return err
 }

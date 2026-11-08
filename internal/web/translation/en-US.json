@@ -2959,9 +2959,9 @@
       "wireproxy": {
         "title": "WireProxy",
         "notInstalled": "WireProxy not installed",
-        "installHint": "Installs Cloudflare WARP behind wireproxy as a local SOCKS5 outbound, using the admin's own WARP_WireProxy_Manager (github.com/kuzzrus/WARP_WireProxy_Manager), vendored and pinned to a specific commit.",
+        "installHint": "Installs Cloudflare WARP behind wireproxy as a local SOCKS5 outbound, using the admin's own WARP_WireProxy_Manager (github.com/kuzzrus/WARP_WireProxy_Manager), vendored byte for byte from one signed release and pinned by its sha256.",
         "installButton": "Install",
-        "installConfirm": "This installs OS packages, registers a WARP device, and writes a systemd service, a cron/timer scheduler, and WireGuard/routing state on this host -- a real system-level change, not a sandboxed local process like Tor/Psiphon. Continue?",
+        "installConfirm": "This installs OS packages, registers a WARP device, and writes a systemd service, a cron/timer scheduler, and WireGuard configuration on this host -- a real system-level change, not a sandboxed local process like Tor/Psiphon. Continue?",
         "installed": "WireProxy installed",
         "installFailed": "Failed to install WireProxy",
         "uninstallButton": "Uninstall",

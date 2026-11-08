@@ -17,13 +17,21 @@ import (
 type WireproxyService struct{}
 
 // wireproxyInstallTimeout is longer than the shared installTimeout
-// (adguard.go) -- warpwp --install does OS package installs, a WARP
+// (adguard.go) -- warpwp --install-current does OS package installs, a WARP
 // registration, and an initial endpoint scan inline, not just one download.
 const wireproxyInstallTimeout = 8 * time.Minute
 
-// wireproxyActionTimeout bounds Start/Stop/Uninstall/Status -- all systemctl
-// calls or a single warpwp status/remove invocation, not a package install.
+// wireproxyActionTimeout bounds Start/Stop/Status -- systemctl calls or a single
+// quick warpwp invocation, not a package install.
 const wireproxyActionTimeout = 30 * time.Second
+
+// wireproxyFixRoutingTimeout covers warpwp --fix-routing --force, whose first step is systemctl disable --now on three
+// units that may ignore SIGTERM; a kill mid-cleanup leaves the warp link and its routes behind.
+const wireproxyFixRoutingTimeout = 2 * time.Minute
+
+// wireproxyRemoveTimeout covers warpwp --remove at its slowest: two 15s waits on maintenance locks, and systemd's
+// default 90s stop timeout for each of the two units (the check and wireproxy) that may ignore SIGTERM.
+const wireproxyRemoveTimeout = 5 * time.Minute
 
 // WireproxyStatus is the panel-facing status shape: a curated subset of
 // wireproxy.Status (which mirrors `warpwp --status-json`'s own field names
@@ -81,7 +89,7 @@ func (s *WireproxyService) Install() error {
 }
 
 func (s *WireproxyService) Uninstall() error {
-	ctx, cancel := context.WithTimeout(context.Background(), wireproxyActionTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), wireproxyRemoveTimeout)
 	defer cancel()
 	return wireproxy.Uninstall(ctx)
 }
@@ -114,7 +122,7 @@ func (s *WireproxyService) Repair(mode wireproxy.RepairMode) error {
 // FixRouting clears dangerous system-wide WARP routing the status endpoint
 // flagged via routingGuard.danger -- see wireproxy.FixRouting's own doc.
 func (s *WireproxyService) FixRouting() error {
-	ctx, cancel := context.WithTimeout(context.Background(), wireproxyActionTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), wireproxyFixRoutingTimeout)
 	defer cancel()
 	return wireproxy.FixRouting(ctx)
 }

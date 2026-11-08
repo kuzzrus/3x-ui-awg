@@ -2633,7 +2633,7 @@ export const sections: readonly Section[] = [
             name: 'action',
             in: 'path',
             type: 'string',
-            desc: "status — return {installed, healthy, scheduler, service, socks5, warp, routingGuard}. start / stop — systemctl start/stop the wireproxy service. install — place the pinned scripts and run warpwp --install (OS packages, a WARP registration, a systemd service, a cron scheduler -- see the summary). uninstall — warpwp --remove (safe removal, not --purge). repair — re-run warpwp's own endpoint scan/repair (sends mode: check|quick-scan|deep-scan, default check). fixRouting — warpwp --fix-routing, clearing dangerous system-wide WARP routing outside wireproxy's own management.",
+            desc: "status — return {installed, healthy, scheduler, service, socks5, warp, routingGuard}. start / stop — systemctl start/stop the wireproxy service. install — place the vendored scripts and run warpwp --install-current, which sets up with the scripts on disk and fetches none (OS packages, a WARP registration, a systemd service, a cron scheduler -- see the summary). uninstall — warpwp --remove (safe removal, not --purge). repair — re-run warpwp's own endpoint scan/repair (sends mode: check|quick-scan|deep-scan, default check); refused with an error when the native script is not in place, which install puts back. fixRouting — warpwp --fix-routing --force, clearing dangerous system-wide WARP routing outside wireproxy's own management.",
           },
           {
             name: 'mode',

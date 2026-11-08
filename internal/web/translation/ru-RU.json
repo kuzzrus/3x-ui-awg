@@ -2838,9 +2838,9 @@
       "wireproxy": {
         "title": "WireProxy",
         "notInstalled": "WireProxy не установлен",
-        "installHint": "Ставит Cloudflare WARP за wireproxy как локальный SOCKS5-исходящий, используя собственный WARP_WireProxy_Manager админа (github.com/kuzzrus/WARP_WireProxy_Manager), встроенный в панель и закреплённый на конкретном коммите.",
+        "installHint": "Ставит Cloudflare WARP за wireproxy как локальный SOCKS5-исходящий, используя собственный WARP_WireProxy_Manager админа (github.com/kuzzrus/WARP_WireProxy_Manager), встроенный в панель байт в байт из одного подписанного релиза и закреплённый по его sha256.",
         "installButton": "Установить",
-        "installConfirm": "Это установит системные пакеты, зарегистрирует WARP-устройство и запишет systemd-сервис, планировщик cron/timer и сетевую маршрутизацию (WireGuard/routing) на этом хосте — реальное системное изменение, не изолированный локальный процесс, как у Tor/Psiphon. Продолжить?",
+        "installConfirm": "Это установит системные пакеты, зарегистрирует WARP-устройство и запишет systemd-сервис, планировщик cron/timer и конфигурацию WireGuard на этом хосте — реальное системное изменение, не изолированный локальный процесс, как у Tor/Psiphon. Продолжить?",
         "installed": "WireProxy установлен",
         "installFailed": "Не удалось установить WireProxy",
         "uninstallButton": "Удалить",
