@@ -11,9 +11,8 @@ import (
 // killGrace is how long a stopped script and its children get to exit after SIGTERM before SIGKILL; a var for tests.
 var killGrace = 10 * time.Second
 
-// stopGroupOnCancel makes cmd the leader of a process group of its own and, when its context ends, stops the whole
-// group: the scripts start package managers and scans that keep running, with their locks held, if only bash is killed.
-// The returned func is called once cmd has been waited for.
+// stopGroupOnCancel makes cmd a process group of its own and, when its context ends, stops the whole group: a scan starts
+// probes that keep running, with their locks held, if only bash is killed. Call the returned func once cmd is waited for.
 func stopGroupOnCancel(cmd *exec.Cmd) (finished func()) {
 	exited := make(chan struct{})
 	grace := killGrace

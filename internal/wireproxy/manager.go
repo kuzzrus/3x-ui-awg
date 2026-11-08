@@ -90,6 +90,9 @@ func run(ctx context.Context, args ...string) ([]byte, error) {
 // runWithInput is run for an action that asks a question on stdin. Without an answer the script's set -e aborts at the
 // read, so --remove would exit before it stops or deletes anything.
 func runWithInput(ctx context.Context, stdin io.Reader, args ...string) ([]byte, error) {
+	if len(args) == 0 || !stoppable[args[0]] {
+		return runToCompletion(ctx, stdin, args)
+	}
 	cmd := exec.CommandContext(ctx, "bash", append([]string{managerBinPath}, args...)...)
 	cmd.Stdin = stdin
 	var stdout, stderr bytes.Buffer
@@ -102,6 +105,40 @@ func runWithInput(ctx context.Context, stdin io.Reader, args ...string) ([]byte,
 		return nil, fmt.Errorf("warpwp %v: %w: %s", args, err, bytes.TrimSpace(stderr.Bytes()))
 	}
 	return stdout.Bytes(), nil
+}
+
+// stoppable are the actions that are stopped, with everything they started, when their time is up: they only read, or
+// scan and rewrite what the next scan rebuilds. The others install, remove or clean up, and are left to finish.
+var stoppable = map[string]bool{
+	actionStatusJSON:               true,
+	"--" + string(RepairCheck):     true,
+	"--" + string(RepairQuickScan): true,
+	"--" + string(RepairDeepScan):  true,
+}
+
+// runToCompletion runs an action that changes the host. When ctx ends first it returns at once and the action goes on in
+// the background: a package manager killed halfway leaves its database interrupted, and the lock the action holds keeps
+// a second one from starting.
+func runToCompletion(ctx context.Context, stdin io.Reader, args []string) ([]byte, error) {
+	cmd := exec.CommandContext(context.WithoutCancel(ctx), "bash", append([]string{managerBinPath}, args...)...)
+	cmd.Stdin = stdin
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("warpwp %v: %w", args, err)
+	}
+	finished := make(chan error, 1)
+	go func() { finished <- cmd.Wait() }()
+	select {
+	case err := <-finished:
+		if err != nil {
+			return nil, fmt.Errorf("warpwp %v: %w: %s", args, err, bytes.TrimSpace(stderr.Bytes()))
+		}
+		return stdout.Bytes(), nil
+	case <-ctx.Done():
+		return nil, fmt.Errorf("warpwp %v: %w; it is still running and will finish in the background", args, ctx.Err())
+	}
 }
 
 // Start starts the wireproxy service directly rather than through warpwp --
