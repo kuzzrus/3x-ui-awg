@@ -165,9 +165,8 @@ func allowSlowAction(c *gin.Context) {
 	_ = http.NewResponseController(deadlineWriter(c.Writer)).SetWriteDeadline(time.Now().Add(slowActionDeadline))
 }
 
-// deadlineWriter finds, under the writers that middleware wrapped around the response, the one http.ResponseController can
-// set a deadline on. gin's writer can be unwrapped, but gin-contrib/gzip's cannot: it embeds gin's as a field and has no
-// Unwrap, and the panel puts it in front of every route.
+// deadlineWriter finds, under the writers that middleware wrapped around the response, the one http.ResponseController can set
+// a deadline on: gin-contrib/gzip's embeds gin's as a field and has no Unwrap, and the panel puts it in front of every route.
 func deadlineWriter(w http.ResponseWriter) http.ResponseWriter {
 	for range 8 {
 		switch w.(type) {
