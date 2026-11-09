@@ -26,7 +26,7 @@ const wireproxyInstallTimeout = 8 * time.Minute
 const wireproxyActionTimeout = 30 * time.Second
 
 // wireproxyFixRoutingTimeout covers warpwp --fix-routing --force, whose first step is systemctl disable --now on three
-// units that may ignore SIGTERM; a kill mid-cleanup leaves the warp link and its routes behind.
+// units that may ignore SIGTERM. When it is up the call returns and the cleanup goes on.
 const wireproxyFixRoutingTimeout = 2 * time.Minute
 
 // wireproxyRemoveTimeout covers warpwp --remove at its slowest: two 15s waits on maintenance locks, and systemd's

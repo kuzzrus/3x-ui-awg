@@ -148,3 +148,50 @@ func TestRunLeavesAnActionThatChangesTheHostRunningWhenTheContextEnds(t *testing
 		})
 	}
 }
+
+// The panel owns the read end of a pipe, and when it exits the action's next write is a SIGPIPE that would cut a package
+// manager in half: an action that changes the host gets files for its output.
+func TestRunGivesAnActionThatChangesTheHostFilesNotPipes(t *testing.T) {
+	dir := t.TempDir()
+	fd1, fd2 := filepath.Join(dir, "fd1"), filepath.Join(dir, "fd2")
+	t.Setenv("WIREPROXY_TEST_FD1", fd1)
+	t.Setenv("WIREPROXY_TEST_FD2", fd2)
+	withFakeManagerBin(t, false)
+	script := "#!/usr/bin/env bash\nreadlink /proc/$$/fd/1 > \"$WIREPROXY_TEST_FD1\"\nreadlink /proc/$$/fd/2 > \"$WIREPROXY_TEST_FD2\"\n"
+	if err := os.WriteFile(managerBinPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("writing the stand-in manager: %v", err)
+	}
+
+	if _, err := run(context.Background(), actionInstall); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	for _, path := range []string{fd1, fd2} {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("the script did not report where its output goes: %v", err)
+		}
+		if target := strings.TrimSpace(string(raw)); target == "" || strings.HasPrefix(target, "pipe:") {
+			t.Errorf("the action writes to %q, want a file", target)
+		}
+	}
+}
+
+// What an action that changes the host wrote comes back to the caller: its output when it succeeds, its standard error when
+// it fails.
+func TestRunReturnsWhatAnActionThatChangesTheHostWrote(t *testing.T) {
+	withFakeManagerBin(t, false)
+	script := "#!/usr/bin/env bash\necho out\necho oops >&2\n[ \"$1\" = --remove ] && exit 3\nexit 0\n"
+	if err := os.WriteFile(managerBinPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("writing the stand-in manager: %v", err)
+	}
+
+	out, err := run(context.Background(), actionInstall)
+	if err != nil || strings.TrimSpace(string(out)) != "out" {
+		t.Errorf("run(install) = %q, %v; want its output and no error", out, err)
+	}
+	_, err = run(context.Background(), actionRemove)
+	if err == nil || !strings.Contains(err.Error(), "oops") || !strings.Contains(err.Error(), "exit status 3") {
+		t.Errorf("run(remove) error = %v; want its standard error and its exit status", err)
+	}
+}

@@ -1,7 +1,7 @@
 // Package wireproxy manages the panel's WARP-via-wireproxy sidecar: Cloudflare
 // WARP reached through wireproxy (github.com/pufferffish/wireproxy), a
-// userspace WireGuard-to-SOCKS5 bridge, exposed at 127.0.0.1:40000 for Xray
-// to use as an outbound. Distinct from the existing WarpService
+// userspace WireGuard-to-SOCKS5 bridge, exposed on the loopback SOCKS5 port of
+// its proxy.conf for Xray to use as an outbound. Distinct from the existing WarpService
 // (internal/web/service/integration/warp.go), which registers a WARP device
 // against Cloudflare's own API and builds a native WireGuard outbound with no
 // external process at all -- this package instead runs an actual sidecar,
@@ -116,15 +116,19 @@ var stoppable = map[string]bool{
 	"--" + string(RepairDeepScan):  true,
 }
 
-// runToCompletion runs an action that changes the host. When ctx ends first it returns at once and the action goes on in
-// the background: a package manager killed halfway leaves its database interrupted, and the lock the action holds keeps
-// a second one from starting.
+// runToCompletion runs an action that changes the host. When ctx ends first it returns at once and the action goes on:
+// a package manager killed halfway leaves its database interrupted, and the lock it holds answers a second press.
 func runToCompletion(ctx context.Context, stdin io.Reader, args []string) ([]byte, error) {
+	stdout, stderr, err := actionLogs()
+	if err != nil {
+		return nil, fmt.Errorf("warpwp %v: %w", args, err)
+	}
+	defer closeActionLog(stdout)
+	defer closeActionLog(stderr)
 	cmd := exec.CommandContext(context.WithoutCancel(ctx), "bash", append([]string{managerBinPath}, args...)...)
 	cmd.Stdin = stdin
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("warpwp %v: %w", args, err)
 	}
@@ -133,11 +137,11 @@ func runToCompletion(ctx context.Context, stdin io.Reader, args []string) ([]byt
 	select {
 	case err := <-finished:
 		if err != nil {
-			return nil, fmt.Errorf("warpwp %v: %w: %s", args, err, bytes.TrimSpace(stderr.Bytes()))
+			return nil, fmt.Errorf("warpwp %v: %w: %s", args, err, bytes.TrimSpace(readActionLog(stderr)))
 		}
-		return stdout.Bytes(), nil
+		return readActionLog(stdout), nil
 	case <-ctx.Done():
-		return nil, fmt.Errorf("warpwp %v: %w; it is still running and will finish in the background", args, ctx.Err())
+		return nil, fmt.Errorf("warpwp %v: %w; it is still running and goes on in the background unless the panel is restarted", args, ctx.Err())
 	}
 }
 
