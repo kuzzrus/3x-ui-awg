@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -16,15 +17,14 @@ import (
 )
 
 // sidecarEngine serves the Xray setting routes the way the panel does, minus the session: the i18n function answers
-// with the key. before are middleware that run ahead of the routes.
-func sidecarEngine(before ...gin.HandlerFunc) *gin.Engine {
+// with the key.
+func sidecarEngine() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
 	engine.Use(func(c *gin.Context) {
 		c.Set("I18n", func(_ locale.I18nType, key string, _ ...string) string { return key })
 		c.Next()
 	})
-	engine.Use(before...)
 	NewXraySettingController(engine.Group("/panel/api"))
 	return engine
 }
@@ -63,20 +63,48 @@ func (w deadlineRecorder) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
-// Installs, scans and package managers run for minutes behind these routes, and the server cuts a response that is not
-// written within 30 seconds.
-func TestSlowSidecarRoutesExtendTheWriteDeadline(t *testing.T) {
+// The deadline a slow action asks for has to outlast the longest budget behind it, by a wide margin over the 30 seconds.
+func TestAllowSlowActionAsksForALongDeadline(t *testing.T) {
+	gin.SetMode(gin.TestMode)
 	var asked []time.Time
-	engine := sidecarEngine(func(c *gin.Context) {
+	engine := gin.New()
+	engine.Use(func(c *gin.Context) {
 		c.Writer = deadlineRecorder{ResponseWriter: c.Writer, asked: &asked}
 		c.Next()
 	})
-	for _, name := range []string{"tor", "psiphon", "naiveproxy", "wireproxy", "adguard"} {
-		t.Run(name, func(t *testing.T) {
-			asked = nil
-			postTo(engine, "/panel/api/xray/"+name+"/bogus")
-			if len(asked) != 1 || time.Until(asked[0]) < 5*time.Minute {
-				t.Errorf("POST %s: the write deadline was asked for %v, want one deadline at least 5 minutes ahead", name, asked)
+	engine.POST("/slow", allowSlowAction, func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	postTo(engine, "/slow")
+
+	if len(asked) != 1 || time.Until(asked[0]) < 5*time.Minute {
+		t.Errorf("the write deadline was asked for %v, want one deadline at least 5 minutes ahead", asked)
+	}
+}
+
+// Installs, updates and scans run for minutes behind these routes, and the server cuts a response that is not written
+// within 30 seconds. The request ends before any handler runs, so nothing is installed, downloaded or scanned.
+func TestSlowRoutesAreWrappedInAllowSlowAction(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var chain []string
+	engine := gin.New()
+	engine.Use(func(c *gin.Context) {
+		chain = c.HandlerNames()
+		c.Abort()
+	})
+	NewXraySettingController(engine.Group("/panel/api"))
+	(&ServerController{}).initRouter(engine.Group("/panel/api/server"))
+	for _, path := range []string{
+		"/panel/api/xray/tor/install", "/panel/api/xray/psiphon/install", "/panel/api/xray/naiveproxy/install",
+		"/panel/api/xray/wireproxy/install", "/panel/api/xray/adguard/install",
+		"/panel/api/server/installXray/v26.1.1", "/panel/api/server/updateGeofile",
+		"/panel/api/server/updateGeofile/geoip.dat", "/panel/api/server/scanRealityTargets",
+		"/panel/api/server/unattendedUpgrades/install",
+	} {
+		t.Run(path, func(t *testing.T) {
+			chain = nil
+			postTo(engine, path)
+			if !slices.ContainsFunc(chain, func(name string) bool { return strings.HasSuffix(name, ".allowSlowAction") }) {
+				t.Errorf("POST %s runs %v, want allowSlowAction among them", path, chain)
 			}
 		})
 	}
