@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -63,16 +64,48 @@ func TestEditMessageTgBotSkipsNotModified(t *testing.T) {
 		t.Fatalf("NewBot: %v", err)
 	}
 
-	// Snapshot warning count before the edit call.
 	before := logger.GetLogs(100, "warning")
 
 	tb := &Tgbot{}
 	tb.editMessageTgBot(123, 456, "<b>hello</b>")
 
-	after := logger.GetLogs(100, "warning")
-	if len(after) > len(before) {
-		t.Errorf("editMessageTgBot logged %d new warnings, want 0; new entries: %v",
-			len(after)-len(before), after[len(before):])
+	if added := notModifiedWarnings(before, logger.GetLogs(100, "warning")); len(added) > 0 {
+		t.Errorf("editMessageTgBot logged the not-modified answer as a warning: %v", added)
+	}
+}
+
+// notModifiedWarnings returns the warnings about the not-modified answer that were logged between two reads of the log,
+// both newest first. Other goroutines of the package log warnings of their own, such as the screen art probe, so a count
+// of all of them is not what a call is answerable for.
+func notModifiedWarnings(before, after []string) []string {
+	seen := make(map[string]int, len(before))
+	for _, entry := range before {
+		seen[entry]++
+	}
+	var added []string
+	for _, entry := range after {
+		if seen[entry] > 0 {
+			seen[entry]--
+			continue
+		}
+		if strings.Contains(entry, "not modified") {
+			added = append(added, entry)
+		}
+	}
+	return added
+}
+
+func TestNotModifiedWarningsLooksOnlyAtWhatWasLoggedSince(t *testing.T) {
+	const (
+		earlier   = "t1 WARNING - Bad Request: message is not modified"
+		unrelated = "t2 WARNING - Failed to read the bot identity for screen art"
+		fresh     = "t3 WARNING - Bad Request: message is not modified"
+	)
+	if got := notModifiedWarnings([]string{earlier}, []string{unrelated, earlier}); len(got) != 0 {
+		t.Errorf("an unrelated warning, or one logged before the call, counted: %v", got)
+	}
+	if got := notModifiedWarnings([]string{earlier}, []string{fresh, unrelated, earlier}); !slices.Equal(got, []string{fresh}) {
+		t.Errorf("notModifiedWarnings = %v, want only the one logged since", got)
 	}
 }
 
@@ -103,10 +136,8 @@ func TestEditMessageCallbackTgBotSkipsNotModified(t *testing.T) {
 	))
 	tb.editMessageCallbackTgBot(123, 456, kb)
 
-	after := logger.GetLogs(100, "warning")
-	if len(after) > len(before) {
-		t.Errorf("editMessageCallbackTgBot logged %d new warnings, want 0; new entries: %v",
-			len(after)-len(before), after[len(before):])
+	if added := notModifiedWarnings(before, logger.GetLogs(100, "warning")); len(added) > 0 {
+		t.Errorf("editMessageCallbackTgBot logged the not-modified answer as a warning: %v", added)
 	}
 }
 
