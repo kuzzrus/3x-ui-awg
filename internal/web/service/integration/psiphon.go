@@ -185,8 +185,8 @@ type Region struct {
 	Name string `json:"name"`
 }
 
-// verifyTimeout bounds the live exit check. No longer stacked behind a
-// restart (see SetEgressRegion), so the full budget under the 30s WriteTimeout applies.
+// verifyTimeout bounds the live exit check, short so the Verify button answers while the operator waits. It is no longer
+// stacked behind a restart (see SetEgressRegion).
 const verifyTimeout = 25 * time.Second
 
 // invalidRegion catches a typo without freezing the API to isoCountries' own
@@ -206,8 +206,8 @@ func invalidRegion(region string) bool {
 	return false
 }
 
-// SetEgressRegion patches EgressRegion and restarts the process. Deliberately
-// does not also verify here -- stacked behind a restart it risks the panel's WriteTimeout; the UI calls CurrentExit as a separate follow-up.
+// SetEgressRegion patches EgressRegion and restarts the process. The UI calls CurrentExit as a separate follow-up, so a
+// slow verify cannot hold up the answer to the region change.
 func (s *PsiphonService) SetEgressRegion(region string) error {
 	if invalidRegion(region) {
 		return fmt.Errorf("unknown region code %q", region)
