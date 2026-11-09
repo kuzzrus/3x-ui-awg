@@ -48,6 +48,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+
+	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 )
 
 // serviceName is the systemd unit warp-wireproxy-native.sh installs.
@@ -123,26 +125,41 @@ func runToCompletion(ctx context.Context, stdin io.Reader, args []string) ([]byt
 	if err != nil {
 		return nil, fmt.Errorf("warpwp %v: %w", args, err)
 	}
-	defer closeActionLog(stdout)
-	defer closeActionLog(stderr)
 	cmd := exec.CommandContext(context.WithoutCancel(ctx), "bash", append([]string{managerBinPath}, args...)...)
 	cmd.Stdin = stdin
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	if err := cmd.Start(); err != nil {
+		closeActionLog(stdout)
+		closeActionLog(stderr)
 		return nil, fmt.Errorf("warpwp %v: %w", args, err)
 	}
 	finished := make(chan error, 1)
 	go func() { finished <- cmd.Wait() }()
 	select {
 	case err := <-finished:
+		defer closeActionLog(stdout)
+		defer closeActionLog(stderr)
 		if err != nil {
 			return nil, fmt.Errorf("warpwp %v: %w: %s", args, err, bytes.TrimSpace(readActionLog(stderr)))
 		}
 		return readActionLog(stdout), nil
 	case <-ctx.Done():
+		go logBackgroundAction(args, finished, stdout, stderr)
 		return nil, fmt.Errorf("warpwp %v: %w; it is still running and goes on in the background unless the panel is restarted", args, ctx.Err())
 	}
+}
+
+// logBackgroundAction records how an action nobody waits for any more ended, and only then drops its two files. The
+// panel log is the one place left that can hold it: the toast went out at the budget and the files have no name.
+func logBackgroundAction(args []string, finished <-chan error, stdout, stderr *os.File) {
+	defer closeActionLog(stdout)
+	defer closeActionLog(stderr)
+	if err := <-finished; err != nil {
+		logger.Warningf("warpwp %v failed after its time was up: %v: %s", args, err, bytes.TrimSpace(readActionLog(stderr)))
+		return
+	}
+	logger.Infof("warpwp %v finished after its time was up", args)
 }
 
 // Start starts the wireproxy service directly rather than through warpwp --

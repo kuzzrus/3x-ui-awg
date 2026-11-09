@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 )
 
 // withShortGrace shortens the wait between SIGTERM and SIGKILL for the test.
@@ -194,4 +196,34 @@ func TestRunReturnsWhatAnActionThatChangesTheHostWrote(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "oops") || !strings.Contains(err.Error(), "exit status 3") {
 		t.Errorf("run(remove) error = %v; want its standard error and its exit status", err)
 	}
+}
+
+// An action that outlives its budget ends with nobody waiting for it, and its two files have no name: the panel log is the
+// only place left that can say why an install failed after the toast had already gone out.
+func TestRunLogsHowAnActionThatOutlivedItsBudgetEnded(t *testing.T) {
+	dir := t.TempDir()
+	ready := filepath.Join(dir, "ready")
+	t.Setenv("WIREPROXY_TEST_READY", ready)
+	withFakeManagerBin(t, false)
+	script := "#!/usr/bin/env bash\necho ready > \"$WIREPROXY_TEST_READY\"\nsleep 0.2\necho 'E: dpkg was interrupted' >&2\nexit 100\n"
+	if err := os.WriteFile(managerBinPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("writing the stand-in manager: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cancelWhenThere(ready, cancel)
+
+	if _, err := run(ctx, actionInstall); err == nil {
+		t.Fatal("run reported success although its context ended while the script was running")
+	}
+
+	for range 500 {
+		for _, line := range logger.GetLogs(1000, "warning") {
+			if strings.Contains(line, "E: dpkg was interrupted") && strings.Contains(line, "exit status 100") {
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Error("nothing in the panel log says how the action ended after its time was up")
 }

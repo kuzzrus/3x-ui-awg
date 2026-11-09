@@ -3,6 +3,8 @@
 package wireproxy
 
 import (
+	"errors"
+	"os"
 	"os/exec"
 	"syscall"
 	"time"
@@ -18,6 +20,10 @@ func stopGroupOnCancel(cmd *exec.Cmd) (finished func()) {
 	grace := killGrace
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
+		// A leader that is already reaped is not a failed cancel, and its pid can name another group by then.
+		if err := cmd.Process.Signal(syscall.Signal(0)); err != nil {
+			return err
+		}
 		group := -cmd.Process.Pid
 		go func() {
 			select {
@@ -26,7 +32,11 @@ func stopGroupOnCancel(cmd *exec.Cmd) (finished func()) {
 				_ = syscall.Kill(group, syscall.SIGKILL)
 			}
 		}()
-		return syscall.Kill(group, syscall.SIGTERM)
+		err := syscall.Kill(group, syscall.SIGTERM)
+		if errors.Is(err, syscall.ESRCH) {
+			return os.ErrProcessDone
+		}
+		return err
 	}
 	cmd.WaitDelay = grace + 5*time.Second
 	return func() { close(exited) }
