@@ -156,11 +156,11 @@ func unknownAction(c *gin.Context) {
 }
 
 // slowActionDeadline is how long the response of a slow action may take to be written, above the longest budget of an
-// action behind allowSlowAction (the wireproxy install, 8 minutes); each action bounds itself.
+// action behind allowSlowAction (the wireproxy install, 8 minutes); the geodata download has none and may outlast it.
 const slowActionDeadline = 10 * time.Minute
 
-// allowSlowAction lets the handler of a route answer after the server's WriteTimeout of 30 seconds: the installs behind
-// the sidecar routes download, scan and run package managers for minutes.
+// allowSlowAction lets the handler of a route answer after the server's WriteTimeout of 30 seconds: the installs, updates
+// and scans behind these routes download, run package managers and probe hosts for minutes.
 func allowSlowAction(c *gin.Context) {
 	_ = http.NewResponseController(deadlineWriter(c.Writer)).SetWriteDeadline(time.Now().Add(slowActionDeadline))
 }
