@@ -32,6 +32,7 @@ The default SQLite database path is `/etc/x-ui/x-ui.db`. See
 | `XUI_INIT_WEB_BASE_PATH` | `/`     | Initial web base path on **first** launch (e.g. `/panel`).               |
 | `XUI_ENABLE_FAIL2BAN`    | `true`  | Enable Fail2ban-based IP-limit enforcement.                              |
 | `XUI_SKIP_HSTS`          | `false` | Skip the HSTS header — set `true` when TLS is terminated by a reverse proxy. |
+| `XUI_HOSTACTION`         | `auto`  | How the panel runs actions that change the host (installing WARP or Tor, unattended upgrades). `auto` starts a transient `systemd-run` unit and falls back to a child process of the panel where systemd cannot; `unit` always uses a unit; `direct` always a child process, which the shipped systemd sandbox does not let write under `/usr` and `/etc`. |
 
 ## Node token encryption
 

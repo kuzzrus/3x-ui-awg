@@ -33,6 +33,9 @@
 // Repair that finds the native script gone (after Uninstall) refuses rather
 // than let warpwp fetch the latest signed release itself.
 //
+// What changes the host runs through internal/hostaction as a unit of its own: the panel's unit cannot write below /usr
+// and /etc.
+//
 // This carries real system-level blast radius none of Tor/AdGuard/Psiphon
 // do: warpwp runs as root, installs OS packages via the host's own package
 // manager, and writes systemd units, cron/timer files, and WireGuard
@@ -45,11 +48,12 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
+	"strings"
+	"time"
 
-	"github.com/mhsanaei/3x-ui/v3/internal/logger"
+	"github.com/mhsanaei/3x-ui/v3/internal/hostaction"
 )
 
 // serviceName is the systemd unit warp-wireproxy-native.sh installs.
@@ -81,22 +85,44 @@ func IsInstalled() bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
-// run shells out to the installed warpwp with args, returning stdout. warpwp
-// needs root (need_root in the script) -- the panel's own process already
-// runs as root, the same precondition every other host-level action here
-// (AmneziaWG, frontproxy certs, etc.) already relies on.
+// run runs one warpwp action that changes the host through internal/hostaction: as a unit of its own, so that it can
+// write under /usr and /etc although the panel's unit may not, and outlives a restart of the panel.
 func run(ctx context.Context, args ...string) ([]byte, error) {
-	return runWithInput(ctx, nil, args...)
+	return runWithInput(ctx, "", args...)
 }
 
 // runWithInput is run for an action that asks a question on stdin. Without an answer the script's set -e aborts at the
 // read, so --remove would exit before it stops or deletes anything.
-func runWithInput(ctx context.Context, stdin io.Reader, args ...string) ([]byte, error) {
-	if len(args) == 0 || !stoppable[args[0]] {
-		return runToCompletion(ctx, stdin, args)
-	}
+func runWithInput(ctx context.Context, stdin string, args ...string) ([]byte, error) {
+	res, err := hostaction.Run(ctx, hostaction.Spec{
+		Name:         "warpwp " + strings.Join(args, " "),
+		Argv:         append([]string{"bash", managerBinPath}, args...),
+		Stdin:        stdin,
+		StopOnCancel: stoppable[args[0]],
+		MaxRuntime:   maxRuntime[args[0]],
+	})
+	return res.Stdout, err
+}
+
+// stoppable are the actions that are stopped, with everything they started, when their time is up: they scan and rewrite
+// what the next scan rebuilds. The others install, remove or clean up, and are left to finish.
+var stoppable = map[string]bool{
+	"--" + string(RepairCheck):     true,
+	"--" + string(RepairQuickScan): true,
+	"--" + string(RepairDeepScan):  true,
+}
+
+// maxRuntime caps how long the unit of a scan may run, should the panel be gone before it ends one.
+var maxRuntime = map[string]time.Duration{
+	"--" + string(RepairCheck):     15 * time.Minute,
+	"--" + string(RepairQuickScan): 15 * time.Minute,
+	"--" + string(RepairDeepScan):  15 * time.Minute,
+}
+
+// runLocal runs a read-only warpwp action as a child of the panel: the status is polled and writes nothing, so it needs
+// no unit of its own, and a status that hangs is stopped with its whole process group.
+func runLocal(ctx context.Context, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "bash", append([]string{managerBinPath}, args...)...)
-	cmd.Stdin = stdin
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -107,59 +133,6 @@ func runWithInput(ctx context.Context, stdin io.Reader, args ...string) ([]byte,
 		return nil, fmt.Errorf("warpwp %v: %w: %s", args, err, bytes.TrimSpace(stderr.Bytes()))
 	}
 	return stdout.Bytes(), nil
-}
-
-// stoppable are the actions that are stopped, with everything they started, when their time is up: they only read, or
-// scan and rewrite what the next scan rebuilds. The others install, remove or clean up, and are left to finish.
-var stoppable = map[string]bool{
-	actionStatusJSON:               true,
-	"--" + string(RepairCheck):     true,
-	"--" + string(RepairQuickScan): true,
-	"--" + string(RepairDeepScan):  true,
-}
-
-// runToCompletion runs an action that changes the host. When ctx ends first it returns at once and the action goes on:
-// a package manager killed halfway leaves its database interrupted, and the lock it holds answers a second press.
-func runToCompletion(ctx context.Context, stdin io.Reader, args []string) ([]byte, error) {
-	stdout, stderr, err := actionLogs()
-	if err != nil {
-		return nil, fmt.Errorf("warpwp %v: %w", args, err)
-	}
-	cmd := exec.CommandContext(context.WithoutCancel(ctx), "bash", append([]string{managerBinPath}, args...)...)
-	cmd.Stdin = stdin
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	if err := cmd.Start(); err != nil {
-		closeActionLog(stdout)
-		closeActionLog(stderr)
-		return nil, fmt.Errorf("warpwp %v: %w", args, err)
-	}
-	finished := make(chan error, 1)
-	go func() { finished <- cmd.Wait() }()
-	select {
-	case err := <-finished:
-		defer closeActionLog(stdout)
-		defer closeActionLog(stderr)
-		if err != nil {
-			return nil, fmt.Errorf("warpwp %v: %w: %s", args, err, bytes.TrimSpace(readActionLog(stderr)))
-		}
-		return readActionLog(stdout), nil
-	case <-ctx.Done():
-		go logBackgroundAction(args, finished, stdout, stderr)
-		return nil, fmt.Errorf("warpwp %v: %w; it is still running and goes on in the background unless the panel is restarted", args, ctx.Err())
-	}
-}
-
-// logBackgroundAction records how an action nobody waits for any more ended, and only then drops its two files. The
-// panel log is the one place left that can hold it: the toast went out at the budget and the files have no name.
-func logBackgroundAction(args []string, finished <-chan error, stdout, stderr *os.File) {
-	defer closeActionLog(stdout)
-	defer closeActionLog(stderr)
-	if err := <-finished; err != nil {
-		logger.Warningf("warpwp %v failed after its time was up: %v: %s", args, err, bytes.TrimSpace(readActionLog(stderr)))
-		return
-	}
-	logger.Infof("warpwp %v finished after its time was up", args)
 }
 
 // Start starts the wireproxy service directly rather than through warpwp --
