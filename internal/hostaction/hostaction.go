@@ -65,7 +65,7 @@ type Spec struct {
 	MaxRuntime time.Duration
 }
 
-// Result is what a command wrote, once it ended or was stopped.
+// Result is what a command that ended wrote.
 type Result struct {
 	Stdout []byte
 	Stderr []byte
@@ -107,9 +107,20 @@ var (
 	ErrSandboxed       = errors.New("this panel runs in a read-only systemd sandbox and cannot start a unit of its own, so it cannot change the host; run the command by hand")
 	errSystemdUnusable = errors.New("systemd is not usable here")
 	runSeq             atomic.Uint64
-	// active holds the folders of the runs this process owns, which Recover must leave alone.
+	// active holds the folders of the runs in flight, with their names: Recover leaves them alone, and Running tells them.
 	active sync.Map
 )
+
+// Running is whether a command of this name is in flight: running, or left to finish by a caller that stopped waiting
+// for it, here or in a panel that has been restarted since.
+func Running(name string) bool {
+	found := false
+	active.Range(func(_, value any) bool {
+		found = value == name
+		return !found
+	})
+	return found
+}
 
 // launcher starts the script of a run and tells what became of it.
 type launcher interface {
@@ -193,7 +204,7 @@ func newRun(spec Spec) (*run, error) {
 		return nil, err
 	}
 	r := &run{spec: spec, dir: dir, started: time.Now()}
-	active.Store(dir, struct{}{})
+	active.Store(dir, spec.Name)
 	if err := r.prepare(); err != nil {
 		r.discard()
 		return nil, err
@@ -267,9 +278,8 @@ func (r *run) await(ctx context.Context, l launcher) (Result, error) {
 	if !r.ended(ctx, l) {
 		if r.spec.StopOnCancel {
 			l.stop(r)
-			res, _ := r.collect() // what it wrote before it was stopped
 			r.finish(l)
-			return res, fmt.Errorf("%s: %w", r.spec.Name, ctx.Err())
+			return Result{}, fmt.Errorf("%s: %w", r.spec.Name, ctx.Err())
 		}
 		go r.watch(l)
 		return Result{}, r.detached(ctx.Err())

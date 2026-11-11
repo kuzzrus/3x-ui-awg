@@ -3,6 +3,7 @@ package unattendedupgrades
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -12,8 +13,11 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/hostaction"
 )
 
-// runTimeout is how long a run may take, long enough for a real batch of security updates. Past it the run is stopped
-// (TERM first), by the panel or by systemd should the panel be gone, and recorded as failed with what it printed.
+// runName is what hostaction calls the run, which lets it tell whether the run still goes.
+const runName = "unattended-upgrade -v"
+
+// runTimeout is how long RunNow waits for a run, long enough for a real batch of security updates. One still going then
+// is left to finish, since apt stopped halfway leaves dpkg unfinished, and no other starts beside it.
 const runTimeout = 15 * time.Minute
 
 // RunState is the terminal (or in-progress) state of the most recent RunNow.
@@ -73,11 +77,9 @@ func execute(parent context.Context, runID string, startedAt int64) {
 	// -v: enough output for the panel's log view without --debug's volume; never --dry-run, RunNow means run it.
 	// The shell merges stderr into stdout, so the log keeps both in the order they were written.
 	res, runErr := hostaction.Run(ctx, hostaction.Spec{
-		Name:         "unattended-upgrade -v",
-		Argv:         []string{"sh", "-c", "exec unattended-upgrade -v 2>&1"},
-		Env:          noninteractiveEnv,
-		StopOnCancel: true,
-		MaxRuntime:   runTimeout,
+		Name: runName,
+		Argv: []string{"sh", "-c", "exec unattended-upgrade -v 2>&1"},
+		Env:  noninteractiveEnv,
 	})
 
 	out := string(res.Stdout)
@@ -87,7 +89,13 @@ func execute(parent context.Context, runID string, startedAt int64) {
 		StartedAt: startedAt,
 		EndedAt:   time.Now().Unix(),
 	}
-	if runErr != nil {
+	var detached *hostaction.DetachedError
+	switch {
+	case errors.As(runErr, &detached):
+		// The record says the run goes on, until GetRunStatus finds that nothing runs any more.
+		status.State, status.EndedAt = RunRunning, 0
+		out = fmt.Sprintf("The panel stopped waiting after %s and left the run to finish, as stopping apt halfway can leave dpkg unfinished. How it ends is in the panel log.", runTimeout)
+	case runErr != nil:
 		status.State = RunFailed
 		out = strings.TrimRight(out, "\n")
 		if out != "" {
@@ -101,13 +109,10 @@ func execute(parent context.Context, runID string, startedAt int64) {
 	_ = writeRunStatus(status)
 }
 
-// staleRunning reports whether a recorded "running" status is actually just
-// an abandoned record -- most likely the panel process itself restarted
-// mid-run, so nothing will ever write this run's terminal state. Guarded by
-// more than runTimeout so a genuinely still-running job is never mistaken
-// for a stale one.
+// staleRunning reports whether a recorded "running" status is an abandoned record: nothing runs any more, the panel having
+// restarted mid-run or the run having ended after the panel stopped waiting. The minute is for a run that just started.
 func staleRunning(status RunStatus) bool {
-	return time.Now().Unix()-status.StartedAt > int64(runTimeout.Seconds())+60
+	return time.Now().Unix()-status.StartedAt > 60 && !hostaction.Running(runName)
 }
 
 // GetRunStatus reports the most recent RunNow invocation, read back from
@@ -120,7 +125,7 @@ func GetRunStatus() RunStatus {
 	}
 	if status.State == RunRunning && staleRunning(status) {
 		status.State = RunFailed
-		status.Tail = "run status unknown: the panel process restarted before this run could report its own outcome"
+		status.Tail = "run status unknown: the run ended after the panel stopped waiting for it, or the panel restarted before it could report its own outcome; the panel log says how it ended"
 	}
 	return status
 }

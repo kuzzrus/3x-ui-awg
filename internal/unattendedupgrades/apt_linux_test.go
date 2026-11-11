@@ -7,7 +7,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -85,6 +84,17 @@ func waitForRun(t *testing.T) RunStatus {
 	return RunStatus{}
 }
 
+// waitForRunToEnd waits until hostaction no longer counts the run, which a panel that stopped waiting for it still does.
+func waitForRunToEnd(t *testing.T) {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if !hostaction.Running(runName) {
+			return
+		}
+	}
+	t.Fatal("the run never ended")
+}
+
 const installCalls = "update [frontend=noninteractive]\n" +
 	"install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold unattended-upgrades [frontend=noninteractive]\n"
 
@@ -146,8 +156,9 @@ func TestRunNowRecordsAFailedRunWithItsOutputAndExitStatus(t *testing.T) {
 	}
 }
 
-// A run that is recorded as failed must be over, or the next RunNow would start a second one beside it.
-func TestARunThatTakesTooLongIsStoppedAndRecordedAsFailedWithWhatItPrinted(t *testing.T) {
+// Stopping apt halfway leaves dpkg unfinished, so a run that outlives the wait is left to finish, and no second run may
+// start beside it. The record says the run goes on until nothing runs any more.
+func TestARunThatOutlivesTheWaitIsLeftToFinishAndNoSecondRunStartsBesideIt(t *testing.T) {
 	dir := withFakeApt(t)
 	leave(t, dir, "stall", "")
 	ctx, cancel := context.WithCancel(context.Background())
@@ -162,17 +173,26 @@ func TestARunThatTakesTooLongIsStoppedAndRecordedAsFailedWithWhatItPrinted(t *te
 		cancel()
 	}()
 
-	execute(ctx, "run-1", time.Now().Unix())
+	execute(ctx, "run-1", time.Now().Add(-2*time.Minute).Unix())
 
-	want := "Starting unattended upgrades script\nW: a warning on stderr\nfrontend=noninteractive\nunattended-upgrade -v: context canceled"
-	if status := GetRunStatus(); status.State != RunFailed || status.Tail != want {
-		t.Errorf("the run is recorded as %q with %q, want a failure with what it printed and why it ended", status.State, status.Tail)
+	if status := GetRunStatus(); status.State != RunRunning || !strings.Contains(status.Tail, "left the run to finish") {
+		t.Fatalf("the run is recorded as %q with %q, want one that goes on and says it was left to finish", status.State, status.Tail)
+	}
+	if _, err := RunNow(); err == nil || !strings.Contains(err.Error(), "already in progress") {
+		t.Errorf("RunNow beside a run that goes on = %v, want it to refuse", err)
 	}
 	leave(t, dir, "release", "")
-	time.Sleep(500 * time.Millisecond)
-	if _, err := os.Stat(filepath.Join(dir, "finished")); err == nil {
-		t.Error("the run went on to finish after it was recorded as failed: it was not stopped")
+	waitForRunToEnd(t)
+	if _, err := os.Stat(filepath.Join(dir, "finished")); err != nil {
+		t.Error("the run never finished: it was stopped when the panel stopped waiting for it")
 	}
+	if status := GetRunStatus(); status.State != RunFailed || !strings.Contains(status.Tail, "the panel log says how it ended") {
+		t.Errorf("after the run ended it is recorded as %q with %q, want a failure that sends to the panel log", status.State, status.Tail)
+	}
+	if _, err := RunNow(); err != nil {
+		t.Fatalf("RunNow after the run ended: %v", err)
+	}
+	waitForRun(t)
 }
 
 // No test can reproduce the sandbox, but its way out can be seen: apt-get, the settings files and the run itself all go
@@ -214,9 +234,5 @@ func TestEverythingThatChangesTheHostRunsAsAUnit(t *testing.T) {
 	}
 	if status := GetRunStatus(); status.State != RunSuccess || !strings.HasSuffix(status.Tail, "frontend=noninteractive\n") {
 		t.Errorf("the run ended as %q with output %q, want success and the setting it needs", status.State, status.Tail)
-	}
-	// Past the run timeout systemd stops the run even if the panel is gone, so a record of it as failed is never a lie.
-	if args := fake.Args(); !slices.Contains(args, "--property=RuntimeMaxSec=900") || !slices.Contains(args, "--property=TimeoutStopSec=15") {
-		t.Errorf("the run was started with %q, want it capped at the run timeout, with a short time to stop", args)
 	}
 }
