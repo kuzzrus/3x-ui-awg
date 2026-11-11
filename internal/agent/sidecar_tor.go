@@ -27,9 +27,7 @@ func (torProgram) Install(ctx context.Context) error {
 	done := make(chan error, 1)
 	go func() {
 		// Not ctx: the goroutine outlives the call, to quiet the system's Tor once the package manager is done.
-		waitCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), tor.InstallTimeout)
-		defer cancel()
-		err := tor.Install(waitCtx)
+		err := tor.Install(context.WithoutCancel(ctx))
 		if err == nil {
 			quietSystemTor()
 		}

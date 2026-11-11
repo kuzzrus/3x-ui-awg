@@ -225,6 +225,21 @@ func TestAStoppedCommandIsAskedToLeaveBeforeItIsKilled(t *testing.T) {
 	}
 }
 
+func TestAStoppedCommandGivesBackWhatItWroteBeforeItWasStopped(t *testing.T) {
+	useDirect(t)
+	withShortGrace(t)
+	ready := filepath.Join(t.TempDir(), "ready")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cancelOnceThere(ready, cancel)
+
+	res, err := Run(ctx, Spec{Name: "scan", StopOnCancel: true, Argv: bash(`echo partial; echo warn >&2; echo ready > "$1"; sleep 300`, ready)})
+
+	if !errors.Is(err, context.Canceled) || string(res.Stdout) != "partial\n" || string(res.Stderr) != "warn\n" {
+		t.Errorf("Run = %q, %q, %v; want what the command wrote before it was stopped, and the context error", res.Stdout, res.Stderr, err)
+	}
+}
+
 func TestACommandThatOutlivesItsContextIsLeftToFinishAndItsEndIsLogged(t *testing.T) {
 	useDirect(t)
 	dir := t.TempDir()

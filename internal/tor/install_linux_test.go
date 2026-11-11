@@ -16,7 +16,7 @@ import (
 )
 
 // fakeAptGet records what it is asked and the prompt setting it was started with, and puts a tor beside itself on
-// install. What it does besides is up to files a test leaves beside it, since a unit starts without the test's settings.
+// install. What else it does is up to files a test leaves beside it, since a unit starts without the test's settings.
 const fakeAptGet = `#!/bin/bash
 dir=$(dirname "$0")
 echo "$* [frontend=${DEBIAN_FRONTEND-unset}]" >> "$dir/calls"
@@ -24,7 +24,7 @@ case "$1" in
   update)
     if [ -e "$dir/stall-update" ]; then
       echo ready > "$dir/ready"
-      while [ ! -e "$dir/release" ]; do sleep 0.05; done
+      while [ ! -e "$dir/release" ] && [ -d "$dir" ]; do sleep 0.05; done
     fi
     if [ -e "$dir/update-fails" ]; then echo "E: Failed to fetch the package index" >&2; exit 100; fi ;;
   install)
@@ -132,7 +132,6 @@ func TestInstallSaysWhyThePackageManagerFailed(t *testing.T) {
 func TestInstallStartsNothingWhileTheIndexRefreshIsStillRunning(t *testing.T) {
 	dir := withFakeAptGet(t)
 	leave(t, dir, "stall-update")
-	t.Cleanup(func() { leave(t, dir, "release") })
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {

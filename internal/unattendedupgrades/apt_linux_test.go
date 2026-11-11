@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -24,7 +25,7 @@ if [ "$1" = update ] && [ -e "$dir/update-fails" ]; then echo "E: Failed to fetc
 exit 0
 `
 
-// fakeUnattendedUpgrade prints on both streams and can hold on until the test lets it go.
+// fakeUnattendedUpgrade prints on both streams and can hold on until the test lets it go, or until its folder is gone.
 const fakeUnattendedUpgrade = `#!/bin/bash
 dir=$(dirname "$0")
 echo "Starting unattended upgrades script"
@@ -32,7 +33,7 @@ echo "W: a warning on stderr" >&2
 echo "frontend=${DEBIAN_FRONTEND-unset}"
 if [ -e "$dir/stall" ]; then
   echo ready > "$dir/ready"
-  while [ ! -e "$dir/release" ]; do sleep 0.05; done
+  while [ ! -e "$dir/release" ] && [ -d "$dir" ]; do sleep 0.05; done
   echo finished > "$dir/finished"
 fi
 exit "$(cat "$dir/exit-status" 2>/dev/null || echo 0)"
@@ -145,11 +146,10 @@ func TestRunNowRecordsAFailedRunWithItsOutputAndExitStatus(t *testing.T) {
 	}
 }
 
-// Killing apt halfway leaves the package database unfinished, so a run that takes too long is given up on, not stopped.
-func TestARunThatOutlivesItsTimeIsRecordedAsFailedAndLeftToFinish(t *testing.T) {
+// A run that is recorded as failed must be over, or the next RunNow would start a second one beside it.
+func TestARunThatTakesTooLongIsStoppedAndRecordedAsFailedWithWhatItPrinted(t *testing.T) {
 	dir := withFakeApt(t)
 	leave(t, dir, "stall", "")
-	t.Cleanup(func() { leave(t, dir, "release", "") })
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
@@ -164,18 +164,15 @@ func TestARunThatOutlivesItsTimeIsRecordedAsFailedAndLeftToFinish(t *testing.T) 
 
 	execute(ctx, "run-1", time.Now().Unix())
 
-	status := GetRunStatus()
-	if status.State != RunFailed || !strings.Contains(status.Tail, "still running") {
-		t.Fatalf("the run is recorded as %q with %q, want a failure that says it is still running", status.State, status.Tail)
+	want := "Starting unattended upgrades script\nW: a warning on stderr\nfrontend=noninteractive\nunattended-upgrade -v: context canceled"
+	if status := GetRunStatus(); status.State != RunFailed || status.Tail != want {
+		t.Errorf("the run is recorded as %q with %q, want a failure with what it printed and why it ended", status.State, status.Tail)
 	}
 	leave(t, dir, "release", "")
-	for range 500 {
-		if _, err := os.Stat(filepath.Join(dir, "finished")); err == nil {
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
+	if _, err := os.Stat(filepath.Join(dir, "finished")); err == nil {
+		t.Error("the run went on to finish after it was recorded as failed: it was not stopped")
 	}
-	t.Error("the run never finished: it was stopped when the panel gave up waiting for it")
 }
 
 // No test can reproduce the sandbox, but its way out can be seen: apt-get, the settings files and the run itself all go
@@ -217,5 +214,9 @@ func TestEverythingThatChangesTheHostRunsAsAUnit(t *testing.T) {
 	}
 	if status := GetRunStatus(); status.State != RunSuccess || !strings.HasSuffix(status.Tail, "frontend=noninteractive\n") {
 		t.Errorf("the run ended as %q with output %q, want success and the setting it needs", status.State, status.Tail)
+	}
+	// Past the run timeout systemd stops the run even if the panel is gone, so a record of it as failed is never a lie.
+	if args := fake.Args(); !slices.Contains(args, "--property=RuntimeMaxSec=900") || !slices.Contains(args, "--property=TimeoutStopSec=15") {
+		t.Errorf("the run was started with %q, want it capped at the run timeout, with a short time to stop", args)
 	}
 }

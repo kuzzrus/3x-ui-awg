@@ -65,7 +65,7 @@ type Spec struct {
 	MaxRuntime time.Duration
 }
 
-// Result is what a command that ended wrote.
+// Result is what a command wrote, once it ended or was stopped.
 type Result struct {
 	Stdout []byte
 	Stderr []byte
@@ -267,8 +267,9 @@ func (r *run) await(ctx context.Context, l launcher) (Result, error) {
 	if !r.ended(ctx, l) {
 		if r.spec.StopOnCancel {
 			l.stop(r)
+			res, _ := r.collect() // what it wrote before it was stopped
 			r.finish(l)
-			return Result{}, fmt.Errorf("%s: %w", r.spec.Name, ctx.Err())
+			return res, fmt.Errorf("%s: %w", r.spec.Name, ctx.Err())
 		}
 		go r.watch(l)
 		return Result{}, r.detached(ctx.Err())

@@ -12,8 +12,8 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/hostaction"
 )
 
-// runTimeout is how long RunNow waits for a run, long enough for a real batch of security updates. A run still going
-// then is recorded as failed and left to finish: apt killed halfway leaves dpkg unfinished.
+// runTimeout is how long a run may take, long enough for a real batch of security updates. Past it the run is stopped
+// (TERM first), by the panel or by systemd should the panel be gone, and recorded as failed with what it printed.
 const runTimeout = 15 * time.Minute
 
 // RunState is the terminal (or in-progress) state of the most recent RunNow.
@@ -73,9 +73,11 @@ func execute(parent context.Context, runID string, startedAt int64) {
 	// -v: enough output for the panel's log view without --debug's volume; never --dry-run, RunNow means run it.
 	// The shell merges stderr into stdout, so the log keeps both in the order they were written.
 	res, runErr := hostaction.Run(ctx, hostaction.Spec{
-		Name: "unattended-upgrade -v",
-		Argv: []string{"sh", "-c", "exec unattended-upgrade -v 2>&1"},
-		Env:  noninteractiveEnv,
+		Name:         "unattended-upgrade -v",
+		Argv:         []string{"sh", "-c", "exec unattended-upgrade -v 2>&1"},
+		Env:          noninteractiveEnv,
+		StopOnCancel: true,
+		MaxRuntime:   runTimeout,
 	})
 
 	out := string(res.Stdout)
