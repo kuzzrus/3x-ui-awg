@@ -5,18 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/mhsanaei/3x-ui/v3/internal/hostaction"
 )
 
-// runTimeout bounds a single unattended-upgrade invocation -- long enough
-// for a real batch of security updates, short enough that a genuinely stuck
-// run does not tie up this dashboard action forever. Killing the process on
-// timeout carries a small residual risk of leaving one package
-// mid-configured (the same risk any hard timeout on a package manager has),
-// but that is still strictly safer than the no-timeout `apt upgrade -y`
-// this feature replaced.
+// runTimeout is how long RunNow waits for a run, long enough for a real batch of security updates. A run still going
+// then is recorded as failed and left to finish: apt killed halfway leaves dpkg unfinished.
 const runTimeout = 15 * time.Minute
 
 // RunState is the terminal (or in-progress) state of the most recent RunNow.
@@ -65,32 +62,40 @@ func RunNow() (string, error) {
 		return "", err
 	}
 
-	go execute(runID, startedAt)
+	go execute(context.Background(), runID, startedAt)
 	return runID, nil
 }
 
-func execute(runID string, startedAt int64) {
-	ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
+func execute(parent context.Context, runID string, startedAt int64) {
+	ctx, cancel := context.WithTimeout(parent, runTimeout)
 	defer cancel()
 
-	// -v: enough output to be useful in the panel's own log view without
-	// --debug's much larger volume. Never --dry-run -- RunNow means run it.
-	cmd := exec.CommandContext(ctx, "unattended-upgrade", "-v")
-	cmd.Env = noninteractiveEnv()
-	out, runErr := cmd.CombinedOutput()
+	// -v: enough output for the panel's log view without --debug's volume; never --dry-run, RunNow means run it.
+	// The shell merges stderr into stdout, so the log keeps both in the order they were written.
+	res, runErr := hostaction.Run(ctx, hostaction.Spec{
+		Name: "unattended-upgrade -v",
+		Argv: []string{"sh", "-c", "exec unattended-upgrade -v 2>&1"},
+		Env:  noninteractiveEnv,
+	})
 
+	out := string(res.Stdout)
 	status := RunStatus{
 		RunID:     runID,
 		State:     RunSuccess,
 		StartedAt: startedAt,
 		EndedAt:   time.Now().Unix(),
-		Tail:      tail(string(out), 4000),
 	}
 	if runErr != nil {
 		status.State = RunFailed
+		out = strings.TrimRight(out, "\n")
+		if out != "" {
+			out += "\n"
+		}
+		out += runErr.Error()
 	}
+	status.Tail = tail(out, 4000)
 	_ = os.MkdirAll(logDir(), 0o700)
-	_ = os.WriteFile(LogPath(), out, 0o600)
+	_ = os.WriteFile(LogPath(), []byte(out), 0o600)
 	_ = writeRunStatus(status)
 }
 

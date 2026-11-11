@@ -17,13 +17,12 @@ import (
 // sync with them.
 type UnattendedUpgradesService struct{}
 
-// installTimeout covers `apt-get update && apt-get install -y
-// unattended-upgrades` -- a real network fetch plus a package install, not
-// just a local config write. Status/Configure/Disable/RunNow need no
-// timeout of their own: they're local file writes (or, for RunNow, just
-// launching a background goroutine and returning), never a blocking network
-// or exec call.
+// unattendedUpgradesInstallTimeout covers `apt-get update && apt-get install -y unattended-upgrades`: a network fetch
+// and a package install. One still running then is left to finish.
 const unattendedUpgradesInstallTimeout = 3 * time.Minute
+
+// unattendedUpgradesWriteTimeout covers Configure and Disable, which wait only for a unit to write or remove a small file.
+const unattendedUpgradesWriteTimeout = time.Minute
 
 // UnattendedUpgradesStatus is the panel-facing status shape.
 type UnattendedUpgradesStatus struct {
@@ -61,14 +60,18 @@ func (s *UnattendedUpgradesService) Configure(mode string, autoReboot bool) erro
 	if m != unattendedupgrades.ModeSecurityOnly && m != unattendedupgrades.ModeFull {
 		return fmt.Errorf("unknown mode %q", mode)
 	}
-	return unattendedupgrades.Configure(m, autoReboot)
+	ctx, cancel := context.WithTimeout(context.Background(), unattendedUpgradesWriteTimeout)
+	defer cancel()
+	return unattendedupgrades.Configure(ctx, m, autoReboot)
 }
 
 // Disable turns off the periodic timer and removes this panel's own
 // drop-in -- see internal/unattendedupgrades.Disable for why this does not
 // remove the OS package itself.
 func (s *UnattendedUpgradesService) Disable() error {
-	return unattendedupgrades.Disable()
+	ctx, cancel := context.WithTimeout(context.Background(), unattendedUpgradesWriteTimeout)
+	defer cancel()
+	return unattendedupgrades.Disable(ctx)
 }
 
 // RunNow triggers an immediate unattended-upgrade run in the background and
