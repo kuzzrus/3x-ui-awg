@@ -146,7 +146,11 @@ func (unitLauncher) start(ctx context.Context, r *run) error {
 		return nil
 	}
 	text := strings.TrimSpace(string(out))
-	if strings.Contains(text, "System has not been booted with systemd") || strings.Contains(text, "Failed to connect to bus") {
+	if SystemdUnavailable(text) {
+		// An init that is not systemd stays so while the panel runs; a bus that is away may be back for the next command.
+		if strings.Contains(text, notBootedMarker) {
+			markSystemdUnusable()
+		}
 		return fmt.Errorf("%w: %s", errSystemdUnusable, text)
 	}
 	return fmt.Errorf("systemd-run: %w: %s", err, text)

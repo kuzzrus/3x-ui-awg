@@ -35,7 +35,18 @@ func (r *run) command() []string {
 	return append(append([]string{"env"}, env...), r.spec.Argv...)
 }
 
-// env is the caller's settings plus the panel's proxy settings, which a unit would not otherwise see.
+// ProxyEnv is the proxy settings the panel was started with as NAME=value, which a transient unit would not otherwise see.
+func ProxyEnv() []string {
+	var env []string
+	for _, key := range proxyEnvKeys {
+		if value := os.Getenv(key); value != "" {
+			env = append(env, key+"="+value)
+		}
+	}
+	return env
+}
+
+// env is the caller's settings plus the panel's proxy settings.
 func (r *run) env() []string {
 	env := append([]string(nil), r.spec.Env...)
 	have := make(map[string]bool, len(env))
@@ -43,9 +54,9 @@ func (r *run) env() []string {
 		name, _, _ := strings.Cut(entry, "=")
 		have[name] = true
 	}
-	for _, key := range proxyEnvKeys {
-		if value := os.Getenv(key); value != "" && !have[key] {
-			env = append(env, key+"="+value)
+	for _, entry := range ProxyEnv() {
+		if name, _, _ := strings.Cut(entry, "="); !have[name] {
+			env = append(env, entry)
 		}
 	}
 	return env

@@ -9,65 +9,16 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/mhsanaei/3x-ui/v3/internal/hostaction/hostactiontest"
 )
 
-// fakeSystemdRun starts the command the way PID 1 does: detached, with an environment of its own.
-const fakeSystemdRun = `#!/bin/bash
-if [ "$1" = "--version" ]; then echo "systemd $FAKE_SYSTEMD_VERSION ($FAKE_SYSTEMD_VERSION.1-fake)"; exit 0; fi
-echo called >> "$FAKE_SYSTEMD_DIR/systemd-run.calls"
-if [ -n "$FAKE_SYSTEMD_REFUSE" ]; then echo "$FAKE_SYSTEMD_REFUSE" >&2; exit 1; fi
-printf '%s\n' "$@" > "$FAKE_SYSTEMD_DIR/systemd-run.args"
-unit=
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --unit) unit=$2; shift 2 ;;
-    --*) shift ;;
-    *) break ;;
-  esac
-done
-if [ -n "$FAKE_SYSTEMD_NO_START" ]; then exit 0; fi
-setsid env -i PATH=/usr/local/bin:/usr/bin:/bin "$@" </dev/null >/dev/null 2>&1 &
-echo $! > "$FAKE_SYSTEMD_DIR/$unit.pid"
-exit 0
-`
-
-const fakeSystemctl = `#!/bin/bash
-echo "$*" >> "$FAKE_SYSTEMD_DIR/systemctl.calls"
-case "$1" in
-  is-active)
-    pid=$(cat "$FAKE_SYSTEMD_DIR/$3.pid" 2>/dev/null) || exit 4
-    kill -0 "$pid" 2>/dev/null && exit 0
-    exit 3 ;;
-  stop)
-    pid=$(cat "$FAKE_SYSTEMD_DIR/$2.pid" 2>/dev/null) || exit 5
-    kill -TERM -- "-$pid" 2>/dev/null
-    for i in $(seq 1 100); do kill -0 "$pid" 2>/dev/null || exit 0; sleep 0.05; done
-    kill -KILL -- "-$pid" 2>/dev/null
-    exit 0 ;;
-esac
-exit 0
-`
-
-type fakeSystemd struct{ dir string }
-
 // useFakeSystemd puts a stand-in systemd-run and systemctl first on PATH and makes Run start commands as units.
-func useFakeSystemd(t *testing.T, version string) fakeSystemd {
+func useFakeSystemd(t *testing.T, version string) hostactiontest.Fake {
 	t.Helper()
-	dir := t.TempDir()
-	for name, body := range map[string]string{"systemd-run": fakeSystemdRun, "systemctl": fakeSystemctl} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("FAKE_SYSTEMD_DIR", dir)
-	t.Setenv("FAKE_SYSTEMD_VERSION", version)
-	t.Setenv("FAKE_SYSTEMD_REFUSE", "")
-	t.Setenv("FAKE_SYSTEMD_NO_START", "")
-	t.Setenv(modeEnv, "unit")
-	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+	fake := hostactiontest.Use(t, version)
 	resetSystemdProbes(t)
-	return fakeSystemd{dir: dir}
+	return fake
 }
 
 func resetSystemdProbes(t *testing.T) {
@@ -79,25 +30,6 @@ func resetSystemdProbes(t *testing.T) {
 	}
 	reset()
 	t.Cleanup(reset)
-}
-
-func (f fakeSystemd) read(name string) string {
-	raw, _ := os.ReadFile(filepath.Join(f.dir, name))
-	return string(raw)
-}
-
-func (f fakeSystemd) args() []string {
-	return strings.Split(strings.TrimSpace(f.read("systemd-run.args")), "\n")
-}
-
-func (f fakeSystemd) unit() string {
-	args := f.args()
-	for i, arg := range args {
-		if arg == "--unit" && i+1 < len(args) {
-			return args[i+1]
-		}
-	}
-	return ""
 }
 
 func contains(list []string, want string) bool {
@@ -119,11 +51,11 @@ func TestAUnitRunsTheScriptOutsideThePanelWithAnEnvironmentOfItsOwn(t *testing.T
 	if err != nil || string(res.Stdout) != "unset|http://proxy.example:3128" {
 		t.Errorf("Run = %q, %v; want the proxy setting handed over and nothing else of the panel's environment", res.Stdout, err)
 	}
-	args := fake.args()
+	args := fake.Args()
 	if !contains(args, "--quiet") || !contains(args, "--collect") || !contains(args, "--property=RuntimeMaxSec=7200") {
 		t.Errorf("systemd-run was called with %q, want --quiet, --collect and a run time cap of two hours", args)
 	}
-	if unit := fake.unit(); !strings.HasPrefix(unit, "x-ui-hostaction-warpwp-install-current-") {
+	if unit := fake.Unit(); !strings.HasPrefix(unit, "x-ui-hostaction-warpwp-install-current-") {
 		t.Errorf("the unit is called %q, want a name that says what runs", unit)
 	}
 	if n := len(args); n < 2 || args[n-2] != "/bin/bash" || !strings.HasSuffix(args[n-1], "/run.sh") {
@@ -140,11 +72,11 @@ func TestOldSystemdGetsNoCollectAndHasItsFailedUnitClearedByHand(t *testing.T) {
 	if !errors.As(err, &exit) || exit.Code != 7 {
 		t.Fatalf("Run error = %v, want exit status 7", err)
 	}
-	if contains(fake.args(), "--collect") || !contains(fake.args(), "--property=RuntimeMaxSec=7200") {
-		t.Errorf("systemd-run was called with %q, want a run time cap but no --collect", fake.args())
+	if contains(fake.Args(), "--collect") || !contains(fake.Args(), "--property=RuntimeMaxSec=7200") {
+		t.Errorf("systemd-run was called with %q, want a run time cap but no --collect", fake.Args())
 	}
-	if want := "reset-failed " + fake.unit(); !strings.Contains(fake.read("systemctl.calls"), want) {
-		t.Errorf("systemctl was called with %q, want %q", fake.read("systemctl.calls"), want)
+	if want := "reset-failed " + fake.Unit(); !strings.Contains(fake.Read("systemctl.calls"), want) {
+		t.Errorf("systemctl was called with %q, want %q", fake.Read("systemctl.calls"), want)
 	}
 }
 
@@ -155,7 +87,7 @@ func TestAnAncientSystemdGetsNoRunTimeCap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, arg := range fake.args() {
+	for _, arg := range fake.Args() {
 		if strings.HasPrefix(arg, "--property=") || arg == "--collect" {
 			t.Errorf("systemd-run was called with %q, which systemd 219 does not know", arg)
 		}
@@ -170,7 +102,7 @@ func TestWithoutAnyoneForcingItCommandsGoToATransientUnit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if fake.unit() == "" {
+	if fake.Unit() == "" {
 		t.Error("systemd-run was never called, the command did not run as a unit")
 	}
 }
@@ -187,8 +119,25 @@ func TestWhereSystemdIsNotRunningCommandsFallBackToChildrenOfThePanelAndSystemdI
 		}
 	}
 
-	if calls := strings.Count(fake.read("systemd-run.calls"), "called"); calls != 1 {
+	if calls := strings.Count(fake.Read("systemd-run.calls"), "called"); calls != 1 {
 		t.Errorf("systemd-run was called %d times, want once: it said systemd is not running", calls)
+	}
+}
+
+// A bus that is away for a moment (systemd re-executing itself) must not turn units off until the panel restarts.
+func TestABusFailureOnlyCostsTheActionThatMetItAndSystemdIsAskedAgainNext(t *testing.T) {
+	fake := useFakeSystemd(t, "255")
+	t.Setenv(modeEnv, "")
+	t.Setenv("FAKE_SYSTEMD_REFUSE", "Failed to connect to bus: No such file or directory")
+	if res, err := Run(context.Background(), Spec{Name: "during the outage", Argv: bash(`echo direct`)}); err != nil || string(res.Stdout) != "direct\n" {
+		t.Fatalf("the run during the outage = %q, %v; want the command to run directly", res.Stdout, err)
+	}
+	t.Setenv("FAKE_SYSTEMD_REFUSE", "")
+
+	res, err := Run(context.Background(), Spec{Name: "after it", Argv: bash(`echo unit`)})
+
+	if err != nil || string(res.Stdout) != "unit\n" || !strings.HasPrefix(fake.Unit(), "x-ui-hostaction-after-it-") {
+		t.Errorf("the run after the outage = %q, %v in unit %q; want it to run as a unit again", res.Stdout, err, fake.Unit())
 	}
 }
 
@@ -231,11 +180,11 @@ func TestAStoppedUnitIsStoppedThroughSystemctlWithItsOwnCapAndGrace(t *testing.T
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("Run error = %v, want the context error", err)
 	}
-	if want := "stop " + fake.unit(); !strings.Contains(fake.read("systemctl.calls"), want) {
-		t.Errorf("systemctl was called with %q, want %q", fake.read("systemctl.calls"), want)
+	if want := "stop " + fake.Unit(); !strings.Contains(fake.Read("systemctl.calls"), want) {
+		t.Errorf("systemctl was called with %q, want %q", fake.Read("systemctl.calls"), want)
 	}
-	if !contains(fake.args(), "--property=RuntimeMaxSec=600") || !contains(fake.args(), "--property=TimeoutStopSec=15") {
-		t.Errorf("systemd-run was called with %q, want the cap of this command and a short stop timeout", fake.args())
+	if !contains(fake.Args(), "--property=RuntimeMaxSec=600") || !contains(fake.Args(), "--property=TimeoutStopSec=15") {
+		t.Errorf("systemd-run was called with %q, want the cap of this command and a short stop timeout", fake.Args())
 	}
 	if alive(pidIn(t, pidFile)) {
 		t.Error("the command still runs after its unit was stopped")
@@ -270,10 +219,10 @@ func TestAUnitThatOutlivesTheContextGoesOnWithoutThePanelAndItsEndIsLogged(t *te
 	_, err := Run(ctx, Spec{Name: name, Argv: bash(`echo ready > "$1"; while [ ! -e "$2" ]; do sleep 0.05; done; echo 'E: no network' >&2; exit 9`, ready, release)})
 
 	var detached *DetachedError
-	if !errors.As(err, &detached) || !strings.Contains(err.Error(), "as unit "+fake.unit()) || !strings.Contains(err.Error(), "goes on without the panel") {
+	if !errors.As(err, &detached) || !strings.Contains(err.Error(), "as unit "+fake.Unit()) || !strings.Contains(err.Error(), "goes on without the panel") {
 		t.Fatalf("Run error = %v; want a DetachedError that names the unit and says it goes on without the panel", err)
 	}
-	if _, m := onlyRun(t); m.Name != name || m.Unit != fake.unit() || m.PID != 0 || m.Started == 0 {
+	if _, m := onlyRun(t); m.Name != name || m.Unit != fake.Unit() || m.PID != 0 || m.Started == 0 {
 		t.Errorf("the record of the running unit is %+v, want its name and its unit for a restarted panel to find it by", m)
 	}
 	if err := os.WriteFile(release, nil, 0o600); err != nil {

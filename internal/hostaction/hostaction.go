@@ -32,6 +32,16 @@ const (
 	errorTail         = 4000
 )
 
+const (
+	notBootedMarker = "System has not been booted with systemd"
+	noBusMarker     = "Failed to connect to bus"
+)
+
+// SystemdUnavailable is whether the output of a failed systemd-run says there is no systemd to start a unit with.
+func SystemdUnavailable(output string) bool {
+	return strings.Contains(output, notBootedMarker) || strings.Contains(output, noBusMarker)
+}
+
 // aliveEvery is how often a unit is asked whether it still runs, in nanoseconds; atomic because watchers read it.
 var aliveEvery atomic.Int64
 
@@ -221,8 +231,7 @@ func (r *run) begin(ctx context.Context) (launcher, error) {
 		if !errors.Is(err, errSystemdUnusable) {
 			return l, err
 		}
-		markSystemdUnusable()
-		logger.Warning("hostaction: systemd-run is not usable here, so commands run as children of the panel:", err)
+		logger.Warning("hostaction: systemd-run is not usable here, so this command runs as a child of the panel:", err)
 	}
 	return r.beginDirect(ctx)
 }

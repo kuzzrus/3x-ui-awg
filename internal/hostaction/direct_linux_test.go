@@ -56,6 +56,22 @@ func TestRunFeedsStdinAndEnvironment(t *testing.T) {
 	}
 }
 
+func TestASettingTheCallerNamesWinsOverTheProxySettingOfThePanel(t *testing.T) {
+	useDirect(t)
+	t.Setenv("https_proxy", "http://panel.example:3128")
+	t.Setenv("http_proxy", "http://panel.example:3128")
+
+	res, err := Run(context.Background(), Spec{
+		Name: "proxied",
+		Argv: bash(`printf '%s|%s' "$https_proxy" "$http_proxy"`),
+		Env:  []string{"https_proxy=http://caller.example:8080"},
+	})
+
+	if want := "http://caller.example:8080|http://panel.example:3128"; err != nil || string(res.Stdout) != want {
+		t.Errorf("the command saw %q, %v; want the caller's https_proxy and the panel's http_proxy", res.Stdout, err)
+	}
+}
+
 func TestRunKeepsItsFilesToItselfAndGivesTheCommandFilesNotPipes(t *testing.T) {
 	useDirect(t)
 

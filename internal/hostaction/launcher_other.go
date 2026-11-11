@@ -13,8 +13,6 @@ var readOnlyUsr = func() bool { return false }
 
 func systemdUsable() bool { return false }
 
-func markSystemdUnusable() {}
-
 type directLauncher struct{}
 
 func (directLauncher) start(context.Context, *run) error { return errUnsupported }
