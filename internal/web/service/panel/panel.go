@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
+	"github.com/mhsanaei/3x-ui/v3/internal/hostaction"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/version"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/global"
@@ -285,7 +286,8 @@ func (s *PanelService) startUpdate(useDev bool) (int64, error) {
 	// update.sh sends its curl downloads through the panel egress bridge. With socks5h the
 	// proxy resolves GitHub's hostnames, since this server's own DNS may be filtered.
 	egressEnv := "XUI_UPDATE_PROXY=" + strings.Replace((&service.SettingService{}).PanelEgressProxyURL(), "socks5://", "socks5h://", 1)
-	proxyEnv := updateProxyEnvVars()
+	// systemd-run's child (unlike the bash fallback) inherits nothing but --setenv.
+	proxyEnv := hostaction.ProxyEnv()
 
 	if systemdRun, err := exec.LookPath("systemd-run"); err == nil {
 		unitName := fmt.Sprintf("x-ui-web-update-%d", time.Now().Unix())
@@ -306,8 +308,7 @@ func (s *PanelService) startUpdate(useDev bool) (int64, error) {
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			output := strings.TrimSpace(string(out))
-			if !strings.Contains(output, "System has not been booted with systemd") &&
-				!strings.Contains(output, "Failed to connect to bus") {
+			if !hostaction.SystemdUnavailable(output) {
 				_ = os.Remove(scriptPath)
 				return 0, fmt.Errorf("failed to start panel update job: %w: %s", err, output)
 			}
@@ -340,18 +341,6 @@ func (s *PanelService) startUpdate(useDev bool) (int64, error) {
 	recordUpdatePID(cmd.Process.Pid)
 	launched = true
 	return runID, nil
-}
-
-// updateProxyEnvVars forwards ambient proxy env vars to systemd-run's child,
-// which (unlike the bash fallback) inherits nothing but --setenv.
-func updateProxyEnvVars() []string {
-	var out []string
-	for _, key := range []string{"https_proxy", "HTTPS_PROXY", "all_proxy", "ALL_PROXY", "http_proxy", "HTTP_PROXY", "no_proxy", "NO_PROXY"} {
-		if v := os.Getenv(key); v != "" {
-			out = append(out, key+"="+v)
-		}
-	}
-	return out
 }
 
 // acquireUpdateSlot claims the single in-flight-update slot for runID. It

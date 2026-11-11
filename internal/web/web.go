@@ -23,6 +23,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
 	"github.com/mhsanaei/3x-ui/v3/internal/eventbus"
 	"github.com/mhsanaei/3x-ui/v3/internal/frontproxy"
+	"github.com/mhsanaei/3x-ui/v3/internal/hostaction"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/mtproto"
 	"github.com/mhsanaei/3x-ui/v3/internal/naiveproxy"
@@ -561,6 +562,9 @@ func (s *Server) start(restartXray bool, startTgBot bool) (err error) {
 		return err
 	}
 	service.StartTrafficWriter()
+
+	// A host action from before the last stop may still run, or have ended unseen: log how it ended.
+	hostaction.Recover()
 
 	// SkipIfStillRunning stops a slow job (e.g. the 5s traffic poll on a large
 	// install) from overlapping itself: two concurrent runs of the same job race

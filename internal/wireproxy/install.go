@@ -3,9 +3,8 @@ package wireproxy
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
+
+	"github.com/mhsanaei/3x-ui/v3/internal/hostaction"
 )
 
 // The warpwp actions this package runs; the vendored manager script has to answer to each of them.
@@ -23,42 +22,14 @@ const (
 // (see this package's doc for what that touches on the host). Already installed is no no-op, unlike Tor, AdGuard and
 // Psiphon: the action is idempotent, and an admin may want to run it again to repair or update the setup.
 func Install(ctx context.Context) error {
-	if err := placeScript(managerBinPath, managerScript); err != nil {
-		return err
+	if err := hostaction.WriteFile(ctx, managerBinPath, managerScript, 0o755); err != nil {
+		return fmt.Errorf("placing %s: %w", managerBinPath, err)
 	}
-	if err := placeScript(nativeBinPath, nativeScript); err != nil {
-		return err
+	if err := hostaction.WriteFile(ctx, nativeBinPath, nativeScript, 0o755); err != nil {
+		return fmt.Errorf("placing %s: %w", nativeBinPath, err)
 	}
 	_, err := run(ctx, actionInstall)
 	return err
-}
-
-// placeScript replaces the script at path with body, executable. It syncs a staged copy and renames it over the target:
-// the scheduler runs these scripts directly, and bash reads a script as it executes it.
-func placeScript(path string, body []byte) error {
-	stage, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".new.*")
-	if err != nil {
-		return fmt.Errorf("staging %s: %w", path, err)
-	}
-	// After the rename there is nothing left at the staged path, and this does nothing.
-	defer os.Remove(stage.Name())
-	_, err = stage.Write(body)
-	if err == nil {
-		err = stage.Chmod(0o755)
-	}
-	if err == nil {
-		err = stage.Sync()
-	}
-	if closeErr := stage.Close(); err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return fmt.Errorf("staging %s: %w", path, err)
-	}
-	if err := os.Rename(stage.Name(), path); err != nil {
-		return fmt.Errorf("placing %s: %w", path, err)
-	}
-	return nil
 }
 
 // Uninstall runs warpwp's own safe removal (--remove): stops and disables
@@ -70,6 +41,6 @@ func placeScript(path string, body []byte) error {
 // package has no way to scope down to just what it installed.
 func Uninstall(ctx context.Context) error {
 	// The script asks y/N before it removes anything; the panel's own dialog is where the admin confirmed.
-	_, err := runWithInput(ctx, strings.NewReader("y\n"), actionRemove)
+	_, err := runWithInput(ctx, "y\n", actionRemove)
 	return err
 }

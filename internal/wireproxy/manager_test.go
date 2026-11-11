@@ -14,11 +14,19 @@ import (
 	"testing"
 )
 
+// useHostActions makes the actions run as children of the test, with the folder of their runs in a temp dir.
+func useHostActions(t *testing.T) {
+	t.Helper()
+	t.Setenv("XUI_HOSTACTION", "direct")
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+}
+
 // withFakeManagerBin points managerBinPath at a throwaway file for the
 // duration of the test and restores it after -- never touches the real
 // /usr/local/bin/warpwp.
 func withFakeManagerBin(t *testing.T, present bool) {
 	t.Helper()
+	useHostActions(t)
 	real := managerBinPath
 	t.Cleanup(func() { managerBinPath = real })
 	managerBinPath = filepath.Join(t.TempDir(), "warpwp")
@@ -111,6 +119,7 @@ func readRecord(t *testing.T, path string) string {
 // The manager stand-in records the arguments it is run with in the returned file.
 func withEmbeddedStandIns(t *testing.T) (record string) {
 	t.Helper()
+	useHostActions(t)
 	dir := t.TempDir()
 	record = filepath.Join(dir, "args")
 	t.Setenv("WIREPROXY_TEST_RECORD", record)
