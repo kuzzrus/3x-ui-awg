@@ -152,9 +152,8 @@ func TestAnInstallIsLeftToFinishWhenItsTimeIsUp(t *testing.T) {
 	record := withEmbeddedStandIns(t)
 	dir := filepath.Dir(record)
 	t.Setenv("WIREPROXY_TEST_DIR", dir)
-	// Created when the test ends, so that a test that fails halfway leaves no script spinning behind.
-	t.Cleanup(func() { _ = os.WriteFile(filepath.Join(dir, "release"), nil, 0o600) })
-	managerScript = []byte("#!/usr/bin/env bash\necho ready > \"$WIREPROXY_TEST_DIR/ready\"\nwhile [ ! -e \"$WIREPROXY_TEST_DIR/release\" ]; do sleep 0.05; done\necho finished > \"$WIREPROXY_TEST_DIR/finished\"\n")
+	// The script also ends once its folder is gone, so a test that fails halfway leaves nothing spinning.
+	managerScript = []byte("#!/usr/bin/env bash\necho ready > \"$WIREPROXY_TEST_DIR/ready\"\nwhile [ ! -e \"$WIREPROXY_TEST_DIR/release\" ] && [ -d \"$WIREPROXY_TEST_DIR\" ]; do sleep 0.05; done\necho finished > \"$WIREPROXY_TEST_DIR/finished\"\n")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cancelWhenThere(filepath.Join(dir, "ready"), cancel)

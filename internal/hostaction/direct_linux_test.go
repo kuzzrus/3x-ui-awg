@@ -228,13 +228,13 @@ func TestAStoppedCommandIsAskedToLeaveBeforeItIsKilled(t *testing.T) {
 func TestACommandThatOutlivesItsContextIsLeftToFinishAndItsEndIsLogged(t *testing.T) {
 	useDirect(t)
 	dir := t.TempDir()
-	ready, release := filepath.Join(dir, "ready"), releaseFile(t, dir)
+	ready, release := filepath.Join(dir, "ready"), filepath.Join(dir, "release")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cancelOnceThere(ready, cancel)
 	name := unique("apt-get install -y tor")
 
-	_, err := Run(ctx, Spec{Name: name, Argv: bash(`echo ready > "$1"; while [ ! -e "$2" ]; do sleep 0.05; done; echo 'E: dpkg was interrupted' >&2; exit 100`, ready, release)})
+	_, err := Run(ctx, Spec{Name: name, Argv: bash(waitForRelease+`echo 'E: dpkg was interrupted' >&2; exit 100`, ready, release)})
 
 	var detached *DetachedError
 	if !errors.As(err, &detached) || !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "still running") {
