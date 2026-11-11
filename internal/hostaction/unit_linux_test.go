@@ -210,13 +210,13 @@ func TestAUnitThatEndedWithoutAStatusIsNoticedWithoutWaitingForTheContext(t *tes
 func TestAUnitThatOutlivesTheContextGoesOnWithoutThePanelAndItsEndIsLogged(t *testing.T) {
 	fake := useFakeSystemd(t, "255")
 	dir := t.TempDir()
-	ready, release := filepath.Join(dir, "ready"), releaseFile(t, dir)
+	ready, release := filepath.Join(dir, "ready"), filepath.Join(dir, "release")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cancelOnceThere(ready, cancel)
 	name := unique("warpwp --install-current")
 
-	_, err := Run(ctx, Spec{Name: name, Argv: bash(`echo ready > "$1"; while [ ! -e "$2" ]; do sleep 0.05; done; echo 'E: no network' >&2; exit 9`, ready, release)})
+	_, err := Run(ctx, Spec{Name: name, Argv: bash(waitForRelease+`echo 'E: no network' >&2; exit 9`, ready, release)})
 
 	var detached *DetachedError
 	if !errors.As(err, &detached) || !strings.Contains(err.Error(), "as unit "+fake.Unit()) || !strings.Contains(err.Error(), "goes on without the panel") {

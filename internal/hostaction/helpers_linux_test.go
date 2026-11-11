@@ -33,14 +33,9 @@ func unique(name string) string {
 	return fmt.Sprintf("%s #%d-%d", name, time.Now().UnixNano(), nameSeq.Add(1))
 }
 
-// releaseFile is the file a script waits for before it goes on. It is created when the test ends, so that a test that
-// fails halfway leaves no script spinning behind.
-func releaseFile(t *testing.T, dir string) string {
-	t.Helper()
-	path := filepath.Join(dir, "release")
-	t.Cleanup(func() { _ = os.WriteFile(path, nil, 0o600) })
-	return path
-}
+// waitForRelease starts a script that says it is ready and waits for the file named by its second argument. It also ends
+// once the folder of that file is gone, so a test that fails halfway leaves no script spinning when its folder is removed.
+const waitForRelease = `echo ready > "$1"; while [ ! -e "$2" ] && [ -d "${2%/*}" ]; do sleep 0.05; done; `
 
 func checkOftenWhetherUnitsRun(t *testing.T) {
 	t.Helper()
