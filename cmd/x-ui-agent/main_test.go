@@ -106,6 +106,17 @@ func TestRunServesTheMasterUntilStopped(t *testing.T) {
 	// run points the core's folders at the flags through the environment.
 	t.Setenv("XUI_BIN_FOLDER", "")
 	t.Setenv("XUI_LOG_FOLDER", "")
+	// A host action that ended while the agent was away: starting up settles it and drops its folder.
+	leftover := filepath.Join(dir, "bin", "hostaction", "earlier-run")
+	if err := os.MkdirAll(leftover, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	record := `{"name":"tor install","started":` + strconv.FormatInt(time.Now().Unix(), 10) + `,"maxRuntime":7200}`
+	for name, content := range map[string]string{"meta.json": record, "status": "0\n"} {
+		if err := os.WriteFile(filepath.Join(leftover, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -158,6 +169,9 @@ func TestRunServesTheMasterUntilStopped(t *testing.T) {
 	}
 	if status.Guid == "" || status.XrayState != agentproto.XrayStateStopped || status.ConfigRevision != "" {
 		t.Fatalf("status of a fresh agent = %+v, want an identity and no core", status)
+	}
+	if _, err := os.Stat(leftover); !os.IsNotExist(err) {
+		t.Errorf("the folder of the host action that ended while the agent was away is still there (%v)", err)
 	}
 
 	cancel()

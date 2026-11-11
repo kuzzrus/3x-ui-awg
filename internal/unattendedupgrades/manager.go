@@ -25,7 +25,6 @@
 package unattendedupgrades
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -34,6 +33,7 @@ import (
 	"strings"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
+	"github.com/mhsanaei/3x-ui/v3/internal/hostaction"
 )
 
 // Mode selects which apt origins unattended-upgrades is allowed to touch.
@@ -90,28 +90,19 @@ var isInstalled = func() bool {
 // "deinstall ok config-files" package, i.e. removed but not purged).
 func IsInstalled() bool { return isInstalled() }
 
-// noninteractiveEnv is the exact environment this feature exists to
-// guarantee is always set -- see this package's own doc comment for why a
-// bare `apt-get install -y` alone is not enough.
-func noninteractiveEnv() []string {
-	return append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
-}
+// noninteractiveEnv is what a unit has to be told: it starts without the panel's environment, and an apt-get that can
+// prompt hangs (see the package doc).
+var noninteractiveEnv = []string{"DEBIAN_FRONTEND=noninteractive"}
 
-// aptGet runs one apt-get subcommand with the noninteractive/force-confdef
-// environment this whole feature is built around, bounded by ctx (an
-// unreachable mirror hanging apt-get update is exactly the class of hang
-// this feature exists to avoid), returning combined output on failure for
-// the caller to surface.
+// aptGet runs one apt-get subcommand as a unit with the noninteractive environment this feature is built around. One
+// still running when ctx ends (a mirror that hangs) is left to finish: apt-get killed halfway leaves dpkg unfinished.
 func aptGet(ctx context.Context, args ...string) error {
-	cmd := exec.CommandContext(ctx, "apt-get", args...)
-	cmd.Env = noninteractiveEnv()
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("apt-get %v: %w: %s", args, err, bytes.TrimSpace(out.Bytes()))
-	}
-	return nil
+	_, err := hostaction.Run(ctx, hostaction.Spec{
+		Name: "apt-get " + strings.Join(args, " "),
+		Argv: append([]string{"apt-get"}, args...),
+		Env:  noninteractiveEnv,
+	})
+	return err
 }
 
 // Install installs the unattended-upgrades package if it is not already
@@ -144,7 +135,7 @@ const dropInHeader = "// Managed by the 3x-ui panel -- edits here are overwritte
 // files wholesale -- there is no partial state to merge, since this package
 // owns both outright and neither has any content this panel did not put
 // there itself.
-func Configure(mode Mode, autoReboot bool) error {
+func Configure(ctx context.Context, mode Mode, autoReboot bool) error {
 	if mode != ModeSecurityOnly && mode != ModeFull {
 		return fmt.Errorf("unknown unattended-upgrades mode %q", mode)
 	}
@@ -165,11 +156,11 @@ func Configure(mode Mode, autoReboot bool) error {
 		b.WriteString("    \"origin=${distro_id},codename=${distro_codename}-proposed-updates\";\n")
 		b.WriteString("};\n")
 	}
-	if err := os.WriteFile(dropInPath, []byte(b.String()), 0o644); err != nil {
+	if err := hostaction.WriteFile(ctx, dropInPath, []byte(b.String()), 0o644); err != nil {
 		return fmt.Errorf("writing %s: %w", dropInPath, err)
 	}
 
-	if err := writeAutoUpgrades(true); err != nil {
+	if err := writeAutoUpgrades(ctx, true); err != nil {
 		return err
 	}
 	return nil
@@ -182,17 +173,17 @@ func Configure(mode Mode, autoReboot bool) error {
 // pre-installed on cloud images, and removing an OS security tool as a side
 // effect of turning off the panel's own management of it would be a much
 // bigger surprise than just disabling the timer.
-func Disable() error {
-	if err := writeAutoUpgrades(false); err != nil {
+func Disable(ctx context.Context) error {
+	if err := writeAutoUpgrades(ctx, false); err != nil {
 		return err
 	}
-	if err := os.Remove(dropInPath); err != nil && !os.IsNotExist(err) {
+	if err := hostaction.Remove(ctx, dropInPath); err != nil {
 		return fmt.Errorf("removing %s: %w", dropInPath, err)
 	}
 	return nil
 }
 
-func writeAutoUpgrades(enabled bool) error {
+func writeAutoUpgrades(ctx context.Context, enabled bool) error {
 	value := "0"
 	if enabled {
 		value = "1"
@@ -201,7 +192,7 @@ func writeAutoUpgrades(enabled bool) error {
 		"APT::Periodic::Update-Package-Lists \"%s\";\nAPT::Periodic::Unattended-Upgrade \"%s\";\n",
 		value, value,
 	)
-	if err := os.WriteFile(autoUpgradesPath, []byte(content), 0o644); err != nil {
+	if err := hostaction.WriteFile(ctx, autoUpgradesPath, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("writing %s: %w", autoUpgradesPath, err)
 	}
 	return nil

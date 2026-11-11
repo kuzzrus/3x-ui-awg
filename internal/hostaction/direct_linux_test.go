@@ -244,6 +244,9 @@ func TestACommandThatOutlivesItsContextIsLeftToFinishAndItsEndIsLogged(t *testin
 	if _, m := onlyRun(t); m.Name != name || m.PID <= 0 || !alive(m.PID) || m.Unit != "" || m.MaxRuntime != 7200 || m.Started == 0 {
 		t.Errorf("the record of the running command is %+v, want its name, its process, its run time cap and when it started", m)
 	}
+	if !Running(name) || Running("a command that never ran") {
+		t.Errorf("Running says %v for the command left to finish and %v for one that never ran, want true and false", Running(name), Running("a command that never ran"))
+	}
 	if err := os.WriteFile(release, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -251,4 +254,7 @@ func TestACommandThatOutlivesItsContextIsLeftToFinishAndItsEndIsLogged(t *testin
 		return logged("warning", name, "exit status 100", "E: dpkg was interrupted")
 	})
 	waitFor(t, 5*time.Second, "the folder of the ended command to be dropped", func() bool { return len(entries(t, base)) == 0 })
+	if Running(name) {
+		t.Error("Running still says the command runs after it ended")
+	}
 }

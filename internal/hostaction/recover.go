@@ -45,7 +45,7 @@ func settle(dir string) {
 	case r.hasStatus():
 		r.report(l)
 	case l.alive(r):
-		active.Store(dir, struct{}{})
+		active.Store(dir, m.Name)
 		go r.watch(l)
 	default:
 		logger.Warningf("hostaction: %s ended without leaving an exit status", m.Name)

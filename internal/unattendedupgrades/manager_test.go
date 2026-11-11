@@ -1,6 +1,7 @@
 package unattendedupgrades
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,8 @@ import (
 func withTempAptPaths(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
+	t.Setenv("XUI_HOSTACTION", "direct")
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
 
 	realAuto, realDropIn := autoUpgradesPath, dropInPath
 	autoUpgradesPath = filepath.Join(dir, "20auto-upgrades")
@@ -27,14 +30,15 @@ func withTempAptPaths(t *testing.T) {
 
 func TestConfigureRejectsUnknownMode(t *testing.T) {
 	withTempAptPaths(t)
-	if err := Configure(Mode("bogus"), false); err == nil {
-		t.Fatal("Configure with an unknown mode returned nil error, want a rejection")
+	err := Configure(context.Background(), Mode("bogus"), false)
+	if err == nil || err.Error() != `unknown unattended-upgrades mode "bogus"` {
+		t.Fatalf("Configure with an unknown mode = %v, want the rejection of mode \"bogus\"", err)
 	}
 }
 
 func TestConfigureSecurityOnlyDoesNotAddOriginsPattern(t *testing.T) {
 	withTempAptPaths(t)
-	if err := Configure(ModeSecurityOnly, false); err != nil {
+	if err := Configure(context.Background(), ModeSecurityOnly, false); err != nil {
 		t.Fatalf("Configure: %v", err)
 	}
 	dropIn, err := os.ReadFile(dropInPath)
@@ -51,7 +55,7 @@ func TestConfigureSecurityOnlyDoesNotAddOriginsPattern(t *testing.T) {
 
 func TestConfigureFullModeAddsOriginsPattern(t *testing.T) {
 	withTempAptPaths(t)
-	if err := Configure(ModeFull, true); err != nil {
+	if err := Configure(context.Background(), ModeFull, true); err != nil {
 		t.Fatalf("Configure: %v", err)
 	}
 	dropIn, err := os.ReadFile(dropInPath)
@@ -72,7 +76,7 @@ func TestConfigureFullModeAddsOriginsPattern(t *testing.T) {
 
 func TestConfigureEnablesPeriodicTimer(t *testing.T) {
 	withTempAptPaths(t)
-	if err := Configure(ModeSecurityOnly, false); err != nil {
+	if err := Configure(context.Background(), ModeSecurityOnly, false); err != nil {
 		t.Fatalf("Configure: %v", err)
 	}
 	auto, err := os.ReadFile(autoUpgradesPath)
@@ -89,10 +93,10 @@ func TestConfigureEnablesPeriodicTimer(t *testing.T) {
 
 func TestDisableTurnsOffPeriodicAndRemovesDropIn(t *testing.T) {
 	withTempAptPaths(t)
-	if err := Configure(ModeFull, true); err != nil {
+	if err := Configure(context.Background(), ModeFull, true); err != nil {
 		t.Fatalf("Configure: %v", err)
 	}
-	if err := Disable(); err != nil {
+	if err := Disable(context.Background()); err != nil {
 		t.Fatalf("Disable: %v", err)
 	}
 
@@ -111,7 +115,7 @@ func TestDisableTurnsOffPeriodicAndRemovesDropIn(t *testing.T) {
 func TestDisableWithNoDropInIsNotAnError(t *testing.T) {
 	withTempAptPaths(t)
 	// Never configured -- dropInPath doesn't exist yet.
-	if err := Disable(); err != nil {
+	if err := Disable(context.Background()); err != nil {
 		t.Fatalf("Disable with no prior Configure: %v", err)
 	}
 }
@@ -131,7 +135,7 @@ func TestGetStatusNotInstalled(t *testing.T) {
 
 func TestGetStatusRoundTripsConfigure(t *testing.T) {
 	withTempAptPaths(t)
-	if err := Configure(ModeFull, true); err != nil {
+	if err := Configure(context.Background(), ModeFull, true); err != nil {
 		t.Fatalf("Configure: %v", err)
 	}
 	status := GetStatus()
@@ -143,10 +147,10 @@ func TestGetStatusRoundTripsConfigure(t *testing.T) {
 
 func TestGetStatusReflectsDisable(t *testing.T) {
 	withTempAptPaths(t)
-	if err := Configure(ModeFull, true); err != nil {
+	if err := Configure(context.Background(), ModeFull, true); err != nil {
 		t.Fatalf("Configure: %v", err)
 	}
-	if err := Disable(); err != nil {
+	if err := Disable(context.Background()); err != nil {
 		t.Fatalf("Disable: %v", err)
 	}
 	status := GetStatus()

@@ -19,6 +19,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/agent"
 	"github.com/mhsanaei/3x-ui/v3/internal/agentproto"
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
+	"github.com/mhsanaei/3x-ui/v3/internal/hostaction"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 )
 
@@ -80,6 +81,8 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 	}
 	logger.InitLogger(level)
 	defer logger.CloseLogger()
+	// A host action from before the last stop may still run, or have ended unseen: log how it ended.
+	hostaction.Recover()
 
 	return agent.Run(ctx, agent.Options{Bundle: bundle, StateDir: *stateDir, LogDir: logs})
 }

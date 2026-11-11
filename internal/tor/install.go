@@ -3,19 +3,17 @@ package tor
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/hostaction"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 )
 
-// installTimeout bounds a single package-manager invocation. Generous
-// because a fresh VPS's first index refresh can genuinely take a while on a
-// slow mirror, but still finite so a wedged package manager can't hang the
-// request forever.
-const installTimeout = 180 * time.Second
+// InstallTimeout is how long a caller waits for the package manager, a fresh VPS's first index refresh included. One
+// still running then is left to finish: killing it halfway would leave the package database unfinished.
+const InstallTimeout = 6 * time.Minute
 
 // packageManager describes how to drive one package manager non-interactively.
 // updateArgs is nil for managers that need no separate index-refresh step.
@@ -46,15 +44,15 @@ func detectPackageManager() (packageManager, bool) {
 	return packageManager{}, false
 }
 
-// run executes one package-manager subcommand non-interactively.
-// DEBIAN_FRONTEND is harmless to set for managers that ignore it.
-func (pm packageManager) run(args []string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), installTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, pm.bin, args...)
-	cmd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
-	out, err := cmd.CombinedOutput()
-	return string(out), err
+// run executes one package-manager subcommand non-interactively, as a unit of its own that writes where the panel's
+// sandbox does not. DEBIAN_FRONTEND is harmless to set for managers that ignore it.
+func (pm packageManager) run(ctx context.Context, args []string) error {
+	_, err := hostaction.Run(ctx, hostaction.Spec{
+		Name: pm.bin + " " + strings.Join(args, " "),
+		Argv: append([]string{pm.bin}, args...),
+		Env:  []string{"DEBIAN_FRONTEND=noninteractive"},
+	})
+	return err
 }
 
 func noPackageManagerErr(verb string) error {
@@ -63,7 +61,7 @@ func noPackageManagerErr(verb string) error {
 
 // Install installs the tor package via whichever supported package manager
 // is available. A no-op when tor is already on PATH.
-func Install() error {
+func Install(ctx context.Context) error {
 	if IsAvailable() {
 		return nil
 	}
@@ -72,16 +70,19 @@ func Install() error {
 		return noPackageManagerErr("install")
 	}
 	if pm.updateArgs != nil {
-		if out, err := pm.run(pm.updateArgs); err != nil {
+		if err := pm.run(ctx, pm.updateArgs); err != nil {
+			if ctx.Err() != nil {
+				// A refresh still running holds the package manager's lock, so an install beside it would only fail on that.
+				return err
+			}
 			// A stale/unreachable index shouldn't block the install attempt
 			// itself -- the install command below will fail on its own if
 			// the package genuinely can't be found.
-			logger.Warningf("tor: %s %v failed, continuing to install anyway: %v: %s", pm.bin, pm.updateArgs, err, strings.TrimSpace(out))
+			logger.Warningf("tor: %s %v failed, continuing to install anyway: %v", pm.bin, pm.updateArgs, err)
 		}
 	}
-	out, err := pm.run(pm.installArgs)
-	if err != nil {
-		return fmt.Errorf("%s %v: %w: %s", pm.bin, pm.installArgs, err, strings.TrimSpace(out))
+	if err := pm.run(ctx, pm.installArgs); err != nil {
+		return err
 	}
 	if !IsAvailable() {
 		return fmt.Errorf("%s reported success but no tor binary is on PATH afterwards", pm.bin)
@@ -92,7 +93,7 @@ func Install() error {
 // Uninstall stops the managed daemon (if running) and removes the tor
 // package via whichever supported package manager is available. A no-op
 // when tor is already absent from PATH.
-func Uninstall() error {
+func Uninstall(ctx context.Context) error {
 	GetManager().StopAll()
 	if !IsAvailable() {
 		return nil
@@ -101,9 +102,5 @@ func Uninstall() error {
 	if !ok {
 		return noPackageManagerErr("remove")
 	}
-	out, err := pm.run(pm.removeArgs)
-	if err != nil {
-		return fmt.Errorf("%s %v: %w: %s", pm.bin, pm.removeArgs, err, strings.TrimSpace(out))
-	}
-	return nil
+	return pm.run(ctx, pm.removeArgs)
 }

@@ -3,20 +3,21 @@ package unattendedupgrades
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
-	"os/exec"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/mhsanaei/3x-ui/v3/internal/hostaction"
 )
 
-// runTimeout bounds a single unattended-upgrade invocation -- long enough
-// for a real batch of security updates, short enough that a genuinely stuck
-// run does not tie up this dashboard action forever. Killing the process on
-// timeout carries a small residual risk of leaving one package
-// mid-configured (the same risk any hard timeout on a package manager has),
-// but that is still strictly safer than the no-timeout `apt upgrade -y`
-// this feature replaced.
+// runName is what hostaction calls the run, which lets it tell whether the run still goes.
+const runName = "unattended-upgrade -v"
+
+// runTimeout is how long RunNow waits for a run, long enough for a real batch of security updates. One still going then
+// is left to finish, since apt stopped halfway leaves dpkg unfinished, and no other starts beside it.
 const runTimeout = 15 * time.Minute
 
 // RunState is the terminal (or in-progress) state of the most recent RunNow.
@@ -65,42 +66,53 @@ func RunNow() (string, error) {
 		return "", err
 	}
 
-	go execute(runID, startedAt)
+	go execute(context.Background(), runID, startedAt)
 	return runID, nil
 }
 
-func execute(runID string, startedAt int64) {
-	ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
+func execute(parent context.Context, runID string, startedAt int64) {
+	ctx, cancel := context.WithTimeout(parent, runTimeout)
 	defer cancel()
 
-	// -v: enough output to be useful in the panel's own log view without
-	// --debug's much larger volume. Never --dry-run -- RunNow means run it.
-	cmd := exec.CommandContext(ctx, "unattended-upgrade", "-v")
-	cmd.Env = noninteractiveEnv()
-	out, runErr := cmd.CombinedOutput()
+	// -v: enough output for the panel's log view without --debug's volume; never --dry-run, RunNow means run it.
+	// The shell merges stderr into stdout, so the log keeps both in the order they were written.
+	res, runErr := hostaction.Run(ctx, hostaction.Spec{
+		Name: runName,
+		Argv: []string{"sh", "-c", "exec unattended-upgrade -v 2>&1"},
+		Env:  noninteractiveEnv,
+	})
 
+	out := string(res.Stdout)
 	status := RunStatus{
 		RunID:     runID,
 		State:     RunSuccess,
 		StartedAt: startedAt,
 		EndedAt:   time.Now().Unix(),
-		Tail:      tail(string(out), 4000),
 	}
-	if runErr != nil {
+	var detached *hostaction.DetachedError
+	switch {
+	case errors.As(runErr, &detached):
+		// The record says the run goes on, until GetRunStatus finds that nothing runs any more.
+		status.State, status.EndedAt = RunRunning, 0
+		out = fmt.Sprintf("The panel stopped waiting after %s and left the run to finish, as stopping apt halfway can leave dpkg unfinished. How it ends is in the panel log.", runTimeout)
+	case runErr != nil:
 		status.State = RunFailed
+		out = strings.TrimRight(out, "\n")
+		if out != "" {
+			out += "\n"
+		}
+		out += runErr.Error()
 	}
+	status.Tail = tail(out, 4000)
 	_ = os.MkdirAll(logDir(), 0o700)
-	_ = os.WriteFile(LogPath(), out, 0o600)
+	_ = os.WriteFile(LogPath(), []byte(out), 0o600)
 	_ = writeRunStatus(status)
 }
 
-// staleRunning reports whether a recorded "running" status is actually just
-// an abandoned record -- most likely the panel process itself restarted
-// mid-run, so nothing will ever write this run's terminal state. Guarded by
-// more than runTimeout so a genuinely still-running job is never mistaken
-// for a stale one.
+// staleRunning reports whether a recorded "running" status is an abandoned record: nothing runs any more, the panel having
+// restarted mid-run or the run having ended after the panel stopped waiting. The minute is for a run that just started.
 func staleRunning(status RunStatus) bool {
-	return time.Now().Unix()-status.StartedAt > int64(runTimeout.Seconds())+60
+	return time.Now().Unix()-status.StartedAt > 60 && !hostaction.Running(runName)
 }
 
 // GetRunStatus reports the most recent RunNow invocation, read back from
@@ -113,7 +125,7 @@ func GetRunStatus() RunStatus {
 	}
 	if status.State == RunRunning && staleRunning(status) {
 		status.State = RunFailed
-		status.Tail = "run status unknown: the panel process restarted before this run could report its own outcome"
+		status.Tail = "run status unknown: the run ended after the panel stopped waiting for it, or the panel restarted before it could report its own outcome; the panel log says how it ended"
 	}
 	return status
 }

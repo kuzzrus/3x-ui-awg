@@ -52,7 +52,8 @@ func TestRecoverWatchesACommandThatStillRunsAndDropsItOnceItHasEnded(t *testing.
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sleeper.Process.Kill(); _ = sleeper.Wait() })
-	dir := leftBehind(t, "running", meta{Name: unique("tor install"), PID: sleeper.Process.Pid, Started: time.Now().Unix(), MaxRuntime: 7200}, map[string]string{})
+	name := unique("tor install")
+	dir := leftBehind(t, "running", meta{Name: name, PID: sleeper.Process.Pid, Started: time.Now().Unix(), MaxRuntime: 7200}, map[string]string{})
 
 	Recover()
 
@@ -60,10 +61,16 @@ func TestRecoverWatchesACommandThatStillRunsAndDropsItOnceItHasEnded(t *testing.
 	if !exists(dir) {
 		t.Fatal("the folder of a command that still runs was dropped")
 	}
+	if !Running(name) {
+		t.Error("a restarted panel does not count the command that still runs as running")
+	}
 	if err := os.WriteFile(filepath.Join(dir, "status"), []byte("0\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, 10*time.Second, "the folder of the command that has ended to be dropped", func() bool { return !exists(dir) })
+	if Running(name) {
+		t.Error("Running still says the command runs after it ended")
+	}
 }
 
 func TestRecoverDropsACommandThatDiedWithoutLeavingAStatus(t *testing.T) {

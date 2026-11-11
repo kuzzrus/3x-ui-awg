@@ -26,7 +26,8 @@ func (torProgram) Installed() bool { return tor.IsAvailable() }
 func (torProgram) Install(ctx context.Context) error {
 	done := make(chan error, 1)
 	go func() {
-		err := tor.Install()
+		// Not ctx: the goroutine outlives the call, to quiet the system's Tor once the package manager is done.
+		err := tor.Install(context.WithoutCancel(ctx))
 		if err == nil {
 			quietSystemTor()
 		}
