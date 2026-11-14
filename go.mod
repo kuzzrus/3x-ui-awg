@@ -129,4 +129,4 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-replace github.com/amnezia-vpn/amneziawg-go/v3 => github.com/AYastrebov/amneziawg-go/v3 v3.1.20260815-0.20260825133717-fcbeecfd6d73
+replace github.com/amnezia-vpn/amneziawg-go/v3 => github.com/kuzzrus/amneziawg-go/v3 v3.1.20260828-kuzzrus.1
