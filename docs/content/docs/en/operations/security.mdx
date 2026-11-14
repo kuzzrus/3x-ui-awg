@@ -59,6 +59,38 @@ The `x-ui` menu (**26 — Enable BBR**) toggles Google's BBR congestion control
 (`net.ipv4.tcp_congestion_control = bbr`, `net.core.default_qdisc = fq`), which
 often improves throughput on congested links.
 
+## Linux kernel flaw CVE-2026-98432 and MPTCP
+
+A use-after-free in the IPv4 TCP code of the Linux kernel (CVE-2026-98432) lets an
+unauthenticated remote peer run code as root. The public exploit needs a socket
+that listens with Multipath TCP (MPTCP), but the flaw is in ordinary TCP too. The
+fix is your distribution's kernel update **and the reboot that loads it**: Ubuntu
+24.04 has it in `6.8.0-149`. `uname -r` shows the kernel that runs, and
+`/var/run/reboot-required` exists while a newer one waits for a reboot.
+
+Go programs listen with MPTCP by default, and a kernel allows it unless told
+otherwise (`net.mptcp.enabled = 1`). Until you can reboot, take that route away:
+
+```bash
+echo 'net.mptcp.enabled = 0' | sudo tee /etc/sysctl.d/90-mptcp-off.conf
+sudo sysctl -p /etc/sysctl.d/90-mptcp-off.conf
+sudo systemctl restart x-ui   # and x-ui-agent on a node: a socket that exists stays an MPTCP one
+ss -A mptcp -lnp              # who still listens over MPTCP; only the header should print
+```
+
+The panel and `x-ui-agent` of this build listen over plain TCP whatever the kernel
+allows, and they pass `GODEBUG=multipathtcp=0` on to the programs they start
+(Xray-core, Psiphon, NaiveProxy, AdGuard Home, tproxy-server, MTProxy). A program
+they do not start, such as the `wireproxy` service of WARP, follows the host setting
+only. A `GODEBUG` set in the service environment wins, so `GODEBUG=multipathtcp=1`
+brings MPTCP back. Xray-core 26.10.31 and later also keep MPTCP off unless an
+inbound or outbound turns on `tcpMptcp`.
+
+<Callout type="warn">
+  Turning MPTCP off narrows the way in, it does not remove the flaw. Install the
+  kernel update and reboot.
+</Callout>
+
 ## Keep current
 
 Update 3x-ui and Xray-core regularly — security fixes land in new releases. Watch

@@ -1,3 +1,6 @@
+// Listeners are plain TCP: a Linux kernel flaw in listening MPTCP sockets is reachable from the network.
+//go:debug multipathtcp=0
+
 // Package main is the entry point for the 3x-ui web panel application.
 // It initializes the database, web server, and handles command-line operations for managing the panel.
 package main
@@ -94,6 +97,7 @@ func runWebServer() {
 
 	_ = godotenv.Load()
 
+	logger.Info(sys.DisableMultipathTCP())
 	for _, line := range sys.ApplyMemoryTuning() {
 		logger.Info(line)
 	}
