@@ -174,7 +174,8 @@ The switch **Scan every region once a week** has the panel run **Scan all region
 It is off until you turn it on. The panel checks every hour and starts the scan when it has not
 started one by itself yet or a week has passed since the last one it started, so the first one
 runs at the next check after you turn the switch on. A scan that cannot start, because another
-one runs or Psiphon is not installed, is tried again at the next check. The result is kept like that of a scan you start, so
+one runs or Psiphon is not installed, is tried again at the next check. The scan starts tunnels of its own, so it runs while Psiphon
+is stopped too. The result is kept like that of a scan you start, so
 a region that has appeared shows up as *New* the next time you open the window, and the window
 says when the last automatic scan started. Each run takes the half hour and the memory of
 **Scan all regions**.
