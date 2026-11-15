@@ -7,9 +7,8 @@ import (
 
 const noMultipathTCP = "multipathtcp=0"
 
-// DisableMultipathTCP makes the programs this process starts listen over plain TCP, as the process itself
-// does through the go:debug line of its main package. A GODEBUG that already sets multipathtcp is the
-// operator's and stays. It returns the line to log.
+// DisableMultipathTCP makes the programs this process starts listen over plain TCP, as the go:debug line of
+// its main package does for the process. A multipathtcp in the operator's GODEBUG stays. It returns the log line.
 func DisableMultipathTCP() string {
 	current := os.Getenv("GODEBUG")
 	next := withoutMultipathTCP(current)
