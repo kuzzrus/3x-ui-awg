@@ -28,6 +28,13 @@ func TestRunPrintsTheVersion(t *testing.T) {
 	}
 }
 
+func TestAgentListensOverPlainTCP(t *testing.T) {
+	var lc net.ListenConfig
+	if lc.MultipathTCP() {
+		t.Fatal("a listener of the agent uses MPTCP: main.go lost its //go:debug multipathtcp=0 line")
+	}
+}
+
 func TestRunChecksABundleWithoutServing(t *testing.T) {
 	bundle, _, err := agentproto.NewBundle("2001:db8::7", 8443, time.Now())
 	if err != nil {
@@ -106,6 +113,8 @@ func TestRunServesTheMasterUntilStopped(t *testing.T) {
 	// run points the core's folders at the flags through the environment.
 	t.Setenv("XUI_BIN_FOLDER", "")
 	t.Setenv("XUI_LOG_FOLDER", "")
+	// run adds multipathtcp=0 for the programs it starts; the test puts the variable back as it was.
+	t.Setenv("GODEBUG", "")
 	// A host action that ended while the agent was away: starting up settles it and drops its folder.
 	leftover := filepath.Join(dir, "bin", "hostaction", "earlier-run")
 	if err := os.MkdirAll(leftover, 0o700); err != nil {
@@ -172,6 +181,9 @@ func TestRunServesTheMasterUntilStopped(t *testing.T) {
 	}
 	if _, err := os.Stat(leftover); !os.IsNotExist(err) {
 		t.Errorf("the folder of the host action that ended while the agent was away is still there (%v)", err)
+	}
+	if got := os.Getenv("GODEBUG"); got != "multipathtcp=0" {
+		t.Errorf("GODEBUG = %q after the agent started, so its core and helper programs may listen over MPTCP", got)
 	}
 
 	cancel()

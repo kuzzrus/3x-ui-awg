@@ -1,3 +1,6 @@
+// Listeners are plain TCP: a Linux kernel flaw in listening MPTCP sockets is reachable from the network.
+//go:debug multipathtcp=0
+
 // Command x-ui-agent runs Xray-core for a master x-ui panel. It holds no database and
 // no web UI: the master pushes the config and the agent applies it and reports back.
 package main
@@ -21,6 +24,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
 	"github.com/mhsanaei/3x-ui/v3/internal/hostaction"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
+	"github.com/mhsanaei/3x-ui/v3/internal/util/sys"
 )
 
 func main() {
@@ -81,6 +85,7 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 	}
 	logger.InitLogger(level)
 	defer logger.CloseLogger()
+	logger.Info(sys.DisableMultipathTCP())
 	// A host action from before the last stop may still run, or have ended unseen: log how it ended.
 	hostaction.Recover()
 
