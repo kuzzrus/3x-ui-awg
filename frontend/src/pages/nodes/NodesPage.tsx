@@ -35,6 +35,7 @@ import NodeList from './NodeList';
 import NodeFormModal from './NodeFormModal';
 import AgentNodeFormModal from './AgentNodeFormModal';
 import AgentNodeWizard from './AgentNodeWizard';
+import { agentEndpoint } from './agentFormValues';
 import AgentBundleModal, { type AgentPairingView } from './AgentBundleModal';
 import AgentRepairModal from './AgentRepairModal';
 import LogModal from '../index/LogModal';
@@ -71,29 +72,6 @@ function UpdateChannelChoice({ onChange }: { onChange: (dev: boolean) => void })
       )}
     </div>
   );
-}
-
-// What the form of an agent node and the wizard that adds one have in common, as the panel takes it.
-function agentEndpoint(values: AgentFormValues) {
-  return {
-    name: values.name,
-    remark: values.remark,
-    address: values.address,
-    port: values.port,
-    allowPrivateAddress: values.allowPrivateAddress,
-    outboundTag: values.outboundTag,
-    tags: values.tags,
-    sidecars: values.sidecars,
-    decoyMode: values.decoyMode,
-    decoyTemplate: values.decoyTemplate,
-    decoyProxyUrl: values.decoyProxyUrl,
-    decoyDomain: values.decoyDomain,
-    decoyCert: values.decoyCert,
-    decoyEmail: values.decoyEmail,
-    decoyCertFile: values.decoyCertFile,
-    decoyKeyFile: values.decoyKeyFile,
-    decoyPort: values.decoyPort,
-  };
 }
 
 export default function NodesPage() {

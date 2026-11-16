@@ -64,6 +64,9 @@
           "decoyProxyUrl": {
             "type": "string"
           },
+          "decoySite": {
+            "type": "string"
+          },
           "decoyTemplate": {
             "example": "maintenance",
             "type": "string"
@@ -117,6 +120,7 @@
           "decoyMode",
           "decoyPort",
           "decoyProxyUrl",
+          "decoySite",
           "decoyTemplate",
           "masterPin",
           "masterUrl",
@@ -2787,6 +2791,37 @@
         ],
         "type": "object"
       },
+      "DecoySite": {
+        "description": "DecoySite is an uploaded static site, a zip with an index.html, that agent nodes can serve as their decoy. A node\nnames the site it serves by Sha256, the SHA-256 of the zip, which is also what the zip is called on disk.",
+        "properties": {
+          "name": {
+            "example": "blog.zip",
+            "type": "string"
+          },
+          "sha256": {
+            "example": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "type": "string"
+          },
+          "size": {
+            "example": 183412,
+            "format": "int64",
+            "type": "integer"
+          },
+          "uploadedAt": {
+            "description": "unix seconds",
+            "example": 1700000000,
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "sha256",
+          "size",
+          "uploadedAt"
+        ],
+        "type": "object"
+      },
       "FallbackParentInfo": {
         "description": "FallbackParentInfo carries everything the frontend needs to rewrite a\nchild inbound's client link: where to connect (the master's address\nand port) and which path matched on the master's fallbacks array.\nThe frontend already has the master inbound in its dbInbounds list,\nso we only ship identifiers + the match path here.",
         "properties": {
@@ -4164,7 +4199,7 @@
         "type": "object"
       },
       "NodeDecoy": {
-        "description": "NodeDecoy is the decoy site of an agent node; an empty Mode is none. Cert is \"auto\" (ACME on port 80)\nor \"manual\" (files on the node), and Port is the loopback port the REALITY fallback of the node points at.",
+        "description": "NodeDecoy is the decoy site of an agent node; an empty Mode is none. Cert is \"auto\" (ACME on port 80) or \"manual\" (files on the\nnode), Port is the loopback port the REALITY fallback points at, and Site is the SHA-256 of the zip that mode \"upload\" serves.",
         "properties": {
           "cert": {
             "example": "auto",
@@ -4195,6 +4230,9 @@
           "proxyUrl": {
             "type": "string"
           },
+          "site": {
+            "type": "string"
+          },
           "template": {
             "example": "maintenance",
             "type": "string"
@@ -4209,6 +4247,7 @@
           "mode",
           "port",
           "proxyUrl",
+          "site",
           "template"
         ],
         "type": "object"
@@ -4245,6 +4284,9 @@
           "decoyProxyUrl": {
             "type": "string"
           },
+          "decoySite": {
+            "type": "string"
+          },
           "decoyTemplate": {
             "example": "maintenance",
             "type": "string"
@@ -4259,6 +4301,7 @@
           "decoyMode",
           "decoyPort",
           "decoyProxyUrl",
+          "decoySite",
           "decoyTemplate"
         ],
         "type": "object"
@@ -4337,6 +4380,9 @@
             "type": "integer"
           },
           "decoyProxyUrl": {
+            "type": "string"
+          },
+          "decoySite": {
             "type": "string"
           },
           "decoyTemplate": {
@@ -4420,6 +4466,7 @@
           "decoyMode",
           "decoyPort",
           "decoyProxyUrl",
+          "decoySite",
           "decoyTemplate",
           "enable",
           "id",
@@ -12328,6 +12375,7 @@
                         "mode": "template",
                         "port": 7443,
                         "proxyUrl": "",
+                        "site": "",
                         "template": "maintenance"
                       },
                       "decoyState": {
@@ -12390,6 +12438,154 @@
                       "xrayVersion": "25.10.31"
                     }
                   ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/nodes/decoySites": {
+      "get": {
+        "tags": [
+          "Nodes"
+        ],
+        "summary": "List the static sites the panel holds, newest first: the zips that agent nodes can serve as their decoy. A node names one by its sha256 in decoySite.",
+        "operationId": "get_panel_api_nodes_decoySites",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DecoySite"
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": [
+                    {
+                      "name": "blog.zip",
+                      "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+                      "size": 183412,
+                      "uploadedAt": 1700000000
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/nodes/decoySites/upload": {
+      "post": {
+        "tags": [
+          "Nodes"
+        ],
+        "summary": "Keep an uploaded static site that agent nodes can serve as their decoy. The zip must contain an index.html, either at its root or inside a single wrapping folder, and may carry a 404.html that is shown, with a 404 status, for a path the site does not have. The same zip again is the site the panel holds already.",
+        "operationId": "post_panel_api_nodes_decoySites_upload",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "site": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Zip archive of the site. Capped at 64 MiB and 2000 entries; entries with absolute or traversing paths are rejected."
+                  }
+                },
+                "required": [
+                  "site"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {
+                      "$ref": "#/components/schemas/DecoySite"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "name": "blog.zip",
+                    "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+                    "size": 183412,
+                    "uploadedAt": 1700000000
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/nodes/decoySites/del/{sha}": {
+      "post": {
+        "tags": [
+          "Nodes"
+        ],
+        "summary": "Delete an uploaded site. It is refused while an agent node serves it, and the answer names the nodes.",
+        "operationId": "post_panel_api_nodes_decoySites_del_sha",
+        "parameters": [
+          {
+            "name": "sha",
+            "in": "path",
+            "required": true,
+            "description": "The sha256 of the site, as the list gives it.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
                 }
               }
             }
@@ -12564,6 +12760,7 @@
                       "mode": "template",
                       "port": 7443,
                       "proxyUrl": "",
+                      "site": "",
                       "template": "maintenance"
                     },
                     "decoyState": {
@@ -12749,6 +12946,7 @@
                       "mode": "template",
                       "port": 7443,
                       "proxyUrl": "",
+                      "site": "",
                       "template": "maintenance"
                     },
                     "decoyState": {
@@ -12822,7 +13020,7 @@
         "tags": [
           "Nodes"
         ],
-        "summary": "Register a node that runs the thin x-ui-agent instead of a full panel. The agent is not installed yet, so the node is not probed. The panel mints the secret and the certificate of the agent and returns the pairing bundle once: it holds the private key, is never stored, and is what install-agent.sh asks for on the node. tags label the node: a routing rule whose nodeTags name one of them is part of the agent’s config. sidecars lists the helper programs the agent runs beside its core (\"tor\", \"psiphon\"); the agent installs one that the server lacks. decoyMode (template, proxy or adguard; empty is none), decoyTemplate, decoyProxyUrl, decoyDomain, decoyCert (auto or manual), decoyEmail, decoyCertFile, decoyKeyFile and decoyPort set the decoy site the agent serves to whoever probes it. pull=true makes the agent dial the panel instead: masterUrl is the https address of the panel as the node reaches it, base path included, masterPin the SHA-256 of its certificate when that is not a public one, and port is not needed; the bundle then holds no certificate or key.",
+        "summary": "Register a node that runs the thin x-ui-agent instead of a full panel. The agent is not installed yet, so the node is not probed. The panel mints the secret and the certificate of the agent and returns the pairing bundle once: it holds the private key, is never stored, and is what install-agent.sh asks for on the node. tags label the node: a routing rule whose nodeTags name one of them is part of the agent’s config. sidecars lists the helper programs the agent runs beside its core (\"tor\", \"psiphon\"); the agent installs one that the server lacks. decoyMode (template, proxy, adguard or upload; empty is none), decoyTemplate, decoyProxyUrl, decoySite (the sha256 of an uploaded site, for upload), decoyDomain, decoyCert (auto or manual), decoyEmail, decoyCertFile, decoyKeyFile and decoyPort set the decoy site the agent serves to whoever probes it. pull=true makes the agent dial the panel instead: masterUrl is the https address of the panel as the node reaches it, base path included, masterPin the SHA-256 of its certificate when that is not a public one, and port is not needed; the bundle then holds no certificate or key.",
         "operationId": "post_panel_api_nodes_addAgent",
         "requestBody": {
           "required": true,
@@ -19146,6 +19344,7 @@
                     "mode": "template",
                     "port": 7443,
                     "proxyUrl": "",
+                    "site": "",
                     "template": "maintenance"
                   },
                   "decoyState": {

@@ -27,6 +27,9 @@ const (
 	PathSidecars = "/v1/sidecars"
 	// PathDecoy sets the decoy site the agent serves to whoever probes it (PUT).
 	PathDecoy = "/v1/decoy"
+	// PathDecoySite stores the zip of a site that a decoy of mode upload serves (PUT), named by its SHA-256 in the query.
+	PathDecoySite        = "/v1/decoy/site"
+	QueryDecoySiteSha256 = "sha256"
 
 	// QueryRestartOnUserRemoval is the PathConfig query flag (a bool) that makes
 	// the agent restart the core instead of dropping a removed client's credential.
@@ -54,6 +57,8 @@ const (
 	MaxSidecarsBytes = 4 << 10
 	// MaxDecoyBytes caps a PathDecoy body, which is a handful of short fields.
 	MaxDecoyBytes = 16 << 10
+	// MaxDecoySiteBytes caps the zip of a decoy site, the bound the archive reader puts on one too.
+	MaxDecoySiteBytes = 64 << 20
 
 	maxGeoNameLen = 100
 )
@@ -116,6 +121,8 @@ type Stats struct {
 	SidecarsRevision string `json:"sidecarsRevision"`
 	// DecoyRevision is DecoyRevision of the decoy the agent was told to serve, empty for none and for an old agent.
 	DecoyRevision string `json:"decoyRevision"`
+	// DecoySites are the SHA-256 digests of the decoy sites the agent holds whole, which tells the master whether to send one.
+	DecoySites []string `json:"decoySites"`
 }
 
 // The helper programs an agent runs, each a client on a loopback SOCKS port for an outbound of the

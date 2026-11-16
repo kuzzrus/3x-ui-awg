@@ -38,6 +38,7 @@ export const AgentNodeRequestSchema = z.object({
   decoyMode: z.string(),
   decoyPort: z.number().int(),
   decoyProxyUrl: z.string(),
+  decoySite: z.string(),
   decoyTemplate: z.string(),
   masterPin: z.string(),
   masterUrl: z.string(),
@@ -680,6 +681,14 @@ export const ClientsSummarySchema = z.object({
 });
 export type ClientsSummary = z.infer<typeof ClientsSummarySchema>;
 
+export const DecoySiteSchema = z.object({
+  name: z.string(),
+  sha256: z.string(),
+  size: z.number().int(),
+  uploadedAt: z.number().int(),
+});
+export type DecoySite = z.infer<typeof DecoySiteSchema>;
+
 export const FallbackParentInfoSchema = z.object({
   masterId: z.number().int(),
   path: z.string().optional(),
@@ -1010,6 +1019,7 @@ export const NodeDecoySchema = z.object({
   mode: z.string(),
   port: z.number().int(),
   proxyUrl: z.string(),
+  site: z.string(),
   template: z.string(),
 });
 export type NodeDecoy = z.infer<typeof NodeDecoySchema>;
@@ -1023,6 +1033,7 @@ export const NodeDecoyFormSchema = z.object({
   decoyMode: z.string(),
   decoyPort: z.number().int(),
   decoyProxyUrl: z.string(),
+  decoySite: z.string(),
   decoyTemplate: z.string(),
 });
 export type NodeDecoyForm = z.infer<typeof NodeDecoyFormSchema>;
@@ -1049,6 +1060,7 @@ export const NodeMutationRequestSchema = z.object({
   decoyMode: z.string(),
   decoyPort: z.number().int(),
   decoyProxyUrl: z.string(),
+  decoySite: z.string(),
   decoyTemplate: z.string(),
   enable: z.boolean(),
   id: z.number().int(),

@@ -1871,6 +1871,44 @@ export const sections: readonly Section[] = [
         responseSchemaArray: true,
       },
       {
+        method: 'GET',
+        path: '/panel/api/nodes/decoySites',
+        summary:
+          'List the static sites the panel holds, newest first: the zips that agent nodes can serve as their decoy. A node names one by its sha256 in decoySite.',
+        responseSchema: 'DecoySite',
+        responseSchemaArray: true,
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/nodes/decoySites/upload',
+        summary:
+          'Keep an uploaded static site that agent nodes can serve as their decoy. The zip must contain an index.html, either at its root or inside a single wrapping folder, and may carry a 404.html that is shown, with a 404 status, for a path the site does not have. The same zip again is the site the panel holds already.',
+        params: [
+          {
+            name: 'site',
+            in: 'body (multipart)',
+            type: 'file',
+            desc: 'Zip archive of the site. Capped at 64 MiB and 2000 entries; entries with absolute or traversing paths are rejected.',
+          },
+        ],
+        body: 'multipart/form-data with a "site" file field',
+        responseSchema: 'DecoySite',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/nodes/decoySites/del/:sha',
+        summary:
+          'Delete an uploaded site. It is refused while an agent node serves it, and the answer names the nodes.',
+        params: [
+          {
+            name: 'sha',
+            in: 'path',
+            type: 'string',
+            desc: 'The sha256 of the site, as the list gives it.',
+          },
+        ],
+      },
+      {
         method: 'POST',
         path: '/panel/api/nodes/mtls/ca',
         summary:
@@ -1919,7 +1957,7 @@ export const sections: readonly Section[] = [
         method: 'POST',
         path: '/panel/api/nodes/addAgent',
         summary:
-          'Register a node that runs the thin x-ui-agent instead of a full panel. The agent is not installed yet, so the node is not probed. The panel mints the secret and the certificate of the agent and returns the pairing bundle once: it holds the private key, is never stored, and is what install-agent.sh asks for on the node. tags label the node: a routing rule whose nodeTags name one of them is part of the agent\u2019s config. sidecars lists the helper programs the agent runs beside its core ("tor", "psiphon"); the agent installs one that the server lacks. decoyMode (template, proxy or adguard; empty is none), decoyTemplate, decoyProxyUrl, decoyDomain, decoyCert (auto or manual), decoyEmail, decoyCertFile, decoyKeyFile and decoyPort set the decoy site the agent serves to whoever probes it. pull=true makes the agent dial the panel instead: masterUrl is the https address of the panel as the node reaches it, base path included, masterPin the SHA-256 of its certificate when that is not a public one, and port is not needed; the bundle then holds no certificate or key.',
+          'Register a node that runs the thin x-ui-agent instead of a full panel. The agent is not installed yet, so the node is not probed. The panel mints the secret and the certificate of the agent and returns the pairing bundle once: it holds the private key, is never stored, and is what install-agent.sh asks for on the node. tags label the node: a routing rule whose nodeTags name one of them is part of the agent\u2019s config. sidecars lists the helper programs the agent runs beside its core ("tor", "psiphon"); the agent installs one that the server lacks. decoyMode (template, proxy, adguard or upload; empty is none), decoyTemplate, decoyProxyUrl, decoySite (the sha256 of an uploaded site, for upload), decoyDomain, decoyCert (auto or manual), decoyEmail, decoyCertFile, decoyKeyFile and decoyPort set the decoy site the agent serves to whoever probes it. pull=true makes the agent dial the panel instead: masterUrl is the https address of the panel as the node reaches it, base path included, masterPin the SHA-256 of its certificate when that is not a public one, and port is not needed; the bundle then holds no certificate or key.',
         body: '{\n  "name": "de-fra-2",\n  "remark": "",\n  "address": "node2.example.com",\n  "port": 8443,\n  "allowPrivateAddress": false,\n  "outboundTag": "",\n  "tags": ["eu"],\n  "sidecars": ["tor"]\n}',
         responseSchema: 'AgentPairing',
       },

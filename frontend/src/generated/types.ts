@@ -20,6 +20,7 @@ export interface AgentNodeRequest {
   decoyMode: string;
   decoyPort: number;
   decoyProxyUrl: string;
+  decoySite: string;
   decoyTemplate: string;
   masterPin: string;
   masterUrl: string;
@@ -643,6 +644,13 @@ export interface ClientsSummary {
   total: number;
 }
 
+export interface DecoySite {
+  name: string;
+  sha256: string;
+  size: number;
+  uploadedAt: number;
+}
+
 export interface FallbackParentInfo {
   masterId: number;
   path?: string;
@@ -950,6 +958,7 @@ export interface NodeDecoy {
   mode: string;
   port: number;
   proxyUrl: string;
+  site: string;
   template: string;
 }
 
@@ -962,6 +971,7 @@ export interface NodeDecoyForm {
   decoyMode: string;
   decoyPort: number;
   decoyProxyUrl: string;
+  decoySite: string;
   decoyTemplate: string;
 }
 
@@ -986,6 +996,7 @@ export interface NodeMutationRequest {
   decoyMode: string;
   decoyPort: number;
   decoyProxyUrl: string;
+  decoySite: string;
   decoyTemplate: string;
   enable: boolean;
   id: number;

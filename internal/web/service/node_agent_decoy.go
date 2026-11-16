@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/agentproto"
@@ -23,6 +24,11 @@ func (s *AgentSyncService) syncDecoy(ctx context.Context, rt *runtime.AgentRunti
 		return nil
 	}
 	spec := decoySpecOf(want)
+	if want.Mode == agentproto.DecoyUpload && !slices.Contains(stats.DecoySites, want.Site) {
+		// The agent has to hold the site before it can be told to serve it.
+		s.sendDecoySite(rt, n, want.Site, now)
+		return nil
+	}
 	return s.keepSetting(ctx, rt, n, now, stats.DecoyRevision == agentproto.DecoyRevision(spec), agentSetting{
 		what:     "decoy",
 		tooOld:   agentTooOldForDecoy,

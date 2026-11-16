@@ -114,6 +114,7 @@ func run(root, outDir string) error {
 				"AgentNodeRequest",
 				"AgentRepairRequest",
 				"NodeDecoyForm",
+				"DecoySite",
 				"AgentPairing",
 				"ProbeResultUI",
 				"RealityScanResult",

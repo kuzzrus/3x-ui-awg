@@ -17,6 +17,7 @@ type NodeDecoyForm struct {
 	DecoyMode     string `json:"decoyMode" form:"decoyMode" example:"template"`
 	DecoyTemplate string `json:"decoyTemplate" form:"decoyTemplate" example:"maintenance"`
 	DecoyProxyURL string `json:"decoyProxyUrl" form:"decoyProxyUrl" example:""`
+	DecoySite     string `json:"decoySite" form:"decoySite" example:""`
 	DecoyDomain   string `json:"decoyDomain" form:"decoyDomain" example:"node.example.com"`
 	DecoyCert     string `json:"decoyCert" form:"decoyCert" example:"auto"`
 	DecoyEmail    string `json:"decoyEmail" form:"decoyEmail" example:"admin@example.com"`
@@ -27,21 +28,21 @@ type NodeDecoyForm struct {
 
 func (f NodeDecoyForm) decoy() model.NodeDecoy {
 	return model.NodeDecoy{
-		Mode: f.DecoyMode, Template: f.DecoyTemplate, ProxyURL: f.DecoyProxyURL, Domain: f.DecoyDomain,
+		Mode: f.DecoyMode, Template: f.DecoyTemplate, ProxyURL: f.DecoyProxyURL, Site: f.DecoySite, Domain: f.DecoyDomain,
 		Cert: f.DecoyCert, Email: f.DecoyEmail, CertFile: f.DecoyCertFile, KeyFile: f.DecoyKeyFile, Port: f.DecoyPort,
 	}
 }
 
 func decoySpecOf(d model.NodeDecoy) agentproto.DecoySpec {
 	return agentproto.DecoySpec{
-		Mode: d.Mode, Template: d.Template, ProxyURL: d.ProxyURL, Domain: d.Domain,
+		Mode: d.Mode, Template: d.Template, ProxyURL: d.ProxyURL, Site: d.Site, Domain: d.Domain,
 		Cert: d.Cert, Email: d.Email, CertFile: d.CertFile, KeyFile: d.KeyFile, Port: d.Port,
 	}
 }
 
 func nodeDecoyOf(s agentproto.DecoySpec) model.NodeDecoy {
 	return model.NodeDecoy{
-		Mode: s.Mode, Template: s.Template, ProxyURL: s.ProxyURL, Domain: s.Domain,
+		Mode: s.Mode, Template: s.Template, ProxyURL: s.ProxyURL, Site: s.Site, Domain: s.Domain,
 		Cert: s.Cert, Email: s.Email, CertFile: s.CertFile, KeyFile: s.KeyFile, Port: s.Port,
 	}
 }
@@ -56,13 +57,26 @@ func normalizeNodeDecoy(d model.NodeDecoy) (model.NodeDecoy, error) {
 	return nodeDecoyOf(spec), nil
 }
 
+// checkedNodeDecoy is normalizeNodeDecoy for a decoy that is about to be saved: a site it names must be one this
+// panel holds, which an agent can only be sent from here.
+func checkedNodeDecoy(d model.NodeDecoy) (model.NodeDecoy, error) {
+	out, err := normalizeNodeDecoy(d)
+	if err != nil {
+		return model.NodeDecoy{}, err
+	}
+	if out.Mode == agentproto.DecoyUpload && !decoySiteHeld(out.Site) {
+		return model.NodeDecoy{}, common.NewError(errDecoySiteMissing.Error())
+	}
+	return out, nil
+}
+
 // decoyToStore is the column value a save leaves on a node: the decoy it names, like every other field
 // of a save, and none on a node that is not an agent.
 func decoyToStore(existing *model.Node, requested model.NodeDecoy) (string, error) {
 	var decoy model.NodeDecoy
 	if existing.Kind == model.NodeKindAgent {
 		var err error
-		if decoy, err = normalizeNodeDecoy(requested); err != nil {
+		if decoy, err = checkedNodeDecoy(requested); err != nil {
 			return "", err
 		}
 	}

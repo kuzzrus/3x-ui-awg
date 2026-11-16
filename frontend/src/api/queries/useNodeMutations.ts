@@ -30,6 +30,7 @@ export type AgentNodePayload = Pick<
   | 'decoyMode'
   | 'decoyTemplate'
   | 'decoyProxyUrl'
+  | 'decoySite'
   | 'decoyDomain'
   | 'decoyCert'
   | 'decoyEmail'

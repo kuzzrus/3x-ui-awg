@@ -6,6 +6,8 @@ import { useDecoyTemplates } from '@/api/queries/useDecoyTemplates';
 import { FormField } from '@/components/form/rhf';
 import { DEFAULT_DECOY_PORT, isDomainName, type AgentFormValues } from '@/schemas/node';
 
+import DecoySitePicker from './DecoySitePicker';
+
 interface AgentDecoyFieldsProps {
   // Says in the form what the domain is for and what is left to do by hand, which the add wizard needs.
   explain?: boolean;
@@ -44,6 +46,7 @@ export default function AgentDecoyFields({ explain }: AgentDecoyFieldsProps) {
             { value: 'template', label: t('pages.nodes.agent.decoyModes.template') },
             { value: 'proxy', label: t('pages.nodes.agent.decoyModes.proxy') },
             { value: 'adguard', label: t('pages.nodes.agent.decoyModes.adguard') },
+            { value: 'upload', label: t('pages.nodes.agent.decoyModes.upload') },
           ]}
         />
       </FormField>
@@ -60,6 +63,15 @@ export default function AgentDecoyFields({ explain }: AgentDecoyFieldsProps) {
           tooltip={t('pages.nodes.agent.decoyProxyUrlHint')}
         >
           <Input placeholder="https://example.com" />
+        </FormField>
+      )}
+      {mode === 'upload' && (
+        <FormField
+          label={t('pages.nodes.agent.decoySite')}
+          name="decoySite"
+          tooltip={t('pages.nodes.agent.decoySiteHint')}
+        >
+          <DecoySitePicker />
         </FormField>
       )}
 

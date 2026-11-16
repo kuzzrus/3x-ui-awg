@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient } from '@tanstack/react-query';
 
 import AgentBundleModal, { AGENT_INSTALL_COMMAND } from '@/pages/nodes/AgentBundleModal';
@@ -13,6 +13,37 @@ import { ClipboardManager, HttpUtil, Msg } from '@/utils';
 import { chooseSelectOption, renderWithProviders } from './test-utils';
 
 afterEach(() => vi.restoreAllMocks());
+
+const SITE_A = 'a'.repeat(64);
+const SITE_B = 'b'.repeat(64);
+const UPLOADED_SITES = [
+  { sha256: SITE_A, name: 'blog.zip', size: 12288, uploadedAt: 5 },
+  { sha256: SITE_B, name: 'shop.zip', size: 3 * 1024 * 1024, uploadedAt: 4 },
+];
+const UPLOAD_MODE = 'A static site of your own, from a zip';
+
+// The sites the panel holds, which is all the form asks of the panel besides the nodes.
+function holdSites() {
+  return vi
+    .spyOn(HttpUtil, 'get')
+    .mockImplementation(async (url: string) =>
+      url === '/panel/api/nodes/decoySites'
+        ? new Msg(true, '', UPLOADED_SITES)
+        : new Msg(true, '', []),
+    );
+}
+
+function agentServingASite(): NodeRecord {
+  return {
+    id: 4,
+    name: 'edge-4',
+    kind: 'agent',
+    address: 'a.example.com',
+    port: 9443,
+    enable: true,
+    decoy: { mode: 'upload', site: SITE_A, domain: 'decoy.example.com', port: 7500 },
+  };
+}
 
 // The options that most nodes leave as they are sit behind a heading.
 function openMoreOptions() {
@@ -218,6 +249,93 @@ describe('AgentNodeFormModal', () => {
 
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     expect(save.mock.calls[0][0]).toMatchObject({ id: 4, decoyMode: '', decoyPort: 7443 });
+  });
+
+  it('shows the static site an agent serves as its decoy, and keeps it on save', async () => {
+    holdSites();
+    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
+    renderWithProviders(
+      <AgentNodeFormModal open node={agentServingASite()} save={save} onOpenChange={() => {}} />,
+    );
+
+    expect(await screen.findByText('blog.zip, 12 KiB')).toBeTruthy();
+    expect(screen.queryByLabelText('Page')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0][0]).toMatchObject({
+      id: 4,
+      decoyMode: 'upload',
+      decoySite: SITE_A,
+      decoyDomain: 'decoy.example.com',
+    });
+  });
+
+  it('wants a site before an upload decoy is saved, and sends the one that was picked', async () => {
+    holdSites();
+    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
+    const node: NodeRecord = { ...agentServingASite(), decoy: { mode: '' } };
+    renderWithProviders(
+      <AgentNodeFormModal open node={node} save={save} onOpenChange={() => {}} />,
+    );
+
+    chooseSelectOption(screen.getByLabelText('Decoy site').id, UPLOAD_MODE);
+    fireEvent.change(screen.getByLabelText('Domain'), { target: { value: 'decoy.example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(document.body.textContent).toContain('A decoy needs a domain'));
+    expect(save).not.toHaveBeenCalled();
+
+    await waitFor(() => chooseSelectOption(screen.getByLabelText('Site').id, 'shop.zip, 3.0 MiB'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0][0]).toMatchObject({ id: 4, decoyMode: 'upload', decoySite: SITE_B });
+  });
+
+  it('uploads a zip, and has the site it made picked', async () => {
+    holdSites();
+    const post = vi
+      .spyOn(HttpUtil, 'post')
+      .mockResolvedValue(
+        new Msg(true, '', { sha256: 'c'.repeat(64), name: 'new.zip', size: 2048, uploadedAt: 9 }),
+      );
+    const save = vi.fn().mockResolvedValue(new Msg(true, '', {}));
+    renderWithProviders(
+      <AgentNodeFormModal open node={agentServingASite()} save={save} onOpenChange={() => {}} />,
+    );
+
+    const file = new File(['PK'], 'new.zip', { type: 'application/zip' });
+    fireEvent.change(await screen.findByTestId('decoy-site-file'), { target: { files: [file] } });
+
+    // Other parts of the form post as well, so the call to look at is the upload.
+    const uploads = () =>
+      post.mock.calls.filter(([url]) => url === '/panel/api/nodes/decoySites/upload');
+    await waitFor(() => expect(uploads()).toHaveLength(1));
+    expect((uploads()[0][1] as FormData).get('site')).toHaveProperty('name', 'new.zip');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0][0]).toMatchObject({ decoyMode: 'upload', decoySite: 'c'.repeat(64) });
+  });
+
+  it('deletes the site that is picked, after asking, and leaves none picked', async () => {
+    holdSites();
+    const post = vi.spyOn(HttpUtil, 'post').mockResolvedValue(new Msg(true, '', null));
+    renderWithProviders(
+      <AgentNodeFormModal open node={agentServingASite()} save={vi.fn()} onOpenChange={() => {}} />,
+    );
+
+    await screen.findByText('blog.zip, 12 KiB');
+    fireEvent.click(screen.getByRole('button', { name: 'Delete the site' }));
+    const popover = (await screen.findByText(/Delete blog.zip from the panel/)).closest(
+      '.ant-popover',
+    ) as HTMLElement;
+    expect(post).not.toHaveBeenCalledWith('/panel/api/nodes/decoySites/del/' + SITE_A);
+    fireEvent.click(within(popover).getByRole('button', { name: 'OK' }));
+
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith('/panel/api/nodes/decoySites/del/' + SITE_A),
+    );
+    await waitFor(() => expect(screen.queryByText('blog.zip, 12 KiB')).toBeNull());
+    expect(screen.getByText('Choose an uploaded site')).toBeTruthy();
   });
 
   it('labels the agent with tags, suggesting the ones the nodes already carry', async () => {

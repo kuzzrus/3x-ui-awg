@@ -971,12 +971,13 @@ type NodeSidecar struct {
 	Message string `json:"message" example:"Bootstrapped 100% (done): Done"`
 }
 
-// NodeDecoy is the decoy site of an agent node; an empty Mode is none. Cert is "auto" (ACME on port 80)
-// or "manual" (files on the node), and Port is the loopback port the REALITY fallback of the node points at.
+// NodeDecoy is the decoy site of an agent node; an empty Mode is none. Cert is "auto" (ACME on port 80) or "manual" (files on the
+// node), Port is the loopback port the REALITY fallback points at, and Site is the SHA-256 of the zip that mode "upload" serves.
 type NodeDecoy struct {
 	Mode     string `json:"mode" example:"template"`
 	Template string `json:"template" example:"maintenance"`
 	ProxyURL string `json:"proxyUrl" example:""`
+	Site     string `json:"site" example:""`
 	Domain   string `json:"domain" example:"node.example.com"`
 	Cert     string `json:"cert" example:"auto"`
 	Email    string `json:"email" example:"admin@example.com"`

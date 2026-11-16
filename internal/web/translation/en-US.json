@@ -1390,7 +1390,10 @@
         "logs": "Load the log of the node",
         "restartXray": "Restart Xray",
         "saveMtls": "Save node mTLS",
-        "reloadMtls": "Reload master mTLS credential"
+        "reloadMtls": "Reload master mTLS credential",
+        "decoySites": "Load the decoy sites",
+        "uploadDecoySite": "Upload the decoy site",
+        "deleteDecoySite": "Delete the decoy site"
       },
       "tlsVerifyMode": "TLS verification",
       "tlsVerifyModeHint": "How the panel validates the node's HTTPS certificate. Pin or Skip are for self-signed certs (https nodes only).",
@@ -1485,9 +1488,18 @@
           "none": "None",
           "template": "A page built into the panel",
           "proxy": "A reverse proxy to a site",
-          "adguard": "AdGuard Home, which the node installs and runs"
+          "adguard": "AdGuard Home, which the node installs and runs",
+          "upload": "A static site of your own, from a zip"
         },
         "decoyTemplate": "Page",
+        "decoySite": "Site",
+        "decoySiteHint": "A zip of a static site with an index.html at its root or inside a single folder, up to 64 MiB. A 404.html in it is shown, with a 404 status, for a path the site does not have. The panel sends it to the node, and one site can be the decoy of several nodes. Everything in it is shown to whoever probes the node.",
+        "decoySitePlaceholder": "Choose an uploaded site",
+        "decoySiteUpload": "Upload a zip",
+        "decoySiteUploaded": "Site uploaded",
+        "decoySiteDelete": "Delete the site",
+        "decoySiteDeleteConfirm": "Delete {name} from the panel? A site that a node serves cannot be deleted.",
+        "decoySiteChosen": "{name}, {size}",
         "decoyProxyUrl": "Address of the site",
         "decoyProxyUrlHint": "The site to proxy, on a public address. A site on a private network or on the loopback of the node is refused, since anyone who probes the node could reach it through the decoy.",
         "decoyDomain": "Domain",
@@ -1502,7 +1514,7 @@
         "decoyKeyFile": "Key file",
         "decoyPort": "Port on 127.0.0.1",
         "decoyPortHint": "The port the decoy listens on, on the node only: set the fallback target of the REALITY inbound to 127.0.0.1 and this port.",
-        "decoyIncomplete": "A decoy needs a domain, the address of the site for a proxy, and both files for a certificate on the node, and a port from 1024",
+        "decoyIncomplete": "A decoy needs a domain, the address of the site for a proxy, a site for an upload, and both files for a certificate on the node, and a port from 1024",
         "decoyChip": "Decoy",
         "decoyStates": {
           "waiting": "waiting",

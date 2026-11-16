@@ -78,6 +78,7 @@ export const NodeRecordSchema = z
         mode: z.string(),
         template: z.string(),
         proxyUrl: z.string(),
+        site: z.string(),
         domain: z.string(),
         cert: z.string(),
         email: z.string(),
@@ -105,6 +106,18 @@ export const NodeRecordSchema = z
   .loose();
 
 export const NodeListSchema = z.array(NodeRecordSchema);
+
+// A static site, a zip, that agent nodes can serve as their decoy: the panel keeps it and sends it to the node.
+export const DecoySiteSchema = z
+  .object({
+    sha256: z.string(),
+    name: z.string(),
+    size: z.number(),
+    uploadedAt: z.number(),
+  })
+  .loose();
+export type DecoySite = z.infer<typeof DecoySiteSchema>;
+export const DecoySiteListSchema = z.array(DecoySiteSchema);
 
 export const ProbeResultSchema = z
   .object({
@@ -206,9 +219,10 @@ export const AgentFormSchema = z
       .array(z.string().trim().min(1, TAGS_INVALID).max(MAX_NODE_TAG_LENGTH, TAGS_INVALID))
       .max(MAX_NODE_TAGS, TAGS_INVALID),
     sidecars: z.array(z.string()),
-    decoyMode: z.enum(['', 'template', 'proxy', 'adguard']),
+    decoyMode: z.enum(['', 'template', 'proxy', 'adguard', 'upload']),
     decoyTemplate: z.string(),
     decoyProxyUrl: z.string().trim(),
+    decoySite: z.string().trim(),
     decoyDomain: z.string().trim(),
     decoyCert: z.enum(['auto', 'manual']),
     decoyEmail: z.string().trim(),
@@ -236,6 +250,7 @@ export const AgentFormSchema = z
       val.decoyPort > 65535 ||
       !val.decoyDomain ||
       (val.decoyMode === 'proxy' && !val.decoyProxyUrl) ||
+      (val.decoyMode === 'upload' && !val.decoySite) ||
       (val.decoyCert === 'manual' && (!val.decoyCertFile || !val.decoyKeyFile));
     if (missing) ctx.addIssue({ code: 'custom', path: ['decoyMode'], message: DECOY_INCOMPLETE });
   });

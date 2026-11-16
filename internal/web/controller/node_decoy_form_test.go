@@ -16,6 +16,7 @@ type agentOnTheWire struct {
 	Decoy    struct {
 		Mode     string `json:"mode"`
 		Template string `json:"template"`
+		Site     string `json:"site"`
 		Domain   string `json:"domain"`
 		Cert     string `json:"cert"`
 		Port     int    `json:"port"`

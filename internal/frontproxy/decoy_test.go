@@ -144,6 +144,58 @@ func TestUploadDecoyWithoutIndexFallsBackToTemplate(t *testing.T) {
 	}
 }
 
+// A site that ships a 404.html answers a path it does not have with that page and a 404 status, as the real
+// site would, instead of the page of the home path on every path.
+func TestUploadDecoyAnswersAnUnknownPathWithItsOwn404Page(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"index.html": "<html>home</html>",
+		"about.html": "<html>about</html>",
+		"404.html":   "<html>nothing at {{DECOY_ORIGIN}}</html>",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h, err := newUploadDecoy(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	get := func(path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Host = "site.example"
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	missing := get("/no/such/page")
+	if missing.Code != http.StatusNotFound || missing.Body.String() != "<html>nothing at https://site.example</html>" {
+		t.Errorf("unknown path: status %d, body %q, want 404 with the site's own page", missing.Code, missing.Body.String())
+	}
+	if ct := missing.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("unknown path: Content-Type = %q, want text/html", ct)
+	}
+	for path, want := range map[string]string{"/": "<html>home</html>", "/about.html": "<html>about</html>"} {
+		if rec := get(path); rec.Code != http.StatusOK || rec.Body.String() != want {
+			t.Errorf("%s: status %d, body %q, want 200 %q", path, rec.Code, rec.Body.String(), want)
+		}
+	}
+}
+
+// Without a 404.html the site keeps answering an unknown path with its home page, which a single-page site needs.
+func TestUploadDecoyWithoutA404PageServesTheIndexForAnUnknownPath(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html>home</html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rec := serveDecoy(t, DecoyConfig{Mode: DecoyUpload, Dir: dir}, "/app/route")
+	if rec.Code != http.StatusOK || rec.Body.String() != "<html>home</html>" {
+		t.Fatalf("status %d, body %q, want 200 and the home page", rec.Code, rec.Body.String())
+	}
+}
+
 func TestProxyDecoyForwardsToUpstream(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("upstream page"))

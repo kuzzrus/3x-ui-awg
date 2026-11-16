@@ -180,6 +180,9 @@ func DecoyTemplateNames() []string {
 // to be re-uploaded just to fix a URL.
 const decoyOriginToken = "{{DECOY_ORIGIN}}"
 
+// decoyNotFoundPage is the page of an uploaded site that answers a path it does not have.
+const decoyNotFoundPage = "404.html"
+
 // decoySubstitutedExt lists the extensions read into memory for
 // {{DECOY_ORIGIN}} substitution -- the small text formats a static site
 // generator actually emits absolute URLs into. Anything else (images, fonts,
@@ -206,14 +209,17 @@ func newUploadDecoy(dir string) (http.Handler, error) {
 		target := path.Clean("/" + r.URL.Path)
 		rel := strings.TrimPrefix(target, "/")
 		fsPath := filepath.Join(dir, filepath.FromSlash(rel))
-		// Serve index.html for unknown paths so the decoy looks like a site
-		// rather than exposing a 404 that differs from the real thing.
+		// An unknown path shows the site's own 404.html with a 404 status, or index.html if it has none, so the
+		// decoy looks like a site rather than exposing a 404 that differs from the real thing.
 		if rel == "" {
 			rel, fsPath = "index.html", filepath.Join(dir, "index.html")
 		} else if _, err := os.Stat(fsPath); err != nil {
+			if serveDecoyWithOrigin(w, r, filepath.Join(dir, decoyNotFoundPage), decoyNotFoundPage, http.StatusNotFound) {
+				return
+			}
 			target, rel, fsPath = "/", "index.html", filepath.Join(dir, "index.html")
 		}
-		if decoySubstitutedExt[strings.ToLower(filepath.Ext(rel))] && serveDecoyWithOrigin(w, r, fsPath, rel) {
+		if decoySubstitutedExt[strings.ToLower(filepath.Ext(rel))] && serveDecoyWithOrigin(w, r, fsPath, rel, http.StatusOK) {
 			return
 		}
 		r = r.Clone(r.Context())
@@ -222,11 +228,11 @@ func newUploadDecoy(dir string) (http.Handler, error) {
 	}), nil
 }
 
-// serveDecoyWithOrigin serves one text file with every {{DECOY_ORIGIN}}
-// replaced by this request's own scheme+host. Reports false on any read
+// serveDecoyWithOrigin serves one text file with the status given and every
+// {{DECOY_ORIGIN}} replaced by this request's own scheme+host. Reports false on any read
 // error so the caller falls through to the plain http.FileServer path rather
 // than surface a broken response for what is otherwise a transient problem.
-func serveDecoyWithOrigin(w http.ResponseWriter, r *http.Request, fsPath, rel string) bool {
+func serveDecoyWithOrigin(w http.ResponseWriter, r *http.Request, fsPath, rel string, status int) bool {
 	body, err := os.ReadFile(fsPath)
 	if err != nil {
 		return false
@@ -240,7 +246,7 @@ func serveDecoyWithOrigin(w http.ResponseWriter, r *http.Request, fsPath, rel st
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(status)
 	_, _ = w.Write(body)
 	return true
 }

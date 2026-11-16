@@ -134,9 +134,11 @@ func TestWireFieldNames(t *testing.T) {
 				Online:           []string{"a@x"},
 				SidecarsRevision: "s",
 				DecoyRevision:    "d",
+				DecoySites:       []string{siteDigest},
 			},
 			`{"configRevision":"r","xrayStartedAt":7,"inbounds":{"in-1":{"up":1,"down":2}},` +
-				`"users":{"a@x":{"up":3,"down":4}},"online":["a@x"],"sidecarsRevision":"s","decoyRevision":"d"}`,
+				`"users":{"a@x":{"up":3,"down":4}},"online":["a@x"],"sidecarsRevision":"s","decoyRevision":"d",` +
+				`"decoySites":["` + siteDigest + `"]}`,
 		},
 		{"sidecars spec", SidecarsSpec{Enabled: []string{SidecarTor}}, `{"enabled":["tor"]}`},
 		{
@@ -149,6 +151,13 @@ func TestWireFieldNames(t *testing.T) {
 			`{"revision":"r","spec":{"mode":"template","template":"parked","domain":"a.example","cert":"auto","port":7443},` +
 				`"state":{"state":"failed","message":"port in use"}}`,
 		},
+		{
+			"decoy of a site",
+			Decoy{Revision: "r", Spec: DecoySpec{Mode: DecoyUpload, Site: siteDigest, Domain: "a.example", Port: 7443}},
+			`{"revision":"r","spec":{"mode":"upload","site":"` + siteDigest + `","domain":"a.example","port":7443},` +
+				`"state":{"state":""}}`,
+		},
+		{"decoy site", DecoySite{Sha256: siteDigest, Size: 3}, `{"sha256":"` + siteDigest + `","size":3}`},
 		{
 			"sidecars",
 			Sidecars{Revision: "r", Enabled: []string{SidecarTor}, States: []SidecarState{{Name: SidecarTor, State: SidecarInstalling}}},

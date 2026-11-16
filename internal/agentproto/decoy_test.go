@@ -7,6 +7,9 @@ import (
 
 var testRules = DecoyRules{Templates: []string{"maintenance", "parked", "tetris"}}
 
+// siteDigest is the SHA-256 of some zip.
+const siteDigest = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+
 func TestNormalizeDecoyFillsTheDefaultsAndClearsWhatTheModeDoesNotUse(t *testing.T) {
 	for name, tc := range map[string]struct {
 		in   DecoySpec
@@ -34,6 +37,14 @@ func TestNormalizeDecoyFillsTheDefaultsAndClearsWhatTheModeDoesNotUse(t *testing
 		"AdGuard Home keeps no page and no proxy address": {
 			in:   DecoySpec{Mode: DecoyAdGuard, Template: "parked", ProxyURL: "https://x.example", Domain: "a.example"},
 			want: DecoySpec{Mode: DecoyAdGuard, Domain: "a.example", Cert: DecoyCertAuto, Port: DefaultDecoyPort},
+		},
+		"a site of your own is named in lower case and keeps no page and no proxy address": {
+			in:   DecoySpec{Mode: DecoyUpload, Site: " " + strings.ToUpper(siteDigest) + " ", Template: "parked", ProxyURL: "https://x.example", Domain: "a.example"},
+			want: DecoySpec{Mode: DecoyUpload, Site: siteDigest, Domain: "a.example", Cert: DecoyCertAuto, Port: DefaultDecoyPort},
+		},
+		"no other mode keeps a site": {
+			in:   DecoySpec{Mode: DecoyProxy, Site: siteDigest, ProxyURL: "https://site.example", Domain: "a.example"},
+			want: DecoySpec{Mode: DecoyProxy, ProxyURL: "https://site.example", Domain: "a.example", Cert: DecoyCertAuto, Port: DefaultDecoyPort},
 		},
 		"files on the node keep no email": {
 			in:   DecoySpec{Mode: DecoyTemplate, Domain: "a.example", Cert: DecoyCertManual, Email: "ops@a.example", CertFile: "/etc/ssl/a.pem", KeyFile: "/etc/ssl/a.key"},
@@ -63,7 +74,11 @@ func TestNormalizeDecoyRefusesWhatTheAgentCannotServe(t *testing.T) {
 		in   DecoySpec
 		want string
 	}{
-		"a mode nobody serves":     {with(func(s *DecoySpec) { s.Mode = "upload" }), `unknown decoy mode "upload"`},
+		"a mode nobody serves":     {with(func(s *DecoySpec) { s.Mode = "ftp" }), `unknown decoy mode "ftp"`},
+		"an upload with no site":   {with(func(s *DecoySpec) { s.Mode = DecoyUpload }), "SHA-256 of its site archive"},
+		"an upload of a short one": {with(func(s *DecoySpec) { s.Mode, s.Site = DecoyUpload, siteDigest[:63] }), "SHA-256 of its site archive"},
+		"an upload of a path":      {with(func(s *DecoySpec) { s.Mode, s.Site = DecoyUpload, "../../"+siteDigest[:58] }), "SHA-256 of its site archive"},
+		"an upload of no hex":      {with(func(s *DecoySpec) { s.Mode, s.Site = DecoyUpload, strings.Repeat("z", 64) }), "SHA-256 of its site archive"},
 		"a page that is not there": {with(func(s *DecoySpec) { s.Template = "../etc/passwd" }), "unknown decoy page"},
 		"no domain":                {with(func(s *DecoySpec) { s.Domain = "" }), "domain name"},
 		"an address, not a name":   {with(func(s *DecoySpec) { s.Domain = "203.0.113.7" }), "domain name"},
@@ -141,6 +156,42 @@ func TestDecoyRevision(t *testing.T) {
 		edit(&changed)
 		if DecoyRevision(changed) == want {
 			t.Errorf("a decoy with another %s has the same revision", name)
+		}
+	}
+}
+
+// A changed site is what makes the master send the decoy again, so the site is part of the revision.
+func TestDecoyRevisionFollowsTheSiteOfAnUploadDecoy(t *testing.T) {
+	site := func(digest string) DecoySpec {
+		spec, err := NormalizeDecoy(DecoySpec{Mode: DecoyUpload, Site: digest, Domain: "a.example"}, testRules)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return spec
+	}
+	first, second := site(siteDigest), site(strings.Repeat("a", 64))
+	if DecoyRevision(first) == "" || DecoyRevision(first) != DecoyRevision(site(strings.ToUpper(siteDigest))) {
+		t.Fatalf("the same site has revisions %q and %q, want one that is not empty", DecoyRevision(first), DecoyRevision(site(strings.ToUpper(siteDigest))))
+	}
+	if DecoyRevision(first) == DecoyRevision(second) {
+		t.Fatal("two sites have the same revision, so a changed site would not be sent")
+	}
+}
+
+func TestValidDecoySite(t *testing.T) {
+	for digest, want := range map[string]bool{
+		siteDigest:                               true,
+		strings.Repeat("0", 64):                  true,
+		"":                                       false,
+		siteDigest[:63]:                          false,
+		siteDigest + "0":                         false,
+		strings.ToUpper(siteDigest):              false, // the name of a folder is lower case, and a digest is normalized before it is kept
+		"../" + siteDigest[:61]:                  false,
+		siteDigest[:63] + "g":                    false,
+		siteDigest[:32] + "\n" + siteDigest[33:]: false,
+	} {
+		if got := ValidDecoySite(digest); got != want {
+			t.Errorf("ValidDecoySite(%q) = %v, want %v", digest, got, want)
 		}
 	}
 }
