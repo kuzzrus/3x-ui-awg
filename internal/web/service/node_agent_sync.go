@@ -47,6 +47,8 @@ type agentSyncState struct {
 	sendingSite    bool      // a decoy site is on its way
 	siteFailures   int       // sends of it that failed in a row
 	siteRetryAt    time.Time
+	siteTaken      string // the site the agent took last, and when: it is not sent again at once
+	siteTakenAt    time.Time
 	warned         map[string]time.Time
 }
 

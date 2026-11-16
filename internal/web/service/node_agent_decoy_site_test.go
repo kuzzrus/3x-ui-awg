@@ -66,10 +66,12 @@ func (s *AgentSyncService) awaitSite(t *testing.T, nodeID int) {
 	}
 }
 
+// retrySiteNow ends the waits before a site is sent again, as a tick after them would find.
 func (s *AgentSyncService) retrySiteNow(nodeID int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.stateFor(nodeID).siteRetryAt = time.Time{}
+	st := s.stateFor(nodeID)
+	st.siteRetryAt, st.siteTakenAt = time.Time{}, time.Time{}
 }
 
 // siteFixture is an agent node that is to serve an uploaded site, which the panel holds.
@@ -311,5 +313,35 @@ func TestAgentSyncDoesNotResendASiteRightAfterTheAgentTookIt(t *testing.T) {
 	svc.awaitSite(t, f.nodeID)
 	if puts := f.sitePuts(); len(puts) != 2 {
 		t.Fatalf("site PUTs = %d after the wait, want it sent again", len(puts))
+	}
+}
+
+// The pause after a site was taken is for that site: a node that is given another one has it sent at once, which the admin who
+// changes the site of a node waits for.
+func TestAgentSyncSendsAChangedSiteAtOnceAfterTheLastOneWasTaken(t *testing.T) {
+	f := newSiteFixture(t)
+	svc := &AgentSyncService{}
+	raw := decoySiteZip(t, map[string]string{"index.html": "<html>the other</html>"})
+	other, err := (&DecoySiteService{}).Add("other.zip", bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := f.sync(svc, &agentproto.Stats{}); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	svc.awaitSite(t, f.nodeID)
+	if puts := f.sitePuts(); len(puts) != 1 || puts[0].digest != f.digest {
+		t.Fatalf("site PUTs = %d, want the first site sent", len(puts))
+	}
+
+	f.wantDecoy(model.NodeDecoy{Mode: agentproto.DecoyUpload, Site: other.Sha256, Domain: "node.example", Cert: "auto", Port: 7443})
+	if err := f.sync(svc, &agentproto.Stats{DecoySites: []string{f.digest}}); err != nil {
+		t.Fatalf("Sync with the other site wanted: %v", err)
+	}
+	svc.awaitSite(t, f.nodeID)
+	puts := f.sitePuts()
+	if len(puts) != 2 || puts[1].digest != other.Sha256 || !bytes.Equal(puts[1].body, raw) {
+		t.Fatalf("site PUTs = %d after the node was given another site, want the other one sent at once", len(puts))
 	}
 }
