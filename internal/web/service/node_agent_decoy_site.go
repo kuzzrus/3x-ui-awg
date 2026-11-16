@@ -11,8 +11,8 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/web/runtime"
 )
 
-// agentSiteResendAfter is how long a site that an agent took is left alone before it can be sent again. An agent that took it
-// and still lists none would otherwise be sent the same megabytes on every tick.
+// agentSiteResendAfter is how long a site that an agent took is left alone before that same site can be sent again. An agent that
+// took it and still lists none would otherwise be sent the same megabytes on every tick; another site is not held back.
 const agentSiteResendAfter = time.Minute
 
 // siteProblem is a reason on the panel's side that a decoy site cannot be sent, which the heartbeat shows as the node's problem.
@@ -29,7 +29,7 @@ func (s *AgentSyncService) sendDecoySite(rt *runtime.AgentRuntime, n *model.Node
 	}
 	s.mu.Lock()
 	st := s.stateFor(n.Id)
-	if st.sendingSite || now.Before(st.siteRetryAt) {
+	if st.sendingSite || now.Before(st.siteRetryAt) || (st.siteTaken == site && now.Before(st.siteTakenAt.Add(agentSiteResendAfter))) {
 		s.mu.Unlock()
 		return
 	}
@@ -37,7 +37,7 @@ func (s *AgentSyncService) sendDecoySite(rt *runtime.AgentRuntime, n *model.Node
 	s.mu.Unlock()
 
 	go func() {
-		s.finishDecoySite(n.Id, st, pushDecoySite(n.Name, client, site))
+		s.finishDecoySite(n.Id, st, site, pushDecoySite(n.Name, client, site))
 	}()
 }
 
@@ -59,7 +59,7 @@ func pushDecoySite(nodeName string, client *runtime.AgentClient, site string) er
 
 // finishDecoySite records how a send ended: an agent that cannot take the site is left alone for a while and the heartbeat says
 // why, and a link that failed is tried again after longer waits.
-func (s *AgentSyncService) finishDecoySite(nodeID int, st *agentSyncState, err error) {
+func (s *AgentSyncService) finishDecoySite(nodeID int, st *agentSyncState, site string, err error) {
 	var local *siteProblem
 	var answer *runtime.AgentError
 	problem, wait := "", agentRefusalRetryAfter
@@ -68,7 +68,8 @@ func (s *AgentSyncService) finishDecoySite(nodeID int, st *agentSyncState, err e
 	st.sendingSite = false
 	switch {
 	case err == nil:
-		st.siteFailures, st.siteRetryAt = 0, time.Now().Add(agentSiteResendAfter)
+		st.siteFailures, st.siteRetryAt = 0, time.Time{}
+		st.siteTaken, st.siteTakenAt = site, time.Now()
 		agentDecoyProblems.set(nodeID, "")
 		return
 	case errors.As(err, &local):
