@@ -52,8 +52,12 @@ export const SubBalancerFormSchema = z
       .min(1, 'pages.settings.subBalancers.errSortOrder'),
     enabled: z.boolean(),
   })
-  .refine((values) => values.inboundIds.length > 0 || values.nodeIds.length > 0, {
-    message: 'pages.settings.subBalancers.errMembersRequired',
-    path: ['inboundIds'],
-  });
+  // A balancer needs a member only while it is switched on: the last one it had may have been deleted.
+  .refine(
+    (values) => !values.enabled || values.inboundIds.length > 0 || values.nodeIds.length > 0,
+    {
+      message: 'pages.settings.subBalancers.errMembersRequired',
+      path: ['inboundIds'],
+    },
+  );
 export type SubBalancerFormValues = z.infer<typeof SubBalancerFormSchema>;

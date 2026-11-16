@@ -114,6 +114,12 @@ function selectStrategy(label: string) {
   fireEvent.keyDown(single, { key: 'Escape' });
 }
 
+function enabledSwitch(): HTMLElement {
+  const toggle = document.querySelector<HTMLElement>('.ant-modal .ant-switch');
+  if (!toggle) throw new Error('Enabled switch not found');
+  return toggle;
+}
+
 function weightInputs(): HTMLInputElement[] {
   return Array.from(
     document.querySelectorAll<HTMLInputElement>('.sub-balancer-weights .ant-input-number-input'),
@@ -308,6 +314,57 @@ describe('SubBalancerFormModal', () => {
     });
     fireEvent.click(buttonNamed('Clear nodes'));
     await waitFor(() => expect(erroredItemCount()).toBe(2));
+  });
+
+  // The last member of a balancer may be deleted, which leaves one with none that has to be possible to save while it is off.
+  it('saves a switched-off balancer that has no member', async () => {
+    const { onConfirm } = renderModal({
+      id: 14,
+      remark: 'orphaned',
+      strategy: 'random',
+      inboundIds: [],
+      nodeIds: [],
+      sortOrder: 1,
+      enabled: false,
+    });
+    fireEvent.click(primaryButton());
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
+    expect(onConfirm).toHaveBeenCalledWith({
+      remark: 'orphaned',
+      strategy: 'random',
+      inboundIds: [],
+      nodeIds: [],
+      sortOrder: 1,
+      enabled: false,
+    });
+    expect(erroredItemCount()).toBe(0);
+  });
+
+  it('asks for a member only while the balancer is switched on', async () => {
+    const { onConfirm } = renderModal({
+      id: 15,
+      remark: 'orphaned',
+      strategy: 'random',
+      inboundIds: [],
+      nodeIds: [],
+      sortOrder: 1,
+      enabled: true,
+    });
+    fireEvent.click(primaryButton());
+    await waitFor(() => expect(erroredItemCount()).toBe(2));
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    fireEvent.click(enabledSwitch());
+    await waitFor(() => expect(erroredItemCount()).toBe(0));
+    fireEvent.click(primaryButton());
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
+    expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
+
+    onConfirm.mockClear();
+    fireEvent.click(enabledSwitch());
+    await waitFor(() => expect(erroredItemCount()).toBe(2));
+    fireEvent.click(primaryButton());
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 
   it('seeds the nodes from the edited balancer', async () => {

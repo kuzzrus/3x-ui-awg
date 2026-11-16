@@ -159,7 +159,7 @@ const subBalancerBodyParams: EndpointParam[] = [
     name: 'inboundIds',
     in: 'body (form)',
     type: 'integer[]',
-    desc: 'Repeated form keys selecting the member inbounds. At least one inbound or node is required.',
+    desc: 'Repeated form keys selecting the member inbounds. At least one inbound or node is required while the balancer is enabled.',
     optional: true,
   },
   {
@@ -188,7 +188,7 @@ const subBalancerBodyParams: EndpointParam[] = [
     name: 'enabled',
     in: 'body (form)',
     type: 'boolean',
-    desc: 'Whether the balancer is emitted. Default true on create; unchanged when omitted on update.',
+    desc: 'Whether the balancer is emitted. Default true on create; unchanged when omitted on update. A balancer that has lost its last inbound or node can still be switched off, but not on again before it has a member.',
     optional: true,
   },
 ];

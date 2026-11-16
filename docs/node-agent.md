@@ -453,13 +453,14 @@ in a panel rolled back to a version without `nodeMembers`, whose core would refu
 
 A node can be a member of a subscription balancer (Settings → Sub Balancers), the client-side
 balancer of the JSON subscription, which has nothing to do with the balancers of the template. A
-balancer holds inbounds, nodes or both, and at least one of them. A node stands for the inbounds that
-the subscriber has on it and that are on, as they are when the subscription is built, so an inbound
-added to the node later joins the balancer without an edit, and an inbound that is picked in both
-ways is one member. It goes by the node an inbound belongs to, so a node of either kind works. A
-node that is deleted leaves the balancers that held it, in the same transaction, and a balancer left
-with no member is not emitted. The weights of the leastLoad strategy are kept by inbound: the
-inbounds of a node weigh 1, unless they are picked one by one as well.
+balancer that is on holds inbounds, nodes or both, and at least one of them; one that is off may hold
+none. A node stands for the inbounds that the subscriber has on it and that are on, as they are when
+the subscription is built, so an inbound added to the node later joins the balancer without an edit,
+and an inbound that is picked in both ways is one member. It goes by the node an inbound belongs to,
+so a node of either kind works. A node that is deleted leaves the balancers that held it, in the same
+transaction, and a balancer left with no member is not emitted; it can be switched off, and on again
+once it has a member. The weights of the leastLoad strategy are kept by inbound: the inbounds of a
+node weigh 1, unless they are picked one by one as well.
 
 ## Traffic accounting
 

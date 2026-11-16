@@ -23,7 +23,9 @@ var subBalancerStrategies = map[string]struct{}{
 // are read per request by internal/sub, so mutations need no xray restart.
 type SubBalancerService struct{}
 
-func (s *SubBalancerService) validate(b *model.SubBalancer) error {
+// validate normalizes b and checks it. A balancer needs a member only while it is switched on: the last one it had may be
+// deleted, and the row it leaves must still be possible to switch off.
+func (s *SubBalancerService) validate(b *model.SubBalancer, enabled bool) error {
 	b.Remark = strings.TrimSpace(b.Remark)
 	if b.Remark == "" {
 		return common.NewError("balancer remark is required")
@@ -40,7 +42,7 @@ func (s *SubBalancerService) validate(b *model.SubBalancer) error {
 	if err := s.validateNodes(b); err != nil {
 		return err
 	}
-	if len(b.InboundIds) == 0 && len(b.NodeIds) == 0 {
+	if enabled && len(b.InboundIds) == 0 && len(b.NodeIds) == 0 {
 		return common.NewError("balancer must select at least one inbound or node")
 	}
 	if b.InboundIds == nil {
@@ -149,7 +151,7 @@ func (s *SubBalancerService) Get(id int) (*model.SubBalancer, error) {
 }
 
 func (s *SubBalancerService) Create(balancer *model.SubBalancer) (*model.SubBalancer, error) {
-	if err := s.validate(balancer); err != nil {
+	if err := s.validate(balancer, balancer.Enabled); err != nil {
 		return nil, err
 	}
 	if err := database.GetDB().Create(balancer).Error; err != nil {
@@ -159,11 +161,14 @@ func (s *SubBalancerService) Create(balancer *model.SubBalancer) (*model.SubBala
 }
 
 func (s *SubBalancerService) Update(id int, balancer *model.SubBalancer, enabled *bool) (*model.SubBalancer, error) {
-	if err := s.validate(balancer); err != nil {
-		return nil, err
-	}
 	current, err := s.Get(id)
 	if err != nil {
+		return nil, err
+	}
+	if enabled != nil {
+		current.Enabled = *enabled
+	}
+	if err := s.validate(balancer, current.Enabled); err != nil {
 		return nil, err
 	}
 	current.Remark = balancer.Remark
@@ -172,9 +177,6 @@ func (s *SubBalancerService) Update(id int, balancer *model.SubBalancer, enabled
 	current.NodeIds = balancer.NodeIds
 	current.MemberWeights = balancer.MemberWeights
 	current.SortOrder = balancer.SortOrder
-	if enabled != nil {
-		current.Enabled = *enabled
-	}
 	if err := database.GetDB().Save(current).Error; err != nil {
 		return nil, err
 	}

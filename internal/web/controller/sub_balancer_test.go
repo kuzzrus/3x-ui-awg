@@ -104,6 +104,38 @@ func TestSubBalancerController_UpdatePreservesEnabledWhenAbsent(t *testing.T) {
 	}
 }
 
+// The switch of the table sends the whole row back. The row of a balancer whose last member was deleted holds no id, and it
+// still has to switch off, though not on again.
+func TestSubBalancerController_BalancerWithNoMemberSwitchesOffButNotOn(t *testing.T) {
+	router := setupSubBalancerRouter(t)
+	resp := subBalancerPost(t, router, "/panel/api/sub-balancers", "remark=auto&strategy=random&sortOrder=1&inboundIds=1")
+	bal := responseObj(t, resp.Body.String())["obj"].(map[string]any)
+	id := strconv.Itoa(int(bal["id"].(float64)))
+
+	var row model.SubBalancer
+	if err := database.GetDB().First(&row, id).Error; err != nil {
+		t.Fatal(err)
+	}
+	row.InboundIds = nil
+	if err := database.GetDB().Save(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	body := "remark=auto&strategy=random&sortOrder=1"
+	resp = subBalancerPost(t, router, "/panel/api/sub-balancers/"+id, body+"&enabled=false")
+	if !strings.Contains(resp.Body.String(), `"success":true`) {
+		t.Fatalf("switching a balancer with no member off: %s", resp.Body.String())
+	}
+	if bal = responseObj(t, resp.Body.String())["obj"].(map[string]any); bal["enabled"] != false {
+		t.Fatalf("enabled = %v after it was switched off, want false", bal["enabled"])
+	}
+
+	resp = subBalancerPost(t, router, "/panel/api/sub-balancers/"+id, body+"&enabled=true")
+	if !strings.Contains(resp.Body.String(), `"success":false`) {
+		t.Fatalf("switching it on with no member must be refused: %s", resp.Body.String())
+	}
+}
+
 // nodeIds arrive as repeated form keys like inboundIds: nodes alone make a balancer, an update
 // replaces the list, and a value that is no id of a node is refused, not skipped.
 func TestSubBalancerController_NodeIds(t *testing.T) {
