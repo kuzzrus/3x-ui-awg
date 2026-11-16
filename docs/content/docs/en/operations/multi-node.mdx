@@ -231,8 +231,10 @@ page built into the panel, a reverse proxy to a site you already host, AdGuard H
 own [reverse proxy](/docs/operations/reverse-proxy), on the node: a TLS listener on `127.0.0.1` and the
 port you choose (7443 by default), which the REALITY fallback of the node reaches. When you choose REALITY
 for an inbound deployed to this node, the inbound form fills its target with `127.0.0.1:<port>` and the domain of the decoy
-as its SNI, and offers them again under the target field; a probe that has no key is then handed the
-decoy. The window says so once a decoy is chosen, and the Nodes page repeats the target in the info of
+as its SNI, and offers them again under the target field with how the decoy stands; a probe that has no key is then handed the
+decoy. The values are copied into the inbound, so after you change the port or the domain of the decoy, open the REALITY inbounds of the
+node and use the link again; moving an inbound to another node moves values that came from the decoy along, and leaves those you wrote.
+The window says so once a decoy is chosen, and the Nodes page repeats the target in the info of
 the node.
 
 The decoy needs a **domain** that points at the node and a certificate for it. Left empty, the domain is the **Node

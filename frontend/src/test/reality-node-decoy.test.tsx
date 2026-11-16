@@ -6,6 +6,7 @@ import { FormProvider, useForm } from 'react-hook-form';
 
 import InboundFormModal from '@/pages/inbounds/form/InboundFormModal';
 import { RealityForm } from '@/pages/inbounds/form/security';
+import { nodeDecoyTarget, type NodeDecoyTarget } from '@/lib/xray/node-decoy';
 import type { NodeRecord } from '@/schemas/node';
 import type { InboundFormValues } from '@/schemas/forms/inbound-form';
 import type { RealityScanResult } from '@/generated/types';
@@ -13,6 +14,24 @@ import { HttpUtil } from '@/utils';
 import { chooseSelectOption, renderWithProviders } from './test-utils';
 
 const noop = () => {};
+
+const edge: NodeRecord = {
+  id: 7,
+  name: 'edge',
+  kind: 'agent',
+  enable: true,
+  status: 'online',
+  decoy: { mode: 'template', domain: 'site.example.com' },
+};
+const other: NodeRecord = {
+  id: 9,
+  name: 'other',
+  kind: 'agent',
+  enable: true,
+  status: 'online',
+  decoy: { mode: 'proxy', domain: 'other.example.com', port: 8443 },
+};
+const bare: NodeRecord = { id: 8, name: 'bare', kind: 'agent', enable: true, status: 'online' };
 
 function FormHarness({ children }: { children: ReactNode }) {
   const methods = useForm<InboundFormValues>();
@@ -23,7 +42,7 @@ function FormHarness({ children }: { children: ReactNode }) {
   );
 }
 
-function renderRealityForm(props: { nodeDecoy?: { target: string; serverName: string } | null }) {
+function renderRealityForm(props: { nodeDecoy?: NodeDecoyTarget | null }) {
   return renderWithProviders(
     <FormHarness>
       <RealityForm
@@ -50,10 +69,16 @@ const useDecoyButton = () => screen.queryByRole('button', { name: /^Use the deco
 
 describe('the REALITY form on a node that serves a decoy', () => {
   it('offers the decoy as the fallback, with the address and the name it hands a probe to', () => {
-    renderRealityForm({ nodeDecoy: { target: '127.0.0.1:7443', serverName: 'site.example.com' } });
+    renderRealityForm({ nodeDecoy: nodeDecoyTarget(edge) });
     expect(useDecoyButton()?.textContent).toBe(
       'Use the decoy of this node: 127.0.0.1:7443, SNI site.example.com',
     );
+  });
+
+  it('says how the decoy stands, as a fallback with nothing behind it is no fallback', () => {
+    const failing: NodeRecord = { ...edge, decoyState: { state: 'running', cert: 'failed' } };
+    renderRealityForm({ nodeDecoy: nodeDecoyTarget(failing) });
+    expect(screen.getByText('Decoy: certificate failed')).toBeTruthy();
   });
 
   it('offers nothing where the node serves no decoy', () => {
@@ -61,16 +86,6 @@ describe('the REALITY form on a node that serves a decoy', () => {
     expect(useDecoyButton()).toBeNull();
   });
 });
-
-const edge: NodeRecord = {
-  id: 7,
-  name: 'edge',
-  kind: 'agent',
-  enable: true,
-  status: 'online',
-  decoy: { mode: 'template', domain: 'site.example.com' },
-};
-const bare: NodeRecord = { id: 8, name: 'bare', kind: 'agent', enable: true, status: 'online' };
 
 function renderAddModal(nodes: NodeRecord[]) {
   return renderWithProviders(
@@ -98,6 +113,13 @@ function chooseReality() {
   fireEvent.click(screen.getByRole('radio', { name: 'Reality' }));
 }
 
+// Moves the inbound to another node from the tab of the security settings, where the decoy was filled in.
+function moveTo(name: string) {
+  fireEvent.click(screen.getByRole('tab', { name: 'Basics' }));
+  chooseNode(name);
+  fireEvent.click(screen.getByRole('tab', { name: 'Security' }));
+}
+
 describe('an inbound on a node that serves a decoy', () => {
   it('takes the decoy as the REALITY fallback once REALITY is chosen, and again on the button', async () => {
     renderAddModal([edge, bare]);
@@ -105,19 +127,64 @@ describe('an inbound on a node that serves a decoy', () => {
     chooseReality();
     await waitFor(() => expect(targetInput().value).toBe('127.0.0.1:7443'));
     expect(screen.getByText('site.example.com')).toBeTruthy();
+    expect(screen.getByText('Decoy: waiting')).toBeTruthy();
 
     fireEvent.change(targetInput(), { target: { value: 'www.example.org:443' } });
     fireEvent.click(useDecoyButton()!);
     await waitFor(() => expect(targetInput().value).toBe('127.0.0.1:7443'));
   });
 
-  it('leaves the fallback to be chosen on a node that serves none, and on the panel', async () => {
+  it('leaves the fallback to be chosen on a node that serves none', async () => {
     renderAddModal([edge, bare]);
     chooseNode('bare');
     chooseReality();
     await waitFor(() => expect(screen.getByRole('radio', { name: 'Reality' })).toBeTruthy());
     await waitFor(() => expect(targetInput().value).toBe(''));
     expect(useDecoyButton()).toBeNull();
+  });
+
+  it('leaves the fallback to be chosen on the local panel, where no node is picked', async () => {
+    renderAddModal([edge]);
+    chooseReality();
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Reality' })).toBeTruthy());
+    await waitFor(() => expect(targetInput().value).toBe(''));
+    expect(useDecoyButton()).toBeNull();
+  });
+
+  // The loopback port and the domain belong to the node whose decoy they name.
+  it('follows the decoy to the node the inbound is moved to', async () => {
+    renderAddModal([edge, other, bare]);
+    chooseNode('edge');
+    chooseReality();
+    await waitFor(() => expect(targetInput().value).toBe('127.0.0.1:7443'));
+
+    moveTo('other');
+    await waitFor(() => expect(targetInput().value).toBe('127.0.0.1:8443'));
+    expect(screen.getByText('other.example.com')).toBeTruthy();
+    expect(screen.queryByText('site.example.com')).toBeNull();
+  });
+
+  it('drops the decoy when the inbound is moved to a node that serves none', async () => {
+    renderAddModal([edge, other, bare]);
+    chooseNode('edge');
+    chooseReality();
+    await waitFor(() => expect(targetInput().value).toBe('127.0.0.1:7443'));
+
+    moveTo('bare');
+    await waitFor(() => expect(targetInput().value).toBe(''));
+    expect(screen.queryByText('site.example.com')).toBeNull();
+  });
+
+  it('keeps a target that the operator wrote when the inbound is moved to another node', async () => {
+    renderAddModal([edge, other, bare]);
+    chooseNode('edge');
+    chooseReality();
+    await waitFor(() => expect(targetInput().value).toBe('127.0.0.1:7443'));
+    fireEvent.change(targetInput(), { target: { value: 'www.example.org:443' } });
+
+    moveTo('other');
+    await waitFor(() => expect(screen.getByText('Decoy: waiting')).toBeTruthy());
+    expect(targetInput().value).toBe('www.example.org:443');
   });
 
   it('drops the scan of the old target when the decoy is taken', async () => {

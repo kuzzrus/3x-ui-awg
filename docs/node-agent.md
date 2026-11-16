@@ -185,7 +185,9 @@ domain and a certificate: ACME over HTTP-01 on port 80 (`auto`, kept in the stat
 reason of the CA for a name that does not point at the node), or files that are on the node already
 (`manual`). It answers a ClientHello that names another domain with a failed handshake. The fallback
 target of a REALITY inbound of the node is `127.0.0.1` and the port, as on the panel: the inbound form fills it,
-and the domain as the SNI, when REALITY is chosen for an inbound deployed to a node that serves a decoy, and offers them again beside the target.
+and the domain as the SNI, when REALITY is chosen for an inbound deployed to a node that serves a decoy, and offers them again beside the target,
+with how the decoy stands. They are copied into the inbound: moving it to another node moves what came from a decoy and leaves what the operator wrote,
+and a later change of the decoy's port or domain is not carried into the inbounds that exist.
 The look of a page is made from the GUID of the agent, so no two nodes serve the same bytes. A site to proxy must be
 on a public address: anyone who probes the node can send the decoy anywhere, so an address on a private network, the
 loopback or a link-local one is refused when the node is saved and again by the agent, which also refuses to dial one

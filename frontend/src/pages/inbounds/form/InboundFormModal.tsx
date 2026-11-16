@@ -104,6 +104,7 @@ import {
 } from './transport';
 import { RealityForm, TlsForm } from './security';
 import { useSecurityActions } from './useSecurityActions';
+import { useFollowNodeDecoy } from './useFollowNodeDecoy';
 import { useInboundFallbacks } from './useInboundFallbacks';
 import FallbacksCard from './FallbacksCard';
 import SniffingTab from './SniffingTab';
@@ -394,6 +395,7 @@ export default function InboundFormModal({
     setScanResult,
     setScanning,
   });
+  useFollowNodeDecoy(methods, nodeDecoy);
 
   const toggleSockopt = (on: boolean) => {
     if (on) {

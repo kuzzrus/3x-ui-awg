@@ -26,6 +26,7 @@ import {
   validateRealityMaxClientVer,
   validateRealityTarget,
 } from '@/lib/xray/stream-wire-normalize';
+import DecoyChip from '@/pages/nodes/DecoyChip';
 import type { NodeDecoyTarget } from '@/lib/xray/node-decoy';
 import type { RealityScanResult } from '@/generated/types';
 import RealityTargetScannerModal, {
@@ -129,12 +130,15 @@ export default function RealityForm({
         tooltip={t('pages.inbounds.form.realityTargetHint')}
         extra={
           nodeDecoy && applyNodeDecoy ? (
-            <Button type="link" size="small" style={{ padding: 0 }} onClick={applyNodeDecoy}>
-              {t('pages.inbounds.form.useNodeDecoy', {
-                target: nodeDecoy.target,
-                serverName: nodeDecoy.serverName,
-              })}
-            </Button>
+            <>
+              <Button type="link" size="small" style={{ padding: 0 }} onClick={applyNodeDecoy}>
+                {t('pages.inbounds.form.useNodeDecoy', {
+                  target: nodeDecoy.target,
+                  serverName: nodeDecoy.serverName,
+                })}
+              </Button>{' '}
+              <DecoyChip node={nodeDecoy.node} />
+            </>
           ) : undefined
         }
       >
