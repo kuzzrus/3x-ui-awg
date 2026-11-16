@@ -38,6 +38,9 @@ export const SCHEMAS: Record<string, unknown> = {
       "decoyProxyUrl": {
         "type": "string"
       },
+      "decoySite": {
+        "type": "string"
+      },
       "decoyTemplate": {
         "example": "maintenance",
         "type": "string"
@@ -91,6 +94,7 @@ export const SCHEMAS: Record<string, unknown> = {
       "decoyMode",
       "decoyPort",
       "decoyProxyUrl",
+      "decoySite",
       "decoyTemplate",
       "masterPin",
       "masterUrl",
@@ -2761,6 +2765,37 @@ export const SCHEMAS: Record<string, unknown> = {
     ],
     "type": "object"
   },
+  "DecoySite": {
+    "description": "DecoySite is an uploaded static site, a zip with an index.html, that agent nodes can serve as their decoy. A node\nnames the site it serves by Sha256, the SHA-256 of the zip, which is also what the zip is called on disk.",
+    "properties": {
+      "name": {
+        "example": "blog.zip",
+        "type": "string"
+      },
+      "sha256": {
+        "example": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "type": "string"
+      },
+      "size": {
+        "example": 183412,
+        "format": "int64",
+        "type": "integer"
+      },
+      "uploadedAt": {
+        "description": "unix seconds",
+        "example": 1700000000,
+        "format": "int64",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "name",
+      "sha256",
+      "size",
+      "uploadedAt"
+    ],
+    "type": "object"
+  },
   "FallbackParentInfo": {
     "description": "FallbackParentInfo carries everything the frontend needs to rewrite a\nchild inbound's client link: where to connect (the master's address\nand port) and which path matched on the master's fallbacks array.\nThe frontend already has the master inbound in its dbInbounds list,\nso we only ship identifiers + the match path here.",
     "properties": {
@@ -4138,7 +4173,7 @@ export const SCHEMAS: Record<string, unknown> = {
     "type": "object"
   },
   "NodeDecoy": {
-    "description": "NodeDecoy is the decoy site of an agent node; an empty Mode is none. Cert is \"auto\" (ACME on port 80)\nor \"manual\" (files on the node), and Port is the loopback port the REALITY fallback of the node points at.",
+    "description": "NodeDecoy is the decoy site of an agent node; an empty Mode is none. Cert is \"auto\" (ACME on port 80) or \"manual\" (files on the\nnode), Port is the loopback port the REALITY fallback points at, and Site is the SHA-256 of the zip that mode \"upload\" serves.",
     "properties": {
       "cert": {
         "example": "auto",
@@ -4169,6 +4204,9 @@ export const SCHEMAS: Record<string, unknown> = {
       "proxyUrl": {
         "type": "string"
       },
+      "site": {
+        "type": "string"
+      },
       "template": {
         "example": "maintenance",
         "type": "string"
@@ -4183,6 +4221,7 @@ export const SCHEMAS: Record<string, unknown> = {
       "mode",
       "port",
       "proxyUrl",
+      "site",
       "template"
     ],
     "type": "object"
@@ -4219,6 +4258,9 @@ export const SCHEMAS: Record<string, unknown> = {
       "decoyProxyUrl": {
         "type": "string"
       },
+      "decoySite": {
+        "type": "string"
+      },
       "decoyTemplate": {
         "example": "maintenance",
         "type": "string"
@@ -4233,6 +4275,7 @@ export const SCHEMAS: Record<string, unknown> = {
       "decoyMode",
       "decoyPort",
       "decoyProxyUrl",
+      "decoySite",
       "decoyTemplate"
     ],
     "type": "object"
@@ -4311,6 +4354,9 @@ export const SCHEMAS: Record<string, unknown> = {
         "type": "integer"
       },
       "decoyProxyUrl": {
+        "type": "string"
+      },
+      "decoySite": {
         "type": "string"
       },
       "decoyTemplate": {
@@ -4394,6 +4440,7 @@ export const SCHEMAS: Record<string, unknown> = {
       "decoyMode",
       "decoyPort",
       "decoyProxyUrl",
+      "decoySite",
       "decoyTemplate",
       "enable",
       "id",

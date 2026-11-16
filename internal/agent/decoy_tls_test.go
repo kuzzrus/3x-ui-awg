@@ -3,6 +3,7 @@
 package agent
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -146,5 +147,63 @@ func TestDecoyHostServesTheChosenPageOverTLSAndOnlyForItsName(t *testing.T) {
 	host.reconcile()
 	if _, _, err := probe(t, port, "node.example", "/"); err == nil {
 		t.Fatal("the port still answers after the decoy was taken off")
+	}
+}
+
+// A site of your own through the real listener: a path it does not have gets its own 404 page, and a changed site is swapped
+// in without the port ever closing.
+func TestDecoyHostServesAnUploadedSiteOverTLSAndSwapsItWithoutClosingThePort(t *testing.T) {
+	certFile, keyFile := writeDecoyCert(t, "node.example")
+	state, err := OpenState(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := newDecoyHost(state, frontProxyRunner{}, &fakeHelpers{}, "node-seed", t.TempDir())
+	t.Cleanup(host.stop)
+	port := freeLoopbackPort(t)
+	store := func(files map[string]string) string {
+		t.Helper()
+		raw := siteZip(t, files)
+		digest := digestOf(raw)
+		if _, err := host.StoreSite(digest, bytes.NewReader(raw)); err != nil {
+			t.Fatal(err)
+		}
+		return digest
+	}
+	spec := agentproto.DecoySpec{
+		Mode: agentproto.DecoyUpload, Domain: "node.example",
+		Cert: agentproto.DecoyCertManual, CertFile: certFile, KeyFile: keyFile, Port: port,
+	}
+	serve := func(site string) {
+		t.Helper()
+		spec.Site = site
+		if _, err := host.Set(spec); err != nil {
+			t.Fatal(err)
+		}
+		host.reconcile()
+		if got := host.State().State; got != agentproto.DecoyStateRunning {
+			t.Fatalf("state = %q, want running", got)
+		}
+	}
+	want := func(path string, status int, body string) {
+		t.Helper()
+		if got, text, err := probe(t, port, "node.example", path); err != nil || got != status || !strings.Contains(text, body) {
+			t.Fatalf("GET %s = %d %q, %v; want %d with %q", path, got, text, err, status, body)
+		}
+	}
+
+	serve(store(map[string]string{
+		"index.html": "<html>one at {{DECOY_ORIGIN}}</html>", "about.html": "<html>about</html>", "404.html": "<html>one is gone</html>",
+	}))
+	want("/", http.StatusOK, "one at https://127.0.0.1:"+strconv.Itoa(port))
+	want("/about.html", http.StatusOK, "about")
+	want("/no/such/page", http.StatusNotFound, "one is gone")
+
+	// The other site has no 404 page, so an unknown path shows its home page, as a single-page site needs.
+	serve(store(map[string]string{"index.html": "<html>two</html>"}))
+	want("/", http.StatusOK, "two")
+	want("/no/such/page", http.StatusOK, "two")
+	if _, _, err := probe(t, port, "other.example", "/"); err == nil {
+		t.Fatal("a probe that asked for another name was given a certificate")
 	}
 }

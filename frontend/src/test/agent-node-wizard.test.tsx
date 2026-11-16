@@ -389,6 +389,32 @@ describe('AgentNodeWizard: the decoy', () => {
     });
   });
 
+  it('asks for an uploaded site when the decoy is a static site, and sends the one that was picked', async () => {
+    vi.spyOn(HttpUtil, 'get').mockImplementation(async (url: string) =>
+      url === '/panel/api/nodes/decoySites'
+        ? new Msg(true, '', [
+            { sha256: 'a'.repeat(64), name: 'blog.zip', size: 12288, uploadedAt: 5 },
+          ])
+        : new Msg(true, '', []),
+    );
+    const { create } = renderWizard();
+    await toDecoy();
+
+    choose('Decoy site', 'A static site of your own, from a zip');
+    expect(screen.queryByLabelText('Page')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Domain'), { target: { value: 'decoy.example.com' } });
+    press('Next');
+    await waitFor(() => expect(document.body.textContent).toContain('A decoy needs a domain'));
+    expect(screen.queryByText(MORE_TITLE)).toBeNull();
+
+    await waitFor(() => choose('Site', 'blog.zip, 12 KiB'));
+    await goOn(MORE_TITLE);
+    expect(await createNode(create)).toMatchObject({
+      decoyMode: 'upload',
+      decoySite: 'a'.repeat(64),
+    });
+  });
+
   it('serves AdGuard Home as the decoy, which needs no page and no site', async () => {
     const { create } = renderWizard();
     await toDecoy();

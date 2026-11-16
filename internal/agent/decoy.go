@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -20,6 +21,8 @@ const (
 	decoyListen = "127.0.0.1"
 	// decoyCertsDir is the folder of the state folder that holds the certificates the decoy obtained.
 	decoyCertsDir = "decoy-certs"
+	// decoySitesDir is the folder of the state folder that holds the decoy sites, each unpacked under the SHA-256 of its zip.
+	decoySitesDir = "decoy-sites"
 )
 
 // decoyRunner is the TLS listener the decoy is served from, which internal/frontproxy provides.
@@ -61,6 +64,8 @@ type decoyHost struct {
 	adguardPort func() (int, error) // adguard.WebPort unless a test sets it
 	seed        string              // makes the page of this node unlike that of another
 	storage     string              // where the certificates are kept
+	sites       string              // where the sites of mode upload are kept
+	siteMu      sync.Mutex          // one site is unpacked at a time
 	now         func() time.Time
 	wake        chan struct{}
 	// privateProxy lets the proxied site be on a private address, which only a test with a site of its own on the loopback wants.
@@ -77,7 +82,7 @@ type decoyHost struct {
 func newDecoyHost(state *State, runner decoyRunner, helpers helperPrograms, seed, storage string) *decoyHost {
 	h := &decoyHost{
 		state: state, runner: runner, helpers: helpers, adguardPort: adguard.WebPort,
-		seed: seed, storage: storage, now: time.Now, wake: make(chan struct{}, 1),
+		seed: seed, storage: storage, sites: filepath.Join(state.Dir(), decoySitesDir), now: time.Now, wake: make(chan struct{}, 1),
 	}
 	spec, err := state.Decoy()
 	if err != nil {
@@ -99,6 +104,9 @@ func (h *decoyHost) Set(spec agentproto.DecoySpec) (agentproto.Decoy, error) {
 	spec, err := agentproto.NormalizeDecoy(spec, rules)
 	if err != nil {
 		return agentproto.Decoy{}, err
+	}
+	if spec.Mode == agentproto.DecoyUpload && !h.holdsSite(spec.Site) {
+		return agentproto.Decoy{}, &agentproto.DecoyError{Reason: "the decoy site is not on this agent: send it first"}
 	}
 	h.mu.Lock()
 	changed := h.spec != spec
@@ -170,6 +178,7 @@ func (h *decoyHost) Run(ctx context.Context) {
 	defer ticker.Stop()
 	for {
 		h.reconcile()
+		h.pruneSites()
 		select {
 		case <-ctx.Done():
 			return
@@ -181,7 +190,7 @@ func (h *decoyHost) Run(ctx context.Context) {
 
 // listenerOf is what a running listener cannot take another of without a restart.
 func listenerOf(spec agentproto.DecoySpec) agentproto.DecoySpec {
-	spec.Mode, spec.Template, spec.ProxyURL = "", "", ""
+	spec.Mode, spec.Template, spec.ProxyURL, spec.Site = "", "", "", ""
 	return spec
 }
 
@@ -274,6 +283,11 @@ func (h *decoyHost) optionsOf(spec agentproto.DecoySpec) (frontproxy.Options, *h
 			return frontproxy.Options{}, by
 		}
 		decoy.Mode, decoy.AdGuardPort = frontproxy.DecoyAdGuard, port
+	case agentproto.DecoyUpload:
+		if !h.holdsSite(spec.Site) {
+			return frontproxy.Options{}, &held{why: "the decoy site has not arrived yet"}
+		}
+		decoy.Mode, decoy.Dir = frontproxy.DecoyUpload, h.sitePath(spec.Site)
 	}
 	cert := frontproxy.CertAuto
 	if spec.Cert == agentproto.DecoyCertManual {

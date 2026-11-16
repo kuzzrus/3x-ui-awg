@@ -37,8 +37,9 @@ const (
 	// a decoy is up.
 	agentSidecarsTimeout = 10 * time.Second
 	agentDecoyTimeout    = 10 * time.Second
-	// A geo file is tens of megabytes and the link to a node may be slow.
-	agentGeoSendTimeout = 15 * time.Minute
+	// A geo file is tens of megabytes and the link to a node may be slow, and a decoy site may be of that size too.
+	agentGeoSendTimeout       = 15 * time.Minute
+	agentDecoySiteSendTimeout = 15 * time.Minute
 	// The agent downloads the installer, in up to 10 s, before it answers that an update has started.
 	// The call runs inside a request the panel cuts off after 30 s, as a panel node's update does in 20.
 	agentUpdateTimeout = 20 * time.Second
@@ -263,6 +264,53 @@ func (c *AgentClient) PutDecoy(ctx context.Context, spec agentproto.DecoySpec) (
 		return nil, err
 	}
 	return &out, nil
+}
+
+// PutDecoySite sends the zip at path to the agent as the decoy site named by its SHA-256, which the agent checks
+// against what it read, so a zip that changes meanwhile is refused.
+func (c *AgentClient) PutDecoySite(ctx context.Context, digest, path string) (*agentproto.DecoySite, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(netsafe.ContextWithAllowPrivate(ctx, c.node.AllowPrivateAddress), agentDecoySiteSendTimeout)
+	defer cancel()
+	query := url.Values{agentproto.QueryDecoySiteSha256: {digest}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.base+agentproto.PathDecoySite+"?"+query.Encode(), file)
+	if err != nil {
+		return nil, err
+	}
+	req.ContentLength = info.Size()
+	req.Header.Set("Authorization", "Bearer "+c.secret)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/zip")
+
+	// The pooled client may carry a timeout sized for a config push, which a site may outlast.
+	patient := *c.client
+	patient.Timeout = 0
+	resp, err := patient.Do(req)
+	if err != nil {
+		return nil, transportError(http.MethodPut, agentproto.PathDecoySite, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, errBodyDiagBytes))
+		return nil, agentErrorFor(resp.StatusCode, snippet)
+	}
+	raw, err := readCappedBody(resp.Body, maxAnswerBytes)
+	if err != nil {
+		return nil, fmt.Errorf("read %s response: %w", agentproto.PathDecoySite, err)
+	}
+	var stored agentproto.DecoySite
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return nil, fmt.Errorf("decode %s response: %w", agentproto.PathDecoySite, err)
+	}
+	return &stored, nil
 }
 
 // Geo lists the geo files the agent holds.

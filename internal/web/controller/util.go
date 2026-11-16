@@ -165,6 +165,17 @@ func allowSlowAction(c *gin.Context) {
 	_ = http.NewResponseController(deadlineWriter(c.Writer)).SetWriteDeadline(time.Now().Add(slowActionDeadline))
 }
 
+// slowUploadDeadline is how long a large upload may take to arrive, which the server's ReadTimeout of 30 seconds leaves only
+// to a fast uplink; the answer may take a minute more.
+const slowUploadDeadline = 15 * time.Minute
+
+// allowSlowUpload lets the handler of a route read a large body that arrives slowly, past the server's ReadTimeout and WriteTimeout.
+func allowSlowUpload(c *gin.Context) {
+	deadlines := http.NewResponseController(deadlineWriter(c.Writer))
+	_ = deadlines.SetReadDeadline(time.Now().Add(slowUploadDeadline))
+	_ = deadlines.SetWriteDeadline(time.Now().Add(slowUploadDeadline + time.Minute))
+}
+
 // deadlineWriter finds, under the writers that middleware wrapped around the response, the one http.ResponseController can set
 // a deadline on: gin-contrib/gzip's embeds gin's as a field and has no Unwrap, and the panel puts it in front of every route.
 func deadlineWriter(w http.ResponseWriter) http.ResponseWriter {

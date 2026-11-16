@@ -50,6 +50,7 @@ const STEP_FIELDS: string[][] = [
     'decoyMode',
     'decoyTemplate',
     'decoyProxyUrl',
+    'decoySite',
     'decoyDomain',
     'decoyCert',
     'decoyEmail',

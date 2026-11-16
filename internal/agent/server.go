@@ -72,6 +72,7 @@ func NewServer(core *Core, state *State, secret string) (*Server, error) {
 		{http.MethodGet, agentproto.PathUpdate, s.getUpdate},
 		{http.MethodPut, agentproto.PathSidecars, s.putSidecars},
 		{http.MethodPut, agentproto.PathDecoy, s.putDecoy},
+		{http.MethodPut, agentproto.PathDecoySite, s.putDecoySite},
 	} {
 		s.routes[route.method+" "+route.path] = route.handler
 		s.paths[route.path] = true
@@ -320,6 +321,7 @@ func (s *Server) getStats(w http.ResponseWriter, _ *http.Request) {
 	case err == nil:
 		stats.SidecarsRevision = s.sidecars.Revision()
 		stats.DecoyRevision = s.decoy.Revision()
+		stats.DecoySites = s.decoy.Sites()
 		writeJSON(w, http.StatusOK, stats)
 	case errors.Is(err, ErrCoreRestarted):
 		writeError(w, http.StatusServiceUnavailable, err.Error())

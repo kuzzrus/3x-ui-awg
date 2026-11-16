@@ -44,9 +44,13 @@ function decoyValues(node: NodeRecord, base: AgentFormValues): Partial<AgentForm
   const decoy = node.decoy;
   if (!decoy?.mode) return {};
   return {
-    decoyMode: decoy.mode === 'proxy' || decoy.mode === 'adguard' ? decoy.mode : 'template',
+    decoyMode:
+      decoy.mode === 'proxy' || decoy.mode === 'adguard' || decoy.mode === 'upload'
+        ? decoy.mode
+        : 'template',
     decoyTemplate: decoy.template || base.decoyTemplate,
     decoyProxyUrl: decoy.proxyUrl ?? '',
+    decoySite: decoy.site ?? '',
     decoyDomain: decoy.domain ?? '',
     decoyCert: decoy.cert === 'manual' ? 'manual' : 'auto',
     decoyEmail: decoy.email ?? '',

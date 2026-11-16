@@ -470,7 +470,7 @@ func (s *NodeService) Create(n *model.Node) error {
 			return err
 		}
 		n.Sidecars = sidecars
-		if n.Decoy, err = normalizeNodeDecoy(n.Decoy); err != nil {
+		if n.Decoy, err = checkedNodeDecoy(n.Decoy); err != nil {
 			return err
 		}
 	} else {

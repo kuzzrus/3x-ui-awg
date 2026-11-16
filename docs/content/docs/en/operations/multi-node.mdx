@@ -227,7 +227,7 @@ has it.
 ### Decoy site on an agent node
 
 On the **Decoy** step of the window that adds an agent node, or under **Decoy site** in its settings later, pick what anyone who probes the node is shown: a
-page built into the panel, a reverse proxy to a site you already host, or AdGuard Home. It is the decoy of the panel's
+page built into the panel, a reverse proxy to a site you already host, AdGuard Home, or a static site of your own that you upload. It is the decoy of the panel's
 own [reverse proxy](/docs/operations/reverse-proxy), on the node: a TLS listener on `127.0.0.1` and the
 port you choose (7443 by default), which the REALITY fallback of the node reaches. Set the fallback target
 of a REALITY inbound of this node to `127.0.0.1:<port>` yourself, and a probe that has no key is handed the
@@ -244,6 +244,16 @@ different on each node, so two nodes do not serve the same bytes.
 
 A reverse proxy needs a site on a public address. Anyone who probes the node can send the decoy anywhere, so a site
 on a private network, or on the node's own loopback, is refused, and so is a name that resolves to one.
+
+A **static site of your own** is a zip with an `index.html` at its root or inside a single folder, up to 64 MiB, which you upload in the
+**Site** field, or choose from the sites the panel holds already: one zip can be the decoy of several nodes, and each node can have its own.
+The panel keeps the zip and sends it to the node over the link it already uses, and a changed site is swapped into the running decoy
+without a restart. A `404.html` in the zip is shown, with a 404 status, for a path the site does not have; without one, the home page
+answers every path, as a single-page site needs. `{{DECOY_ORIGIN}}` in a text file of the site stands for the address the visitor used.
+Everything in the zip is shown to whoever probes the node, so keep nothing in it that you would not publish. A site that a node serves
+cannot be deleted, and a node whose agent is too old for sites says so until you update it. The panel keeps the zips in the `decoy-sites`
+folder next to its database, so a backup of the database alone does not carry them: after a restore, upload the site again, and the nodes
+go on serving what they hold meanwhile.
 
 **AdGuard Home** is not a pretend site: the node installs it, which takes a few minutes, and a visitor who
 tries it finds a working DNS service behind a login page nobody has the password of. Until it is there the

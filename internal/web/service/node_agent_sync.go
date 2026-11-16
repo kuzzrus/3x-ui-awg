@@ -44,6 +44,9 @@ type agentSyncState struct {
 	geoRetryAt     time.Time
 	sidecarsRetry  time.Time // the helper programs are not sent again before then
 	decoyRetry     time.Time // nor the decoy
+	sendingSite    bool      // a decoy site is on its way
+	siteFailures   int       // sends of it that failed in a row
+	siteRetryAt    time.Time
 	warned         map[string]time.Time
 }
 

@@ -15,13 +15,14 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/util/netsafe"
 )
 
-// What an agent serves to whoever probes the port the REALITY fallback points at: nothing, one of the pages
-// built into the agent, a reverse proxy to a site elsewhere, or an AdGuard Home that the agent runs for it.
+// What an agent serves to whoever probes the port the REALITY fallback points at: nothing, a page built into the agent,
+// a reverse proxy to a site elsewhere, an AdGuard Home that the agent runs for it, or a static site the master sent.
 const (
 	DecoyNone     = ""
 	DecoyTemplate = "template"
 	DecoyProxy    = "proxy"
 	DecoyAdGuard  = "adguard"
+	DecoyUpload   = "upload"
 )
 
 // Where the certificate of the decoy comes from: ACME over HTTP-01 on port 80, or files on the node.
@@ -47,6 +48,8 @@ type DecoySpec struct {
 	Mode     string `json:"mode"`
 	Template string `json:"template,omitempty"`
 	ProxyURL string `json:"proxyUrl,omitempty"`
+	// Site is the SHA-256 of the zip of the site that mode upload serves, which PathDecoySite stored.
+	Site     string `json:"site,omitempty"`
 	Domain   string `json:"domain,omitempty"`
 	Cert     string `json:"cert,omitempty"`
 	Email    string `json:"email,omitempty"`
@@ -54,6 +57,17 @@ type DecoySpec struct {
 	KeyFile  string `json:"keyFile,omitempty"`
 	Port     int    `json:"port,omitempty"`
 }
+
+// DecoySite is the answer of PathDecoySite: the site as the agent stored it.
+type DecoySite struct {
+	Sha256 string `json:"sha256"`
+	Size   int64  `json:"size"` // bytes of the zip
+}
+
+var sitePattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// ValidDecoySite reports whether s is the name of a decoy site: the SHA-256 of its zip, as 64 lower-case hex digits.
+func ValidDecoySite(s string) bool { return sitePattern.MatchString(s) }
 
 // How the decoy stands on the agent.
 const (
@@ -126,6 +140,11 @@ func NormalizeDecoy(spec DecoySpec, rules DecoyRules) (DecoySpec, error) {
 			return DecoySpec{}, err
 		}
 	case DecoyAdGuard:
+	case DecoyUpload:
+		out.Site = strings.ToLower(strings.TrimSpace(spec.Site))
+		if !ValidDecoySite(out.Site) {
+			return DecoySpec{}, decoyError("the decoy needs the SHA-256 of its site archive, 64 hex digits, not %q", spec.Site)
+		}
 	default:
 		return DecoySpec{}, decoyError("unknown decoy mode %q", out.Mode)
 	}

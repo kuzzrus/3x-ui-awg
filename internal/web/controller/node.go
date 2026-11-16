@@ -17,8 +17,9 @@ import (
 )
 
 type NodeController struct {
-	nodeService service.NodeService
-	xrayService service.XrayService
+	nodeService      service.NodeService
+	xrayService      service.XrayService
+	decoySiteService service.DecoySiteService
 }
 
 func NewNodeController(g *gin.RouterGroup) *NodeController {
@@ -50,6 +51,10 @@ func (a *NodeController) initRouter(g *gin.RouterGroup) {
 	g.POST("/mtls/ca", a.mtlsCa)
 	g.POST("/mtls/trustCA", a.setMtlsTrustCA)
 	g.POST("/mtls/reloadClient", a.reloadMtlsClient)
+
+	g.GET("/decoySites", a.decoySites)
+	g.POST("/decoySites/upload", allowSlowUpload, a.uploadDecoySite)
+	g.POST("/decoySites/del/:sha", a.delDecoySite)
 }
 
 // reloadMtlsClient validates the credential currently stored by the master and
