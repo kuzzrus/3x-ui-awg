@@ -11,6 +11,10 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/web/runtime"
 )
 
+// agentSiteResendAfter is how long a site that an agent took is left alone before it can be sent again. An agent that took it
+// and still lists none would otherwise be sent the same megabytes on every tick.
+const agentSiteResendAfter = time.Minute
+
 // siteProblem is a reason on the panel's side that a decoy site cannot be sent, which the heartbeat shows as the node's problem.
 type siteProblem struct{ reason string }
 
@@ -64,7 +68,7 @@ func (s *AgentSyncService) finishDecoySite(nodeID int, st *agentSyncState, err e
 	st.sendingSite = false
 	switch {
 	case err == nil:
-		st.siteFailures, st.siteRetryAt = 0, time.Time{}
+		st.siteFailures, st.siteRetryAt = 0, time.Now().Add(agentSiteResendAfter)
 		agentDecoyProblems.set(nodeID, "")
 		return
 	case errors.As(err, &local):

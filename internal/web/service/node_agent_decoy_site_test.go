@@ -288,3 +288,28 @@ func TestAgentSyncDoesNotSendASiteThatIsOnItsWay(t *testing.T) {
 		t.Fatalf("site PUTs = %d while a send was on its way, want none", len(puts))
 	}
 }
+
+// An agent that took the site and still lists none is not sent the same megabytes on every tick.
+func TestAgentSyncDoesNotResendASiteRightAfterTheAgentTookIt(t *testing.T) {
+	f := newSiteFixture(t)
+	svc := &AgentSyncService{}
+
+	for range 3 {
+		if err := f.sync(svc, &agentproto.Stats{}); err != nil {
+			t.Fatalf("Sync: %v", err)
+		}
+		svc.awaitSite(t, f.nodeID)
+	}
+	if puts := f.sitePuts(); len(puts) != 1 {
+		t.Fatalf("site PUTs = %d over three ticks of an agent that lists no site, want the one, then a wait", len(puts))
+	}
+
+	svc.retrySiteNow(f.nodeID)
+	if err := f.sync(svc, &agentproto.Stats{}); err != nil {
+		t.Fatalf("Sync after the wait: %v", err)
+	}
+	svc.awaitSite(t, f.nodeID)
+	if puts := f.sitePuts(); len(puts) != 2 {
+		t.Fatalf("site PUTs = %d after the wait, want it sent again", len(puts))
+	}
+}
