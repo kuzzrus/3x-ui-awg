@@ -29,7 +29,7 @@ func (s *PsiphonService) ScanIfDue(now time.Time) (bool, error) {
 	if err := s.SetPsiphonLastAutoScan(now.Unix()); err != nil {
 		return false, err
 	}
-	if err := s.ScanRegions([]string{everyRegion}); err != nil {
+	if err := s.scanEveryRegion(true); err != nil {
 		return false, errors.Join(err, s.SetPsiphonLastAutoScan(last))
 	}
 	return true, nil

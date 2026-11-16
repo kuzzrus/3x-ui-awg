@@ -1,6 +1,9 @@
 package eventbus
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // EventType identifies the kind of event flowing through the bus.
 type EventType string
@@ -23,6 +26,9 @@ const (
 
 	// Security
 	EventLoginAttempt EventType = "login.attempt"
+
+	// Psiphon (scan-driven)
+	EventPsiphonRegionsNew EventType = "psiphon.regions.new"
 )
 
 // Event is the unit of information flowing through the bus.
@@ -56,6 +62,26 @@ type LoginEventData struct {
 	Time     string
 	Status   string // "success" or "fail"
 	Reason   string
+}
+
+// PsiphonRegion is one region of the Psiphon picker: its code and its name.
+type PsiphonRegion struct {
+	Code string
+	Name string
+}
+
+// PsiphonRegionsData carries the regions that connected for the first time in a scan.
+type PsiphonRegionsData struct {
+	Regions []PsiphonRegion
+}
+
+// Names lists the regions as a message writes them: "Germany (DE), Japan (JP)".
+func (d PsiphonRegionsData) Names() string {
+	names := make([]string, len(d.Regions))
+	for i, r := range d.Regions {
+		names[i] = r.Name + " (" + r.Code + ")"
+	}
+	return strings.Join(names, ", ")
 }
 
 // SystemMetricData carries raw system metric values for threshold-based events.

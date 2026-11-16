@@ -549,3 +549,35 @@ func TestFormatEmbed_ValueTypes(t *testing.T) {
 		t.Fatalf("expected green embed for Login success value type, got ok=%v", ok)
 	}
 }
+
+func TestFormatEmbed_PsiphonRegionsNew(t *testing.T) {
+	settingService := setupTestDB(t)
+	discordService := NewDiscordService(settingService)
+	sub := NewSubscriber(settingService, discordService)
+
+	regions := []eventbus.PsiphonRegion{{Code: "DE", Name: "Germany"}, {Code: "JP", Name: "Japan"}}
+	for name, data := range map[string]any{
+		"by pointer": &eventbus.PsiphonRegionsData{Regions: regions},
+		"by value":   eventbus.PsiphonRegionsData{Regions: regions},
+	} {
+		t.Run(name, func(t *testing.T) {
+			embed, ok := sub.FormatEmbed(eventbus.Event{Type: eventbus.EventPsiphonRegionsNew, Source: "psiphon", Data: data})
+			if !ok {
+				t.Fatal("expected an embed for the regions that were found")
+			}
+			if embed.Color != ColorGreen {
+				t.Errorf("expected ColorGreen (0x%X), got 0x%X", ColorGreen, embed.Color)
+			}
+			if len(embed.Fields) != 1 || embed.Fields[0].Value != "Germany (DE), Japan (JP)" {
+				t.Errorf("fields = %+v, want one field that names the regions with their codes", embed.Fields)
+			}
+		})
+	}
+
+	if _, ok := sub.FormatEmbed(eventbus.Event{Type: eventbus.EventPsiphonRegionsNew, Data: &eventbus.PsiphonRegionsData{}}); ok {
+		t.Error("expected no embed for no region")
+	}
+	if _, ok := sub.FormatEmbed(eventbus.Event{Type: eventbus.EventPsiphonRegionsNew}); ok {
+		t.Error("expected no embed for an event with no data")
+	}
+}

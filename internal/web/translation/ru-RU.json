@@ -1889,6 +1889,7 @@
       "eventGroupSystem": "Система",
       "eventGroupSecurity": "Безопасность",
       "eventGroupNode": "Узлы",
+      "eventGroupPsiphon": "Psiphon",
       "eventOutboundDown": "Недоступен",
       "eventOutboundUp": "Работает",
       "eventDownThresholdHint": "неудачных проверок подряд",
@@ -1910,6 +1911,7 @@
       "smtpNoRecipients": "Получатели не настроены",
       "smtpFromNotConfigured": "Адрес отправителя SMTP не настроен",
       "eventLoginAttempt": "Попытка входа",
+      "eventPsiphonRegionsNew": "Найден новый регион",
       "telegramTokenConfigured": "Настроен; оставьте пустым для сохранения текущего токена.",
       "telegramTokenPlaceholder": "Настроен - введите новый токен для замены",
       "smtpPasswordConfigured": "Настроен; оставьте пустым для сохранения текущего пароля.",
@@ -3217,6 +3219,7 @@
       "eventNodeDown": "Узел {{ .Name }} НЕДОСТУПЕН",
       "eventNodeUp": "Узел {{ .Name }} В СЕТИ",
       "eventLoginFallback": "Неудачный вход с {{ .Source }}",
+      "eventPsiphonRegionsNew": "Доступен новый регион Psiphon: {{ .Regions }}",
       "memoryThreshold": "🔴 Использование памяти {{ .Percent }}% превышает пороговое значение {{ .Threshold }}%",
       "inboundsCount": "🔌 Inbounds: {{ .Count }}\r\n",
       "clientsCount": "👥 Clients: {{ .Count }}\r\n",
@@ -3373,7 +3376,8 @@
       "threshold": "Порог",
       "reason": "Причина",
       "time": "Время",
-      "source": "Источник"
+      "source": "Источник",
+      "regions": "Регионы"
     },
     "values": {
       "uptime": "{{ .Days }} д {{ .Hours }} ч",
@@ -3390,7 +3394,8 @@
       "cpuHigh": "Превышен порог CPU",
       "memoryHigh": "Превышен порог памяти",
       "loginSuccess": "Успешный вход",
-      "loginFailed": "Неудачный вход"
+      "loginFailed": "Неудачный вход",
+      "psiphonRegionsNew": "Новый регион Psiphon"
     },
     "report": {
       "title": "📊 Отчёт о состоянии 3x-ui",
@@ -3438,12 +3443,14 @@
     "labelIP": "IP",
     "labelReason": "Причина",
     "labelSource": "Источник",
+    "labelRegions": "Регионы",
     "statusCrashed": "СБОЙ",
     "statusHigh": "ВЫСОКАЯ",
     "statusSuccess": "УСПЕШНО",
     "statusFailed": "НЕУДАЧНО",
     "statusDown": "НЕДОСТУПЕН",
-    "statusUp": "РАБОТАЕТ"
+    "statusUp": "РАБОТАЕТ",
+    "statusNew": "НОВЫЙ"
   },
   "commandPalette": {
     "title": "Командная строка",

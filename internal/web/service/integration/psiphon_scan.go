@@ -35,7 +35,7 @@ const everyRegion = "all"
 // every region a tunnel said has servers when none is; with no list known yet the scanner asks a tunnel, and the list it gets is kept.
 func (s *PsiphonService) ScanRegions(regions []string) error {
 	if len(regions) == 1 && strings.EqualFold(regions[0], everyRegion) {
-		return scans.start(s.pickerRegions(), true, s.keepScan)
+		return s.scanEveryRegion(false)
 	}
 	if len(regions) == 0 {
 		regions = s.knownRegions()
@@ -43,7 +43,18 @@ func (s *PsiphonService) ScanRegions(regions []string) error {
 	if len(regions) == 0 {
 		return scans.start(nil, false, s.keepLearningScan)
 	}
-	return scans.start(regions, false, s.keepScan)
+	return scans.start(regions, false, func(final psiphon.ScanStatus) { s.keepScan(final) })
+}
+
+// scanEveryRegion starts the scan of every region of the picker. The weekly one is announced once it has ended: it runs while nobody
+// watches, so the regions that it connected for the first time are told to the notifiers.
+func (s *PsiphonService) scanEveryRegion(weekly bool) error {
+	return scans.start(s.pickerRegions(), true, func(final psiphon.ScanStatus) {
+		fresh := s.keepScan(final)
+		if weekly && !final.Cancelled {
+			announceNewRegions(fresh)
+		}
+	})
 }
 
 // pickerRegions is every region of the picker, those a tunnel named first: they are the ones likely to connect, and a scan reports
@@ -88,9 +99,9 @@ func (s *PsiphonService) ScanStatus() psiphon.ScanStatus {
 }
 
 // keepScan stores the result of a scan that has ended, so that the page still shows it after the panel restarts, and the regions
-// that connected in it.
-func (s *PsiphonService) keepScan(final psiphon.ScanStatus) {
-	s.rememberConnected(final)
+// that connected in it. It returns the regions that no scan before it had connected.
+func (s *PsiphonService) keepScan(final psiphon.ScanStatus) []string {
+	fresh := s.rememberConnected(final)
 	raw, err := json.Marshal(final)
 	if err == nil {
 		err = s.SetPsiphonRegionScan(string(raw))
@@ -98,6 +109,7 @@ func (s *PsiphonService) keepScan(final psiphon.ScanStatus) {
 	if err != nil {
 		logger.Warning("psiphon: cannot keep the result of the scan:", err)
 	}
+	return fresh
 }
 
 // storedScan is the kept result, read as a scan that is not running: a setting is read back, so it is not trusted.
