@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -65,7 +66,7 @@ func (a *XraySettingController) initRouter(g *gin.RouterGroup) {
 	g.POST("/naiveproxy/:action", allowSlowAction, a.naiveProxy)
 	g.POST("/wireproxy/:action", allowSlowAction, a.wireproxy)
 	g.POST("/frontproxy/:action", a.frontProxy)
-	g.POST("/frontproxy/decoy/upload", a.frontProxyDecoyUpload)
+	g.POST("/frontproxy/decoy/upload", allowSlowUpload, a.frontProxyDecoyUpload)
 	g.GET("/frontproxy/pathRoutes", a.getFrontProxyPathRoutes)
 	g.POST("/frontproxy/pathRoutes", a.setFrontProxyPathRoutes)
 	g.POST("/adguard/:action", allowSlowAction, a.adGuard)
@@ -568,6 +569,7 @@ func (a *XraySettingController) adGuard(c *gin.Context) {
 // frontProxyDecoyUpload replaces the reverse proxy's decoy site with an uploaded
 // zip. Multipart rather than JSON, following importDB's precedent.
 func (a *XraySettingController) frontProxyDecoyUpload(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, decoySiteUploadLimit)
 	file, header, err := c.Request.FormFile("site")
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.frontProxyDecoyUpload"), err)

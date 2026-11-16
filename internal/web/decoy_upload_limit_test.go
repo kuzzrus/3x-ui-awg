@@ -122,18 +122,41 @@ func TestRouterTakesADecoySiteLargerThanTheBodyCapOfOtherRoutes(t *testing.T) {
 	}
 }
 
-// The panel's server stops reading a request after 30 seconds, which a large site on a slow uplink outlasts. The same stop is set
-// here at a fraction of a second, with a body that waits in the middle, and the upload route must still keep the site.
-func TestRouterTakesADecoySiteThatArrivesSlowly(t *testing.T) {
+// uploadSlowly posts a multipart file whose body waits in the middle, to the router served with a read and a write timeout of
+// 300 ms, which stand in for the 30 seconds of the panel's server and an uplink too slow to beat them.
+func uploadSlowly(t *testing.T, path, field, filename string, content []byte) (*http.Response, error) {
+	t.Helper()
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
 	n := startContractNodeWith(t, func(s *http.Server) {
 		s.ReadTimeout, s.WriteTimeout = 300*time.Millisecond, 300*time.Millisecond
 	})
-	token := "decoy-site-slow"
+	token := "upload-slow"
 	if err := database.GetDB().Create(&model.ApiToken{
-		Name: "decoy-site-slow", Token: crypto.HashTokenSHA256(token), Enabled: true, Scope: model.ApiScopeAdmin,
+		Name: "upload-slow", Token: crypto.HashTokenSHA256(token), Enabled: true, Scope: model.ApiScopeAdmin,
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
+	contentType, form := multipartOf(t, field, filename, content)
+	body := form.Bytes()
+
+	reader, writer := io.Pipe()
+	go func() {
+		_, _ = writer.Write(body[:len(body)/2])
+		time.Sleep(900 * time.Millisecond)
+		_, _ = writer.Write(body[len(body)/2:])
+		_ = writer.Close()
+	}()
+	req, err := http.NewRequest(http.MethodPost, n.srv.URL+path, reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", contentType)
+	return http.DefaultClient.Do(req)
+}
+
+func smallSite(t *testing.T) []byte {
+	t.Helper()
 	var site bytes.Buffer
 	zw := zip.NewWriter(&site)
 	index, err := zw.Create("index.html")
@@ -146,29 +169,67 @@ func TestRouterTakesADecoySiteThatArrivesSlowly(t *testing.T) {
 	if err := zw.Close(); err != nil {
 		t.Fatal(err)
 	}
-	contentType, form := multipartOf(t, "site", "slow.zip", site.Bytes())
-	body := form.Bytes()
+	return site.Bytes()
+}
 
-	reader, writer := io.Pipe()
-	go func() {
-		_, _ = writer.Write(body[:len(body)/2])
-		time.Sleep(900 * time.Millisecond)
-		_, _ = writer.Write(body[len(body)/2:])
-		_ = writer.Close()
-	}()
-	req, err := http.NewRequest(http.MethodPost, n.srv.URL+"/panel/api/nodes/decoySites/upload", reader)
-	if err != nil {
-		t.Fatal(err)
+// The panel's server stops reading a request after 30 seconds, which a large site on a slow uplink outlasts. The upload routes
+// that take large files lift that for themselves, and each of them is tried here, as each lifts it on its own.
+func TestRouterTakesADecoySiteThatArrivesSlowly(t *testing.T) {
+	for name, path := range map[string]string{
+		"the decoy site of an agent node": "/panel/api/nodes/decoySites/upload",
+		"the decoy site of the panel":     "/panel/api/xray/frontproxy/decoy/upload",
+	} {
+		t.Run(name, func(t *testing.T) {
+			resp, err := uploadSlowly(t, path, "site", "slow.zip", smallSite(t))
+			if err != nil {
+				t.Fatalf("the upload that waited in the middle was cut off: %v", err)
+			}
+			defer resp.Body.Close()
+			var got reply
+			if err := json.NewDecoder(resp.Body).Decode(&got); err != nil || !got.Success {
+				t.Fatalf("the upload that waited in the middle answered %d %+v, %v, want it kept", resp.StatusCode, got, err)
+			}
+		})
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", contentType)
-	resp, err := http.DefaultClient.Do(req)
+}
+
+// A backup of the database is the largest file the panel takes. The one sent here is no database, so the restore refuses it, but
+// the refusal has to come as an answer to a request that was read to its end and not as a connection cut off in the middle.
+func TestRouterReadsADatabaseBackupThatArrivesSlowly(t *testing.T) {
+	resp, err := uploadSlowly(t, "/panel/api/server/importDB", "db", "x-ui.db", bytes.Repeat([]byte("not a database "), 200))
 	if err != nil {
-		t.Fatalf("the upload that waited in the middle was cut off: %v", err)
+		t.Fatalf("the backup that waited in the middle was cut off: %v", err)
 	}
 	defer resp.Body.Close()
 	var got reply
-	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil || !got.Success {
-		t.Fatalf("the upload that waited in the middle answered %d %+v, %v, want it kept", resp.StatusCode, got, err)
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("the answer to the backup that waited in the middle is no reply: %v", err)
+	}
+	if got.Success || strings.Contains(strings.ToLower(got.Msg+string(got.Obj)), "timeout") {
+		t.Fatalf("the backup that waited in the middle answered %+v, want a refusal of what it holds", got)
+	}
+}
+
+// The decoy of the panel's own reverse proxy may be 64 MiB, as its page and its docs say, so it is let past the cap on other bodies.
+func TestRouterTakesTheDecoySiteOfThePanelLargerThanTheBodyCapOfOtherRoutes(t *testing.T) {
+	t.Setenv("XUI_BIN_FOLDER", t.TempDir())
+	n := startContractNode(t)
+	token := "panel-decoy-upload"
+	if err := database.GetDB().Create(&model.ApiToken{
+		Name: "panel-decoy-upload", Token: crypto.HashTokenSHA256(token), Enabled: true, Scope: model.ApiScopeAdmin,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	site := siteOfAboutTwelveMiB(t)
+	contentType, form := multipartOf(t, "site", "photos.zip", site)
+	status, got := postThroughTheRouter(t, n.srv.URL+"/panel/api/xray/frontproxy/decoy/upload", token, contentType, form)
+	if status != http.StatusOK || !got.Success {
+		t.Fatalf("the upload of %d bytes answered %d %+v, want it kept", len(site), status, got)
+	}
+	var kept struct {
+		DecoyUploaded bool `json:"decoyUploaded"`
+	}
+	if err := json.Unmarshal(got.Obj, &kept); err != nil || !kept.DecoyUploaded {
+		t.Fatalf("the status after the upload = %s, %v, want the decoy uploaded", got.Obj, err)
 	}
 }
