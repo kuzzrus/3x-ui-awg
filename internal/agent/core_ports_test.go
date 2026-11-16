@@ -371,3 +371,12 @@ func TestForgetTakenPortsLooksForTheMetricsPortWhereItListens(t *testing.T) {
 		t.Errorf("ports %+v, want the metrics port that something holds on the IPv6 loopback forgotten", core.ports)
 	}
 }
+
+// Where the address cannot be listened on at all nothing holds the port, and a port that was chosen again would not help.
+func TestForgetTakenPortsKeepsAPortWhereTheAddressCannotBeListenedOn(t *testing.T) {
+	core := &Core{ports: localPorts{metrics: 4242, metricsHost: "192.0.2.1"}}
+	core.forgetTakenPorts()
+	if core.ports.metrics != 4242 {
+		t.Errorf("ports %+v, want the metrics port kept, as no other port would bind there either", core.ports)
+	}
+}

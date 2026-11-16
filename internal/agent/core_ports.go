@@ -14,11 +14,10 @@ import (
 )
 
 // localPorts are the two loopback ports that only the agent talks to: the api inbound of its core and the metrics
-// listener, which is probed at the address it listens on. The master renders every config from one template, so a server
-// that runs another Xray holds both already.
+// listener. The master renders every config from one template, so a server that runs another Xray holds both already.
 type localPorts struct {
 	api, metrics int
-	metricsHost  string
+	metricsHost  string // where the metrics listener binds, and so where its port is probed
 }
 
 // localize points the api inbound and a metrics listener on the loopback at the ports this core keeps. They are the ones
@@ -58,8 +57,9 @@ func (c *Core) forgetTakenPorts() {
 	c.mu.Lock()
 	ports := c.ports
 	c.mu.Unlock()
+	// Where the address itself cannot be listened on, as without the IPv6 loopback, no other port would help.
 	forgetIfHeld := func(port *int, host string) {
-		if *port != 0 && !portFreeAt(host, *port) {
+		if *port != 0 && !portFreeAt(host, *port) && portFreeAt(host, 0) {
 			logger.Warningf("agent: port %d of the core is held by something else, choosing another", *port)
 			*port = 0
 		}
@@ -125,9 +125,8 @@ func inboundPorts(cfg *xray.Config) []int {
 	return ports
 }
 
-// metricsListen is the loopback address and the port that the metrics section listens on, or "" and 0 when it listens nowhere
-// or at another address, which is an exposure that the operator chose and is none of the agent's to move. The name localhost
-// is the IPv4 loopback, where a name that resolves to both is bound first.
+// metricsListen is the loopback address and port of the metrics section, or "" and 0 when it listens nowhere or at another
+// address, an exposure that is none of the agent's to move. The name localhost is the IPv4 loopback, which is bound first.
 func metricsListen(raw json_util.RawMessage) (string, int) {
 	var section struct {
 		Listen string `json:"listen"`
