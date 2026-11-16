@@ -5,6 +5,7 @@ import type { TableColumnsType } from 'antd';
 import { ScanOutlined, StopOutlined } from '@ant-design/icons';
 
 import {
+  newRegionsOf,
   seenDate,
   sortScanResults,
   type PsiphonRegion,
@@ -49,15 +50,8 @@ export default function PsiphonScan({
     const scanned = new Set((results ?? []).map((r) => r.region));
     return (seen ?? []).filter((s) => !scanned.has(s.region));
   }, [seen, results]);
-  // The regions that connected for the first time in the scan that has just ended, when earlier scans had found others: the first
-  // scan that finds anything finds everything for the first time, which says nothing.
-  const finishedAt = scan?.finishedAt;
-  const fresh = useMemo(() => {
-    const found = seen ?? [];
-    if (!finishedAt || running || !found.some((s) => (s.firstAt || s.at) < finishedAt))
-      return new Set<string>();
-    return new Set(found.filter((s) => s.firstAt === finishedAt).map((s) => s.region));
-  }, [seen, finishedAt, running]);
+  // The regions that connected for the first time in this scan, as soon as they connect and once it has ended.
+  const fresh = useMemo(() => new Set(newRegionsOf(scan)), [scan]);
   // How the cells write a measurement, and the tooltip of an earlier success with them; none is what stands for a missing one.
   const seconds = (ms: number | undefined, none = '—') =>
     ms ? t('pages.xray.psiphon.scanSeconds', { s: (ms / 1000).toFixed(1) }) : none;

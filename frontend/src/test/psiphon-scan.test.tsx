@@ -229,7 +229,7 @@ describe('PsiphonScan', () => {
     expect(screen.queryByText(/New since the previous scan/)).toBeNull();
   });
 
-  it('does not say which regions are new while the scan is still going', () => {
+  it('does not call a region new that an earlier scan had found, while the scan is still going', () => {
     renderScan({
       running: true,
       total: 3,
@@ -243,6 +243,19 @@ describe('PsiphonScan', () => {
       ],
     });
     expect(screen.queryByText(/New since the previous scan/)).toBeNull();
+  });
+
+  it('says which regions are new as soon as they connect, while the scan is still going', () => {
+    renderScan({
+      running: true,
+      total: 3,
+      current: ['DE'],
+      startedAt: 1,
+      results: [us],
+      seen: [{ region: 'FR', at: 1793000000, firstAt: 1793000000 }],
+    });
+    expect(screen.getByText('New since the previous scan: United States (US)')).toBeTruthy();
+    expect(within(rowOf('United States (US)')).getByText('New')).toBeTruthy();
   });
 
   it('does not call the regions that connected before left out while the scan is still going through them', () => {

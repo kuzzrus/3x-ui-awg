@@ -166,9 +166,12 @@ that failed and never connected stays selectable too. The table tags a region th
 connect this time with the day it last did, and lists the ones the scan did not look at.
 Uninstalling Psiphon forgets these records.
 
-When a scan has ended and earlier ones had found regions, those that connected for the first time
-in it are tagged *New* in the table and named above it. The first scan that finds anything finds
-everything for the first time, which says nothing, so it marks no region.
+When earlier scans had found regions, those that connect for the first time in a scan are tagged
+*New* in the table and named above it, as soon as they connect and once the scan has ended. The first
+scan that finds anything finds everything for the first time, which says nothing, so it marks no
+region. The same regions are named in a banner, **A new Psiphon region is available**, at the top of
+**Xray settings → Outbounds**, so that you see them without opening Psiphon; its button opens the
+window. Closing the banner keeps it closed in that browser until a scan finds a region again.
 
 The switch **Scan every region once a week** has the panel run **Scan all regions** by itself.
 It is off until you turn it on. The panel checks every hour and starts the scan when it has not

@@ -2826,6 +2826,8 @@
         "scanAutoLast": "Последняя автоматическая проверка: {time}",
         "scanNewRegions": "Новые с прошлой проверки: {regions}",
         "scanNewTag": "Новый",
+        "newRegionBanner": "Доступен новый регион Psiphon: {regions}",
+        "newRegionOpen": "Открыть Psiphon",
         "scanCancelButton": "Отменить проверку",
         "scanFailed": "Не удалось запустить проверку",
         "scanDiscovering": "Узнаём у Psiphon, в каких регионах есть серверы…",
