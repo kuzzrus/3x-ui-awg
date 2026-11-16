@@ -1,16 +1,13 @@
 import { useTranslation } from 'react-i18next';
 import { Alert, Button } from 'antd';
 
+import { countryName } from '../outbounds/outbounds-tab-helpers';
 import { usePsiphonNewRegions } from './usePsiphonNewRegions';
 
 // A country in the language of the panel, or its code where the browser does not know the name.
 function regionLabel(code: string, language: string): string {
-  try {
-    const name = new Intl.DisplayNames([language], { type: 'region' }).of(code);
-    return name && name !== code ? `${name} (${code})` : code;
-  } catch {
-    return code;
-  }
+  const name = countryName(code, language);
+  return name && name !== code ? `${name} (${code})` : code;
 }
 
 interface PsiphonNewRegionsBannerProps {

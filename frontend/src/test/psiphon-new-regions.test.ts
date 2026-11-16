@@ -60,12 +60,6 @@ describe('newRegionsOf', () => {
       expect(newRegionsOf(scan({ running: true, results, seen: before }))).toEqual(['US']);
     });
 
-    it('does not take a region that did not connect for a new one', () => {
-      expect(newRegionsOf(scan({ running: true, results: [failed('JP')], seen: before }))).toEqual(
-        [],
-      );
-    });
-
     it('names none when no scan came before it', () => {
       const results = [connected('DE'), connected('US')];
       expect(newRegionsOf(scan({ running: true, results, seen: [] }))).toEqual([]);

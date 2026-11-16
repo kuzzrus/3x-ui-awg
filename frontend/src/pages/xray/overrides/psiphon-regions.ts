@@ -49,9 +49,8 @@ export interface PsiphonScanStatus {
 }
 
 /**
- * The regions that connected for the first time in a scan: while it runs, those that connected and that no scan before it had found,
- * and once it has ended, those whose first time is its own. None when no scan came before it: the first scan that finds anything
- * finds everything for the first time, which says nothing.
+ * The regions that connected for the first time in a scan: while it runs, those that no scan before it had found, and once it has
+ * ended, those whose first time is its own. None for the first scan that finds anything, which finds everything for the first time.
  */
 export function newRegionsOf(scan: PsiphonScanStatus | null | undefined): string[] {
   if (!scan) return [];
