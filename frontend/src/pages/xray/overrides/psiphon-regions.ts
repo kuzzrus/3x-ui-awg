@@ -48,6 +48,26 @@ export interface PsiphonScanStatus {
   autoAt?: number;
 }
 
+/**
+ * The regions that connected for the first time in a scan: while it runs, those that connected and that no scan before it had found,
+ * and once it has ended, those whose first time is its own. None when no scan came before it: the first scan that finds anything
+ * finds everything for the first time, which says nothing.
+ */
+export function newRegionsOf(scan: PsiphonScanStatus | null | undefined): string[] {
+  if (!scan) return [];
+  const seen = scan.seen ?? [];
+  if (scan.running) {
+    const known = new Set(seen.map((s) => s.region));
+    if (known.size === 0) return [];
+    return (scan.results ?? [])
+      .filter((r) => r.connected && !known.has(r.region))
+      .map((r) => r.region);
+  }
+  const finishedAt = scan.finishedAt;
+  if (!finishedAt || !seen.some((s) => (s.firstAt || s.at) < finishedAt)) return [];
+  return seen.filter((s) => s.firstAt === finishedAt).map((s) => s.region);
+}
+
 /** The day a scan last found a tunnel in a region, as the pickers and the table write it. */
 export const seenDate = (at: number): string => new Date(at * 1000).toLocaleDateString();
 

@@ -47,6 +47,7 @@ import PromptModal from '@/components/feedback/PromptModal';
 import TextModal from '@/components/feedback/TextModal';
 
 import OutboundFormModal from './OutboundFormModal';
+import PsiphonNewRegionsBanner from '../overrides/PsiphonNewRegionsBanner';
 import { propagateOutboundTagRename } from '../basics/helpers';
 import { planOutboundDeletion, applyOutboundDeletion } from '../reference-cleanup';
 import DeletionImpactList from '../DeletionImpactList';
@@ -560,6 +561,7 @@ export default function OutboundsTab({
     <>
       {modalContextHolder}
       {messageContextHolder}
+      <PsiphonNewRegionsBanner onOpen={onShowPsiphon} />
       <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
         <Row gutter={[12, 12]} align="middle" justify="space-between">
           <Col xs={24} sm={12}>
