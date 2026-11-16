@@ -3,7 +3,7 @@ module github.com/mhsanaei/3x-ui/v3
 go 1.27.4
 
 require (
-	github.com/amnezia-vpn/amneziawg-go/v3 v3.1.20260828
+	github.com/amnezia-vpn/amneziawg-go/v3 v3.1.20261116
 	github.com/apernet/quic-go v0.61.1-0.20260806010916-184d081eef3e
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/gin-contrib/gzip v1.2.9
@@ -128,5 +128,3 @@ require (
 	layeh.com/gopher-luar v1.0.11 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
-
-replace github.com/amnezia-vpn/amneziawg-go/v3 => github.com/kuzzrus/amneziawg-go/v3 v3.1.20260828-kuzzrus.1
