@@ -105,8 +105,9 @@ export default function SubBalancerFormModal({
     [nodes],
   );
 
-  // A balancer needs a member and either list can supply it, so the two fields answer for each other.
+  // A balancer needs a member while it is switched on, and either list can supply it, so the two fields answer for each other.
   const membersRequired = () =>
+    !methods.getValues('enabled') ||
     methods.getValues('inboundIds').length > 0 ||
     methods.getValues('nodeIds').length > 0 ||
     'pages.settings.subBalancers.errMembersRequired';
@@ -292,6 +293,7 @@ export default function SubBalancerFormModal({
             label={t('pages.settings.subBalancers.enabled')}
             name="enabled"
             valueProp="checked"
+            rules={{ deps: ['nodeIds', 'inboundIds'] }}
           >
             <Switch />
           </FormField>

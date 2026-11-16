@@ -85,7 +85,7 @@ func TestSubBalancerServiceNodeValidation(t *testing.T) {
 		row  model.SubBalancer
 		want string
 	}{
-		{"neither inbound nor node", model.SubBalancer{Remark: "x", Strategy: "random"}, "at least one inbound or node"},
+		{"neither inbound nor node", model.SubBalancer{Remark: "x", Strategy: "random", Enabled: true}, "at least one inbound or node"},
 		{"unknown node", model.SubBalancer{Remark: "x", Strategy: "random", NodeIds: []int{known.Id + 100}}, "does not exist"},
 		{"known beside unknown node", model.SubBalancer{Remark: "x", Strategy: "random", NodeIds: []int{known.Id, known.Id + 100}}, "does not exist"},
 		{"unknown node beside an inbound", model.SubBalancer{Remark: "x", Strategy: "random", InboundIds: []int{1}, NodeIds: []int{known.Id + 100}}, "does not exist"},
@@ -182,5 +182,65 @@ func TestNodeDeleteRefusedKeepsSubBalancerNodes(t *testing.T) {
 	}
 	if !slices.Equal(got.NodeIds, []int{node.Id}) {
 		t.Fatalf("NodeIds = %v after a refused delete, want [%d]", got.NodeIds, node.Id)
+	}
+}
+
+// The last member of a balancer can be deleted, which leaves a row with none that emits nothing. It has to be possible to switch
+// that row off and to rename it while it is off, but not to switch it on again before it has a member.
+func TestSubBalancerServiceSwitchesOffABalancerWhoseLastMemberWasDeleted(t *testing.T) {
+	setupSubBalancerDB(t)
+	svc := &SubBalancerService{}
+	gone := seedBalancerNode(t, "gone")
+	bal, err := svc.Create(&model.SubBalancer{Remark: "by-node", Strategy: "random", NodeIds: []int{gone.Id}, SortOrder: 1, Enabled: true})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := (&NodeService{}).Delete(gone.Id); err != nil {
+		t.Fatalf("delete node: %v", err)
+	}
+	if left, err := svc.Get(bal.Id); err != nil || len(left.NodeIds) != 0 || len(left.InboundIds) != 0 || !left.Enabled {
+		t.Fatalf("balancer after the delete = %+v, %v, want one that is still on and has no member", left, err)
+	}
+
+	// The switch of the table sends the row back as it is, with the flag turned over.
+	row := func(remark string, inbounds ...int) *model.SubBalancer {
+		return &model.SubBalancer{Remark: remark, Strategy: "random", InboundIds: inbounds, SortOrder: 1}
+	}
+	off, on := false, true
+	if _, err := svc.Update(bal.Id, row("by-node"), &off); err != nil {
+		t.Fatalf("switching a balancer with no member off: %v", err)
+	}
+	if stored, err := svc.Get(bal.Id); err != nil || stored.Enabled {
+		t.Fatalf("stored balancer = %+v, %v, want it off", stored, err)
+	}
+
+	if _, err := svc.Update(bal.Id, row("renamed"), nil); err != nil {
+		t.Fatalf("renaming a balancer that is off and has no member: %v", err)
+	}
+	if _, err := svc.Update(bal.Id, row("renamed"), &on); err == nil || !strings.Contains(err.Error(), "at least one inbound or node") {
+		t.Fatalf("switching it on with no member = %v, want the refusal to name the member", err)
+	}
+	if stored, err := svc.Get(bal.Id); err != nil || stored.Enabled || stored.Remark != "renamed" {
+		t.Fatalf("stored balancer = %+v, %v, want it renamed and still off", stored, err)
+	}
+
+	if _, err := svc.Update(bal.Id, row("renamed", 7), &on); err != nil {
+		t.Fatalf("switching it on with a member: %v", err)
+	}
+	if stored, err := svc.Get(bal.Id); err != nil || !stored.Enabled || !slices.Equal(stored.InboundIds, []int{7}) {
+		t.Fatalf("stored balancer = %+v, %v, want it on with the inbound", stored, err)
+	}
+}
+
+// A balancer that is created switched off needs no member either, as one that was switched off later needs none.
+func TestSubBalancerServiceCreatesASwitchedOffBalancerWithNoMember(t *testing.T) {
+	setupSubBalancerDB(t)
+	svc := &SubBalancerService{}
+	parked, err := svc.Create(&model.SubBalancer{Remark: "parked", Strategy: "random", SortOrder: 1})
+	if err != nil {
+		t.Fatalf("create a switched-off balancer with no member: %v", err)
+	}
+	if stored, err := svc.Get(parked.Id); err != nil || stored.Enabled {
+		t.Fatalf("stored balancer = %+v, %v, want it off", stored, err)
 	}
 }
