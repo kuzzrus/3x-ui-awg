@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/util/json_util"
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
 
@@ -53,6 +54,12 @@ func holdPortOf(t *testing.T, port int) {
 		t.Fatalf("holding %d: %v", port, err)
 	}
 	t.Cleanup(func() { ln.Close() })
+}
+
+// metricsPort is the port that the metrics section listens on at the loopback, or 0.
+func metricsPort(raw json_util.RawMessage) int {
+	_, port := metricsListen(raw)
+	return port
 }
 
 func apiPortOf(cfg *xray.Config) int {
@@ -250,5 +257,117 @@ func TestMetricsPortAndItsMove(t *testing.T) {
 	}
 	if got := withMetricsPort([]byte(`null`), 4242); string(got) != "null" {
 		t.Errorf("a section that is none became %s", got)
+	}
+}
+
+// holdPortAt takes a port at host for the rest of the test, or skips the test on a machine that has no such address.
+func holdPortAt(t *testing.T, host string, port int) {
+	t.Helper()
+	ln, err := net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+	if err != nil {
+		t.Skipf("holding %s:%d: %v", host, port, err)
+	}
+	t.Cleanup(func() { ln.Close() })
+}
+
+// freePortAt is a port that nothing holds at host now, or skips the test on a machine that has no such address.
+func freePortAt(t *testing.T, host string) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", net.JoinHostPort(host, "0"))
+	if err != nil {
+		t.Skipf("no %s on this machine: %v", host, err)
+	}
+	defer ln.Close()
+	return ln.Addr().(*net.TCPAddr).Port
+}
+
+func TestMetricsListenNamesTheAddressToProbeThePortAt(t *testing.T) {
+	for _, tc := range []struct {
+		raw  string
+		host string
+		port int
+	}{
+		{`{"listen":"127.0.0.1:11111"}`, "127.0.0.1", 11111},
+		{`{"listen":"127.0.0.2:11111"}`, "127.0.0.2", 11111},
+		{`{"listen":"localhost:11111"}`, "127.0.0.1", 11111},
+		{`{"listen":"[::1]:11111"}`, "::1", 11111},
+		{`{"listen":"0.0.0.0:11111"}`, "", 0},
+		{`{"listen":"[::]:11111"}`, "", 0},
+		{`{"tag":"metrics_out"}`, "", 0},
+		{`null`, "", 0},
+	} {
+		if host, port := metricsListen([]byte(tc.raw)); host != tc.host || port != tc.port {
+			t.Errorf("metricsListen(%s) = %q, %d, want %q, %d", tc.raw, host, port, tc.host, tc.port)
+		}
+	}
+}
+
+// The probe has to be made where the listener will be bound: the IPv6 loopback is another address than the IPv4 one, and a
+// port that is free on one may be held on the other.
+func TestLocalizeMovesAMetricsListenerOnTheIPv6LoopbackThatSomethingHoldsThere(t *testing.T) {
+	port := freePortAt(t, "::1")
+	holdPortAt(t, "::1", port)
+	if !loopbackPortFree(port) {
+		t.Skipf("port %d is held on the IPv4 loopback too, which this test needs free", port)
+	}
+	cfg := preparedConfigListening(t, freePort(t), net.JoinHostPort("::1", strconv.Itoa(port)))
+	(&Core{}).localize(cfg)
+
+	got := metricsPort(cfg.Metrics)
+	if got == port || got == 0 || !portFreeAt("::1", got) {
+		t.Fatalf("metrics port %d, want a port that is free on the IPv6 loopback other than the held %d", got, port)
+	}
+	var section struct{ Listen string }
+	if err := json.Unmarshal(cfg.Metrics, &section); err != nil || section.Listen != net.JoinHostPort("::1", strconv.Itoa(got)) {
+		t.Errorf("the metrics section is %s, want its listener still on the IPv6 loopback, at port %d", cfg.Metrics, got)
+	}
+}
+
+func TestLocalizeKeepsAMetricsPortOnTheIPv6LoopbackThatOnlyTheIPv4OneHolds(t *testing.T) {
+	port := freePortAt(t, "::1")
+	holdPortOf(t, port)
+	cfg := preparedConfigListening(t, freePort(t), net.JoinHostPort("::1", strconv.Itoa(port)))
+	(&Core{}).localize(cfg)
+	if got := metricsPort(cfg.Metrics); got != port {
+		t.Errorf("metrics port %d, want the %d of the config, which is free where it listens", got, port)
+	}
+}
+
+// Where the address cannot be listened on at all, as on a server without the IPv6 loopback, no other port would help.
+func TestChooseCorePortAtLeavesThePortOfTheConfigWhereTheAddressCannotBeListenedOn(t *testing.T) {
+	if got := chooseCorePortAt("192.0.2.1", "metrics", 4242, nil); got != 4242 {
+		t.Errorf("port %d, want the 4242 of the config", got)
+	}
+}
+
+// A port that was chosen at one address says nothing about the other, so a listener that moves between them is probed anew.
+func TestLocalizeProbesTheMetricsPortAgainWhenItsListenerChangesAddress(t *testing.T) {
+	port := freePortAt(t, "::1")
+	holdPortAt(t, "::1", port)
+	core := &Core{}
+	core.localize(preparedConfigListening(t, freePort(t), net.JoinHostPort("127.0.0.1", strconv.Itoa(port))))
+	if core.ports.metrics != port {
+		t.Skipf("port %d is held on the IPv4 loopback too, which this test needs free", port)
+	}
+
+	moved := preparedConfigListening(t, freePort(t), net.JoinHostPort("::1", strconv.Itoa(port)))
+	core.localize(moved)
+	if got := metricsPort(moved.Metrics); got == port || got == 0 || !portFreeAt("::1", got) {
+		t.Errorf("metrics port %d, want a port that is free on the IPv6 loopback other than the held %d", got, port)
+	}
+}
+
+func TestForgetTakenPortsLooksForTheMetricsPortWhereItListens(t *testing.T) {
+	port := freePortAt(t, "::1")
+	core := &Core{}
+	core.localize(preparedConfigListening(t, freePort(t), net.JoinHostPort("::1", strconv.Itoa(port))))
+	if core.ports.metrics != port || core.ports.metricsHost != "::1" {
+		t.Fatalf("ports %+v, want the metrics port %d chosen on the IPv6 loopback", core.ports, port)
+	}
+
+	holdPortAt(t, "::1", port)
+	core.forgetTakenPorts()
+	if core.ports.metrics != 0 {
+		t.Errorf("ports %+v, want the metrics port that something holds on the IPv6 loopback forgotten", core.ports)
 	}
 }
