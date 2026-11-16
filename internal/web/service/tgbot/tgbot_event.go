@@ -175,6 +175,13 @@ func (t *Tgbot) formatEventMessage(e eventbus.Event) string {
 			return msg
 		}
 		return header + t.I18nBot("tgbot.messages.eventLoginFallback", "Source=="+e.Source)
+
+	case eventbus.EventPsiphonRegionsNew:
+		data, ok := e.Data.(*eventbus.PsiphonRegionsData)
+		if !ok || len(data.Regions) == 0 {
+			return ""
+		}
+		return header + "🌍 " + t.I18nBot("tgbot.messages.eventPsiphonRegionsNew", "Regions=="+data.Names())
 	}
 
 	return ""

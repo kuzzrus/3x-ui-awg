@@ -13,12 +13,14 @@ import (
 // connectedMu serializes the read, merge and write of the regions that connected in a scan, since a scan ends while a page asks.
 var connectedMu sync.Mutex
 
-// rememberConnected adds the regions that connected in a scan to those kept from the scans before it, each with its newest success
-// and the time of the first; a region that does not connect in a later scan stays as it was.
-func (s *PsiphonService) rememberConnected(final psiphon.ScanStatus) {
+// rememberConnected keeps the regions that connected in a scan, each with its newest success and the time of the first; a region that
+// does not connect in a later scan stays as it was. It returns the regions that none before had connected: none for the first scan.
+func (s *PsiphonService) rememberConnected(final psiphon.ScanStatus) []string {
 	connectedMu.Lock()
 	defer connectedMu.Unlock()
 	kept := s.connectedBefore()
+	hadHistory := len(kept) > 0
+	var fresh []string
 	changed := false
 	for _, r := range final.Results {
 		if !r.Connected {
@@ -31,19 +33,26 @@ func (s *PsiphonService) rememberConnected(final psiphon.ScanStatus) {
 			kept[i] = seen
 		} else {
 			kept = append(kept, seen)
+			if hadHistory {
+				fresh = append(fresh, r.Region)
+			}
 		}
 		changed = true
 	}
 	if !changed {
-		return
+		return nil
 	}
 	raw, err := json.Marshal(kept)
 	if err == nil {
 		err = s.SetPsiphonRegionsConnected(string(raw))
 	}
 	if err != nil {
+		// A history that was not kept would call the same regions new in the next scan.
 		logger.Warning("psiphon: cannot keep the regions that connected in the scan:", err)
+		return nil
 	}
+	slices.Sort(fresh)
+	return fresh
 }
 
 // connectedBefore is the kept list, one entry per region and the newest, in the order of the regions: a setting is read back, so it

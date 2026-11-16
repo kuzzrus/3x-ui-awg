@@ -5,6 +5,7 @@ import {
   DesktopOutlined,
   DashboardOutlined,
   SafetyOutlined,
+  UnlockOutlined,
 } from '@ant-design/icons';
 import type { AllSetting } from '@/models/setting';
 import { NotificationLayout } from './NotificationLayout';
@@ -75,6 +76,11 @@ const GROUPS: NotificationGroupConfig[] = [
     icon: <SafetyOutlined aria-hidden />,
     title: 'eventGroupSecurity',
     events: [{ key: 'login.attempt', label: 'eventLoginAttempt', settingKey: '' }],
+  },
+  {
+    icon: <UnlockOutlined aria-hidden />,
+    title: 'eventGroupPsiphon',
+    events: [{ key: 'psiphon.regions.new', label: 'eventPsiphonRegionsNew', settingKey: '' }],
   },
 ];
 

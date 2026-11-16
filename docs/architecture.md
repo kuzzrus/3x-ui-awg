@@ -145,7 +145,7 @@ node heartbeat every 5s, periodic traffic resets (hourly/daily/weekly/monthly). 
 │   │                           #   client_global_traffic.go). ⭐ Start here for data shape.
 │   ├── pia/                    # PIA WireGuard protocol client (auth, signed server list, /addKey)
 │   ├── eventbus/               # In-process pub/sub (buffered channel): outbound.down|up,
-│   │                           #   xray.crash, node.down|up, cpu.high, memory.high, login.attempt
+│   │                           #   xray.crash, node.down|up, cpu.high, memory.high, login.attempt, psiphon.regions.new
 │   ├── tunnelmonitor/          # Optional tunnel health probe (XUI_TUNNEL_HEALTH_* env vars):
 │   │                           #   HTTP probe (default Cloudflare trace); repeated failures
 │   │                           #   trigger an Xray restart hook. Independent of panel settings.
@@ -480,9 +480,9 @@ also has protocol schemas under `frontend/src/schemas/protocols/` and `frontend/
 
 `internal/eventbus/` is a minimal buffered-channel pub/sub. Producers call a non-blocking
 `Publish(Event)`; all subscribers receive every event. Event types: `outbound.down|up`,
-`xray.crash`, `node.down|up`, `cpu.high`, `memory.high`, `login.attempt`, with structured
-payloads (OutboundHealthData, NodeHealthData, LoginEventData, SystemMetricData). Producers
-include the CPU/memory jobs, node heartbeat, and login handling; consumers include the
+`xray.crash`, `node.down|up`, `cpu.high`, `memory.high`, `login.attempt`, `psiphon.regions.new`, with structured
+payloads (OutboundHealthData, NodeHealthData, LoginEventData, SystemMetricData, PsiphonRegionsData). Producers
+include the CPU/memory jobs, node heartbeat, login handling, and the weekly Psiphon scan; consumers include the
 Telegram bot, the Discord bot (`service/discord/`), and the email notifier (`service/email/`). Use it for cross-cutting
 notifications instead of importing notification services into producers.
 

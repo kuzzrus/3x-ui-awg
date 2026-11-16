@@ -2,6 +2,7 @@ package email
 
 import (
 	"fmt"
+	"html"
 	"os"
 	"strconv"
 	"strings"
@@ -187,6 +188,15 @@ func (s *Subscriber) formatMessage(e eventbus.Event) (subject, body string) {
 			content := kv(i18n("email.labelStatus"), `<span style="color:red">`+i18n("email.statusFailed")+`</span>`)
 			content += kv(i18n("email.labelSource"), e.Source)
 			body = wrap(i18n("tgbot.messages.loginFailed"), content)
+		}
+
+	case eventbus.EventPsiphonRegionsNew:
+		if data, ok := e.Data.(*eventbus.PsiphonRegionsData); ok && len(data.Regions) > 0 {
+			names := data.Names()
+			subject = host + " " + i18n("tgbot.messages.eventPsiphonRegionsNew", "Regions=="+names)
+			content := kv(i18n("email.labelStatus"), `<span style="color:green">`+i18n("email.statusNew")+`</span>`)
+			content += kv(i18n("email.labelRegions"), html.EscapeString(names))
+			body = wrap(i18n("tgbot.messages.eventPsiphonRegionsNew", "Regions=="+html.EscapeString(names)), content)
 		}
 	}
 

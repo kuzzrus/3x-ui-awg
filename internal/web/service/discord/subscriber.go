@@ -371,6 +371,25 @@ func (s *Subscriber) FormatEmbed(e eventbus.Event) (Embed, bool) {
 			Fields:    fields,
 			Footer:    footer,
 		}, true
+
+	case eventbus.EventPsiphonRegionsNew:
+		var data *eventbus.PsiphonRegionsData
+		switch d := e.Data.(type) {
+		case *eventbus.PsiphonRegionsData:
+			data = d
+		case eventbus.PsiphonRegionsData:
+			data = &d
+		}
+		if data == nil || len(data.Regions) == 0 {
+			return Embed{}, false
+		}
+		return Embed{
+			Title:     tr("discord.alerts.psiphonRegionsNew"),
+			Color:     ColorGreen,
+			Timestamp: ts,
+			Fields:    []EmbedField{cleanField(tr("discord.fields.regions"), data.Names(), false)},
+			Footer:    footer,
+		}, true
 	}
 
 	return Embed{}, false

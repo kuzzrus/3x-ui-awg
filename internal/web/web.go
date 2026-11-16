@@ -712,6 +712,7 @@ func (s *Server) start(restartXray bool, startTgBot bool) (err error) {
 	service.SetEventBus(s.bus)
 	job.EventBus = s.bus
 	tgbot.EventBus = s.bus
+	integration.EventBus = s.bus
 
 	// Wire xray crash callback BEFORE startTask so it's ready
 	xray.OnCrash = func(err error) {

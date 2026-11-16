@@ -2014,6 +2014,7 @@
       "eventGroupSystem": "System",
       "eventGroupSecurity": "Security",
       "eventGroupNode": "Nodes",
+      "eventGroupPsiphon": "Psiphon",
       "eventOutboundDown": "Down",
       "eventOutboundUp": "Up",
       "eventDownThresholdHint": "failed checks in a row",
@@ -2035,6 +2036,7 @@
       "smtpNoRecipients": "No recipients configured",
       "smtpFromNotConfigured": "SMTP sender address not configured",
       "eventLoginAttempt": "Login attempt",
+      "eventPsiphonRegionsNew": "New region found",
       "telegramTokenConfigured": "Configured; leave blank to keep current token.",
       "telegramTokenPlaceholder": "Configured - enter a new token to replace",
       "smtpPasswordConfigured": "Configured; leave blank to keep current password.",
@@ -3219,6 +3221,7 @@
       "eventNodeDown": "Node {{ .Name }} is DOWN",
       "eventNodeUp": "Node {{ .Name }} is UP",
       "eventLoginFallback": "Login failed from {{ .Source }}",
+      "eventPsiphonRegionsNew": "New Psiphon region available: {{ .Regions }}",
       "memoryThreshold": "Memory Load {{ .Percent }}% exceeds the threshold of {{ .Threshold }}%",
       "inboundsCount": "🔌 Inbounds: {{ .Count }}\r\n",
       "clientsCount": "👥 Clients: {{ .Count }}\r\n",
@@ -3375,7 +3378,8 @@
       "threshold": "Threshold",
       "reason": "Reason",
       "time": "Time",
-      "source": "Source"
+      "source": "Source",
+      "regions": "Regions"
     },
     "values": {
       "uptime": "{{ .Days }}d {{ .Hours }}h",
@@ -3392,7 +3396,8 @@
       "cpuHigh": "CPU Threshold Exceeded",
       "memoryHigh": "Memory Threshold Exceeded",
       "loginSuccess": "Login Success",
-      "loginFailed": "Login Failed"
+      "loginFailed": "Login Failed",
+      "psiphonRegionsNew": "New Psiphon Region"
     },
     "report": {
       "title": "📊 3x-ui Status Report",
@@ -3440,12 +3445,14 @@
     "labelIP": "IP",
     "labelReason": "Reason",
     "labelSource": "Source",
+    "labelRegions": "Regions",
     "statusCrashed": "CRASHED",
     "statusHigh": "HIGH",
     "statusSuccess": "SUCCESS",
     "statusFailed": "FAILED",
     "statusDown": "DOWN",
-    "statusUp": "UP"
+    "statusUp": "UP",
+    "statusNew": "NEW"
   },
   "commandPalette": {
     "title": "Command Palette",

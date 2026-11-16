@@ -52,7 +52,7 @@ file locations when it can answer in one hop.
 - `internal/pia/` — PIA WireGuard protocol client (auth, signed server list, `/addKey`).
 - `internal/sub/` — subscription server (raw / JSON / Clash).
 - `internal/eventbus/` — in-process pub/sub (outbound/node health, xray.crash,
-  cpu.high, memory.high, login.attempt).
+  cpu.high, memory.high, login.attempt, psiphon.regions.new).
 - `internal/logger/`, `internal/util/` (link, crypto, sys, ldap, …),
   `internal/tunnelmonitor/` — shared infrastructure.
 - `internal/web/` — Gin server (embeds `dist/` + `translation/`).
