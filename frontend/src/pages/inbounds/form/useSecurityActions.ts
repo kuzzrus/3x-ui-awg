@@ -6,6 +6,7 @@ import type { HookAPI as ModalHookAPI } from 'antd/es/modal/useModal';
 
 import { HttpUtil, RandomUtil } from '@/utils';
 import { createTlsSettingsWithDefaultCert } from '@/lib/xray/inbound-tls-defaults';
+import type { NodeDecoyTarget } from '@/lib/xray/node-decoy';
 import { RealityStreamSettingsSchema } from '@/schemas/protocols/security/reality';
 import type { InboundFormValues } from '@/schemas/forms/inbound-form';
 import type { RealityScanResult } from '@/generated/types';
@@ -21,6 +22,8 @@ interface UseSecurityActionsArgs {
    * the central panel's paths don't exist on the node. See issue #4854.
    */
   nodeId: number | null;
+  // The decoy the node serves, which the REALITY fallback of an inbound on it can hand a probe to; null when it serves none.
+  nodeDecoy: NodeDecoyTarget | null;
   setScanResult: Dispatch<SetStateAction<RealityScanResult | null>>;
   setScanning: Dispatch<SetStateAction<boolean>>;
 }
@@ -37,6 +40,7 @@ export function useSecurityActions({
   messageApi,
   modal,
   nodeId,
+  nodeDecoy,
   setScanResult,
   setScanning,
 }: UseSecurityActionsArgs) {
@@ -99,6 +103,14 @@ export function useSecurityActions({
     } else if ((r.certValid || r.certChainValid) && r.serverNames?.length) {
       setValue('streamSettings.realitySettings.serverNames', r.serverNames);
     }
+  };
+
+  // The fallback hands a probe to the decoy of the node, under the name that its certificate is for.
+  const applyNodeDecoy = () => {
+    if (!nodeDecoy) return;
+    setScanResult(null);
+    setValue('streamSettings.realitySettings.target', nodeDecoy.target);
+    setValue('streamSettings.realitySettings.serverNames', [nodeDecoy.serverName]);
   };
 
   const scanRealityTarget = async (allowPrivate = false) => {
@@ -349,8 +361,8 @@ export function useSecurityActions({
     }
     if (next === 'reality') {
       const reality = RealityStreamSettingsSchema.parse({}) as Record<string, unknown>;
-      reality.target = '';
-      reality.serverNames = [];
+      reality.target = nodeDecoy?.target ?? '';
+      reality.serverNames = nodeDecoy ? [nodeDecoy.serverName] : [];
       reality.shortIds = RandomUtil.randomShortIds()
         .split(',')
         .map((s) => s.trim())
@@ -381,6 +393,7 @@ export function useSecurityActions({
     scanRealityTarget,
     scanRealityCandidates,
     applyRealityScanResult,
+    applyNodeDecoy,
     randomizeShortIds,
     randomizeSpiderX,
     getNewEchCert,

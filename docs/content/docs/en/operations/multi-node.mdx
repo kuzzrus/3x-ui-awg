@@ -229,9 +229,10 @@ has it.
 On the **Decoy** step of the window that adds an agent node, or under **Decoy site** in its settings later, pick what anyone who probes the node is shown: a
 page built into the panel, a reverse proxy to a site you already host, AdGuard Home, or a static site of your own that you upload. It is the decoy of the panel's
 own [reverse proxy](/docs/operations/reverse-proxy), on the node: a TLS listener on `127.0.0.1` and the
-port you choose (7443 by default), which the REALITY fallback of the node reaches. Set the fallback target
-of a REALITY inbound of this node to `127.0.0.1:<port>` yourself, and a probe that has no key is handed the
-decoy; the window says so once a decoy is chosen, and the Nodes page repeats the target in the info of
+port you choose (7443 by default), which the REALITY fallback of the node reaches. When you choose REALITY
+for an inbound deployed to this node, the inbound form fills its target with `127.0.0.1:<port>` and the domain of the decoy
+as its SNI, and offers them again under the target field; a probe that has no key is then handed the
+decoy. The window says so once a decoy is chosen, and the Nodes page repeats the target in the info of
 the node.
 
 The decoy needs a **domain** that points at the node and a certificate for it. Left empty, the domain is the **Node

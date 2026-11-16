@@ -58,6 +58,7 @@ import {
   isQuicI1Supported,
   type I1ProfileChoice,
 } from '@/lib/xray/i1Generators';
+import { nodeDecoyTarget } from '@/lib/xray/node-decoy';
 import { nodeHostsProtocol } from '@/lib/xray/node-protocols';
 import { VLESS_AUTH_LABEL_KEYS, vlessEncryptionAuthKind } from '@/lib/xray/vless-encryption';
 import { SniffingSchema } from '@/schemas/primitives/sniffing';
@@ -340,6 +341,7 @@ export default function InboundFormModal({
   const wListen = (useWatch({ control, name: 'listen' }) ?? '') as string;
   const isUdsListen = wListen.startsWith('/') || wListen.startsWith('@');
   const wNodeId = useWatch({ control, name: 'nodeId' }) ?? null;
+  const nodeDecoy = nodeDecoyTarget(availableNodes?.find((n) => n.id === wNodeId));
   const shareAddrStrategy = useWatch({ control, name: 'shareAddrStrategy' }) ?? 'node';
   const wTag = (useWatch({ control, name: 'tag' }) ?? '') as string;
   const wSsNetwork = useWatch({ control, name: 'settings.network' });
@@ -372,6 +374,7 @@ export default function InboundFormModal({
     scanRealityTarget,
     scanRealityCandidates,
     applyRealityScanResult,
+    applyNodeDecoy,
     randomizeShortIds,
     randomizeSpiderX,
     getNewEchCert,
@@ -387,6 +390,7 @@ export default function InboundFormModal({
     messageApi,
     modal,
     nodeId: typeof wNodeId === 'number' ? wNodeId : null,
+    nodeDecoy,
     setScanResult,
     setScanning,
   });
@@ -1411,6 +1415,8 @@ export default function InboundFormModal({
           scanRealityTarget={scanRealityTarget}
           scanRealityCandidates={scanRealityCandidates}
           applyRealityScanResult={applyRealityScanResult}
+          nodeDecoy={nodeDecoy}
+          applyNodeDecoy={applyNodeDecoy}
           randomizeShortIds={randomizeShortIds}
           randomizeSpiderX={randomizeSpiderX}
           genRealityKeypair={genRealityKeypair}

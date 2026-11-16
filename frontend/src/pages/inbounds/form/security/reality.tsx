@@ -26,6 +26,7 @@ import {
   validateRealityMaxClientVer,
   validateRealityTarget,
 } from '@/lib/xray/stream-wire-normalize';
+import type { NodeDecoyTarget } from '@/lib/xray/node-decoy';
 import type { RealityScanResult } from '@/generated/types';
 import RealityTargetScannerModal, {
   MLDSA65_MIN_CERT_CHAIN_BYTES,
@@ -38,6 +39,9 @@ interface RealityFormProps {
   scanRealityTarget: (allowPrivate?: boolean) => void;
   scanRealityCandidates: (targets?: string) => Promise<RealityScanResult[]>;
   applyRealityScanResult: (result: RealityScanResult, replaceServerNames?: boolean) => void;
+  // Set when the inbound is on a node that serves a decoy, which the fallback can hand a probe to.
+  nodeDecoy?: NodeDecoyTarget | null;
+  applyNodeDecoy?: () => void;
   randomizeShortIds: () => void;
   randomizeSpiderX: () => void;
   genRealityKeypair: () => void;
@@ -53,6 +57,8 @@ export default function RealityForm({
   scanRealityTarget,
   scanRealityCandidates,
   applyRealityScanResult,
+  nodeDecoy,
+  applyNodeDecoy,
   randomizeShortIds,
   randomizeSpiderX,
   genRealityKeypair,
@@ -121,6 +127,16 @@ export default function RealityForm({
         htmlFor={`${uid}-target`}
         label={t('pages.inbounds.form.target')}
         tooltip={t('pages.inbounds.form.realityTargetHint')}
+        extra={
+          nodeDecoy && applyNodeDecoy ? (
+            <Button type="link" size="small" style={{ padding: 0 }} onClick={applyNodeDecoy}>
+              {t('pages.inbounds.form.useNodeDecoy', {
+                target: nodeDecoy.target,
+                serverName: nodeDecoy.serverName,
+              })}
+            </Button>
+          ) : undefined
+        }
       >
         <Space.Compact block style={{ display: 'flex' }}>
           <FormField
