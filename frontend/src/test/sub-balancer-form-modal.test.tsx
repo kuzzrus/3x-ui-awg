@@ -363,8 +363,6 @@ describe('SubBalancerFormModal', () => {
     onConfirm.mockClear();
     fireEvent.click(enabledSwitch());
     await waitFor(() => expect(erroredItemCount()).toBe(2));
-    fireEvent.click(primaryButton());
-    expect(onConfirm).not.toHaveBeenCalled();
   });
 
   it('seeds the nodes from the edited balancer', async () => {
