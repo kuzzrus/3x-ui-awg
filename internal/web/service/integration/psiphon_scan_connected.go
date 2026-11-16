@@ -13,9 +13,8 @@ import (
 // connectedMu serializes the read, merge and write of the regions that connected in a scan, since a scan ends while a page asks.
 var connectedMu sync.Mutex
 
-// rememberConnected adds the regions that connected in a scan to those kept from the scans before it, each with its newest success
-// and the time of the first; a region that does not connect in a later scan stays as it was. It returns the regions that no scan
-// before had connected, by code: none for the first scan that connects anything, which finds everything for the first time.
+// rememberConnected keeps the regions that connected in a scan, each with its newest success and the time of the first; a region that
+// does not connect in a later scan stays as it was. It returns the regions that none before had connected: none for the first scan.
 func (s *PsiphonService) rememberConnected(final psiphon.ScanStatus) []string {
 	connectedMu.Lock()
 	defer connectedMu.Unlock()
