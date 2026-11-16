@@ -53,7 +53,7 @@ func (a *NodeController) initRouter(g *gin.RouterGroup) {
 	g.POST("/mtls/reloadClient", a.reloadMtlsClient)
 
 	g.GET("/decoySites", a.decoySites)
-	g.POST("/decoySites/upload", a.uploadDecoySite)
+	g.POST("/decoySites/upload", allowSlowUpload, a.uploadDecoySite)
 	g.POST("/decoySites/del/:sha", a.delDecoySite)
 }
 

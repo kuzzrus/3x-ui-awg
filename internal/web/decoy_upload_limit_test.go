@@ -5,10 +5,12 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/json"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
@@ -117,5 +119,56 @@ func TestRouterTakesADecoySiteLargerThanTheBodyCapOfOtherRoutes(t *testing.T) {
 	status, got = postThroughTheRouter(t, n.srv.URL+"/panel/api/nodes/add", token, other, otherForm)
 	if got.Success || !strings.Contains(string(got.Obj), "too large") {
 		t.Fatalf("a body of 11 MiB to another route answered %d %+v, want it refused for its size", status, got)
+	}
+}
+
+// The panel's server stops reading a request after 30 seconds, which a large site on a slow uplink outlasts. The same stop is set
+// here at a fraction of a second, with a body that waits in the middle, and the upload route must still keep the site.
+func TestRouterTakesADecoySiteThatArrivesSlowly(t *testing.T) {
+	n := startContractNodeWith(t, func(s *http.Server) {
+		s.ReadTimeout, s.WriteTimeout = 300*time.Millisecond, 300*time.Millisecond
+	})
+	token := "decoy-site-slow"
+	if err := database.GetDB().Create(&model.ApiToken{
+		Name: "decoy-site-slow", Token: crypto.HashTokenSHA256(token), Enabled: true, Scope: model.ApiScopeAdmin,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	var site bytes.Buffer
+	zw := zip.NewWriter(&site)
+	index, err := zw.Create("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := index.Write(bytes.Repeat([]byte("<html>home</html>"), 100)); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	contentType, form := multipartOf(t, "site", "slow.zip", site.Bytes())
+	body := form.Bytes()
+
+	reader, writer := io.Pipe()
+	go func() {
+		_, _ = writer.Write(body[:len(body)/2])
+		time.Sleep(900 * time.Millisecond)
+		_, _ = writer.Write(body[len(body)/2:])
+		_ = writer.Close()
+	}()
+	req, err := http.NewRequest(http.MethodPost, n.srv.URL+"/panel/api/nodes/decoySites/upload", reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", contentType)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("the upload that waited in the middle was cut off: %v", err)
+	}
+	defer resp.Body.Close()
+	var got reply
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil || !got.Success {
+		t.Fatalf("the upload that waited in the middle answered %d %+v, %v, want it kept", resp.StatusCode, got, err)
 	}
 }

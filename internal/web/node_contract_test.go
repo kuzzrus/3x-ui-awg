@@ -35,6 +35,12 @@ type nodeUnderContract struct {
 
 func startContractNode(t *testing.T) *nodeUnderContract {
 	t.Helper()
+	return startContractNodeWith(t, nil)
+}
+
+// startContractNodeWith serves the router on a server that configure may set timeouts and the like on first.
+func startContractNodeWith(t *testing.T, configure func(*http.Server)) *nodeUnderContract {
+	t.Helper()
 	dbDir := t.TempDir()
 	t.Setenv("XUI_DB_FOLDER", dbDir)
 	dbtest.InitDB(t, filepath.Join(dbDir, "x-ui.db"))
@@ -55,7 +61,7 @@ func startContractNode(t *testing.T) *nodeUnderContract {
 		t.Fatalf("initRouter: %v", err)
 	}
 	n := &nodeUnderContract{}
-	n.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	n.srv = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		engine.ServeHTTP(rec, r)
 		if rec.status == http.StatusUnauthorized || rec.status == http.StatusForbidden {
@@ -64,6 +70,10 @@ func startContractNode(t *testing.T) *nodeUnderContract {
 			n.mu.Unlock()
 		}
 	}))
+	if configure != nil {
+		configure(n.srv.Config)
+	}
+	n.srv.Start()
 	t.Cleanup(n.srv.Close)
 	return n
 }
@@ -77,6 +87,9 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.status = code
 	r.ResponseWriter.WriteHeader(code)
 }
+
+// Unwrap lets http.ResponseController reach the writer of the server, as it does in front of the panel's own router.
+func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
 func (n *nodeUnderContract) takeRefused() []string {
 	n.mu.Lock()
