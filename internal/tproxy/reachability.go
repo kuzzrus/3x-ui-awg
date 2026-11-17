@@ -15,16 +15,17 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 )
 
-// An MTProxy engine that cannot reach Telegram retries its data centers without a pause, and every attempt is a new
-// connection (about 60 a second, thousands of NAT sessions): a host that is cut off from Telegram is flooded by its own engine.
-// So a start waits until a data center answers.
+// An engine that cannot reach Telegram retries its data centers without a pause, and every attempt is a new connection (about
+// 60 a second): so a start waits until one of them answers.
 const (
-	// dcProbeTimeout is how long one probe round waits: the dials of a round run side by side, so it is also the longest a round takes.
+	// dcProbeTimeout is how long one probe round waits: its dials run side by side, so it is also the longest a round takes.
 	dcProbeTimeout = 750 * time.Millisecond
 	// dcProbeLimit caps the addresses of a round, spread over the whole list so that the data centers are not all one subnet.
 	dcProbeLimit = 6
-	// dcProbeOKTTL and dcProbeFailTTL are how long a verdict is kept; a failure is looked at again sooner, so that a start follows the repair.
-	dcProbeOKTTL   = 10 * time.Minute
+	// dcProbeOKTTL is how long a success is kept.
+	dcProbeOKTTL = 10 * time.Minute
+	// dcProbeFailMin is how long a first failure is kept, as a host that has just booted needs; each one after it twice as long, up to dcProbeFailTTL.
+	dcProbeFailMin = 15 * time.Second
 	dcProbeFailTTL = 5 * time.Minute
 )
 
@@ -49,8 +50,18 @@ type dcReachability struct {
 	mu     sync.Mutex
 	known  bool
 	ok     bool
+	fails  int // failures in a row, which set how long the verdict is kept
 	at     time.Time
 	detail string
+}
+
+// dcProbeFailKept is how long a failure is kept after fails of them in a row: the first is looked at again soon, then ever less often.
+func dcProbeFailKept(fails int) time.Duration {
+	d := dcProbeFailMin
+	for i := 1; i < fails && d < dcProbeFailTTL; i++ {
+		d *= 2
+	}
+	return min(d, dcProbeFailTTL)
 }
 
 // refresh probes the data centers unless a verdict that is still fresh is held; force sets aside a held failure only, since a
@@ -58,7 +69,7 @@ type dcReachability struct {
 func (r *dcReachability) refresh(ctx context.Context, force bool) {
 	r.mu.Lock()
 	age := dcProbeNow().Sub(r.at)
-	fresh := r.known && ((r.ok && age < dcProbeOKTTL) || (!r.ok && !force && age < dcProbeFailTTL))
+	fresh := r.known && ((r.ok && age < dcProbeOKTTL) || (!r.ok && !force && age < dcProbeFailKept(r.fails)))
 	r.mu.Unlock()
 	if fresh {
 		return
@@ -81,6 +92,11 @@ func (r *dcReachability) record(ok bool, detail string) {
 	r.mu.Lock()
 	wasKnown, was := r.known, r.ok
 	r.known, r.ok, r.at, r.detail = true, ok, dcProbeNow(), detail
+	if ok {
+		r.fails = 0
+	} else {
+		r.fails++
+	}
 	r.mu.Unlock()
 	switch {
 	case !ok && (!wasKnown || was):

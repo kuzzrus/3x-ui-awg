@@ -2071,7 +2071,10 @@ func (s *InboundService) SetInboundEnable(id int, enable bool) (bool, error) {
 	}
 	if err := rt.AddInbound(context.Background(), runtimeInbound); err != nil {
 		logger.Debug("SetInboundEnable: AddInbound on", rt.Name(), "failed:", err)
-		needRestart = true
+		// A restart of Xray does not start a sidecar, and drops every live connection of the others (as in UpdateInbound).
+		if !servedOutsideXray(inbound.Protocol) {
+			needRestart = true
+		}
 	}
 	return needRestart, nil
 }

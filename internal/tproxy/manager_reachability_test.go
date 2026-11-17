@@ -85,7 +85,7 @@ func TestManagerReconcileSaysARefusedStartOnceAndTriesAgainWhenTheVerdictIsStale
 		if m.Reconcile(reachabilityHost, desired) {
 			t.Fatal("Reconcile reported a change for a start that is refused")
 		}
-		clock.advance(10 * time.Second)
+		clock.advance(dcProbeFailMin / 3)
 	}
 	if got := dials.count(); got != 1 {
 		t.Errorf("%d probe(s) over three ticks, want 1: a verdict is kept for a while", got)
@@ -97,7 +97,7 @@ func TestManagerReconcileSaysARefusedStartOnceAndTriesAgainWhenTheVerdictIsStale
 		t.Errorf("Reconcile logged the refusal as its own failure %d time(s), want none: the verdict said it", got)
 	}
 
-	clock.advance(dcProbeFailTTL)
+	clock.advance(dcProbeFailMin)
 	m.Reconcile(reachabilityHost, desired)
 	if got := dials.count(); got != 2 {
 		t.Errorf("%d probe(s) after the failure went stale, want 2", got)

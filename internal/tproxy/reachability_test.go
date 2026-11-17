@@ -412,9 +412,9 @@ func TestReachabilityVerdictsAgeOut(t *testing.T) {
 		{"a success is kept", true, dcProbeOKTTL - time.Second, false, false},
 		{"a success is looked at again when its time is up", true, dcProbeOKTTL, false, true},
 		{"a success is not looked at again by force", true, dcProbeOKTTL - time.Second, true, false},
-		{"a failure is kept", false, dcProbeFailTTL - time.Second, false, false},
-		{"a failure is looked at again when its time is up", false, dcProbeFailTTL, false, true},
-		{"a failure is looked at again by force", false, dcProbeFailTTL - time.Second, true, true},
+		{"a first failure is kept", false, dcProbeFailMin - time.Second, false, false},
+		{"a first failure is looked at again when its time is up", false, dcProbeFailMin, false, true},
+		{"a first failure is looked at again by force", false, dcProbeFailMin - time.Second, true, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -435,6 +435,57 @@ func TestReachabilityVerdictsAgeOut(t *testing.T) {
 				t.Errorf("looked again = %v, want %v", looked, c.wantDial)
 			}
 		})
+	}
+}
+
+// A host that has just booted may have no uplink yet: its first failure is looked at again soon, and the later ones ever less often.
+func TestReachabilityKeepsEachFailureInARowTwiceAsLong(t *testing.T) {
+	useProxyMultiConf(t, telegramConf("203.0.113.9:8888"))
+	clock := stubClock(t)
+	dials := recordDials(t, errors.New("no route to host"))
+	var r dcReachability
+	r.refresh(context.Background(), false)
+	kept := []time.Duration{15 * time.Second, 30 * time.Second, time.Minute, 2 * time.Minute, 4 * time.Minute, 5 * time.Minute, 5 * time.Minute}
+	for i, want := range kept {
+		before := dials.count()
+		clock.advance(want - time.Second)
+		r.refresh(context.Background(), false)
+		if got := dials.count(); got != before {
+			t.Fatalf("failure %d was looked at again %v after it, want it kept for %v", i+1, want-time.Second, want)
+		}
+		clock.advance(time.Second)
+		r.refresh(context.Background(), false)
+		if got := dials.count(); got != before+1 {
+			t.Fatalf("failure %d was not looked at again when its %v were up", i+1, want)
+		}
+	}
+}
+
+func TestReachabilityASuccessStartsTheFailuresOver(t *testing.T) {
+	useProxyMultiConf(t, telegramConf("203.0.113.9:8888"))
+	clock := stubClock(t)
+	dials := recordDials(t, errors.New("no route to host"))
+	var r dcReachability
+	for range 3 {
+		r.refresh(context.Background(), false)
+		clock.advance(dcProbeFailTTL)
+	}
+	dials.set(nil)
+	r.refresh(context.Background(), false)
+	clock.advance(dcProbeOKTTL)
+	dials.set(errors.New("no route to host"))
+	r.refresh(context.Background(), false)
+
+	before := dials.count()
+	clock.advance(dcProbeFailMin - time.Second)
+	r.refresh(context.Background(), false)
+	if dials.count() != before {
+		t.Fatal("a first failure after a success was looked at again too soon")
+	}
+	clock.advance(time.Second)
+	r.refresh(context.Background(), false)
+	if dials.count() != before+1 {
+		t.Errorf("a first failure after a success was not looked at again after %v: the earlier failures still count", dcProbeFailMin)
 	}
 }
 

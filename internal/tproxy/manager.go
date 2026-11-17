@@ -240,9 +240,8 @@ func (m *Manager) ensureMTProxyLocked(inst Instance) (*childProcess, error) {
 	return proc, nil
 }
 
-// gatedStartLocked reports whether starting inst's engine has to wait for Telegram to be reachable. An engine that is running is
-// left alone, since a restart of it follows an edit of its secrets and it was already serving; so is one whose own dials are
-// redirected through Xray, because this host's route to Telegram is not the one it takes.
+// gatedStartLocked reports whether starting inst's engine waits for Telegram: not one that runs (its restart follows an edit of its
+// secrets), nor one whose dials go through Xray, since this host's route is not the one it takes.
 func (m *Manager) gatedStartLocked(inst Instance) bool {
 	if inst.RouteThroughXray || len(inst.Clients) == 0 {
 		return false
@@ -251,9 +250,8 @@ func (m *Manager) gatedStartLocked(inst Instance) bool {
 	return !ok || !cur.proc.IsRunning()
 }
 
-// probeBeforeStart takes the verdict on Telegram's reachability for ensureMTProxyLocked, which cannot wait for the network under
-// the lock; it dials only when one of insts has a start to be gated and the verdict held is stale. force looks again at a failure
-// that is not stale yet.
+// probeBeforeStart takes the verdict ensureMTProxyLocked reads, outside the lock; it dials only for a start that is gated and a
+// verdict that is stale. force looks again at a failure that is not stale yet.
 func (m *Manager) probeBeforeStart(insts []Instance, force bool) {
 	m.mu.Lock()
 	gated := slices.ContainsFunc(insts, m.gatedStartLocked)

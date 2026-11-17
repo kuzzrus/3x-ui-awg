@@ -82,10 +82,11 @@ The inbound editor accepts these protocols:
   is **not started**: an engine cut off from Telegram retries without a pause and
   floods the host with thousands of failed connections. The reason is written
   once to the panel log (`Telegram's data centers are unreachable from this
-  host`), and the engine starts by itself, at most five minutes after the route is
-  repaired; saving the inbound again looks at once. An engine that already runs is
-  not stopped, and an inbound whose engine is routed through an Xray outbound is
-  not checked, because that is not the route its connections take.
+  host`). The check is repeated after 15 seconds, then at growing intervals up to
+  five minutes, so the engine starts by itself at most five minutes after the
+  route is repaired; saving the inbound again looks at once. An engine that
+  already runs is not stopped, and an inbound whose engine is routed through an
+  Xray outbound is not checked, because that is not the route its connections take.
 </Callout>
 
 ## Fallbacks — multiple protocols on one port
