@@ -75,6 +75,19 @@ The inbound editor accepts these protocols:
   share links for it.
 </Callout>
 
+<Callout type="warn">
+  A **tproxy** inbound needs a route from the host to Telegram. Before the panel
+  starts its MTProxy engine it opens a connection to a few of the data centers
+  listed in `proxy-multi.conf`, and when none answers within a moment the engine
+  is **not started**: an engine cut off from Telegram retries without a pause and
+  floods the host with thousands of failed connections. The reason is written
+  once to the panel log (`Telegram's data centers are unreachable from this
+  host`), and the engine starts by itself, at most five minutes after the route is
+  repaired; saving the inbound again looks at once. An engine that already runs is
+  not stopped, and an inbound whose engine is routed through an Xray outbound is
+  not checked, because that is not the route its connections take.
+</Callout>
+
 ## Fallbacks — multiple protocols on one port
 
 Fallbacks let a single TLS port (e.g. `443`) serve more than one protocol — for

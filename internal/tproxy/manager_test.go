@@ -155,6 +155,11 @@ func installFakeBinaries(t *testing.T) (pidFile string) {
 	applyEgressRedirects = func(context.Context, []egressRedirect) error { return nil }
 	t.Cleanup(func() { applyEgressRedirects = origApplyEgress })
 
+	// A start waits for a data center to answer; the fixture's conf lists an address that nothing here should dial.
+	origDial := dcProbeDial
+	dcProbeDial = func(context.Context, string) error { return nil }
+	t.Cleanup(func() { dcProbeDial = origDial })
+
 	return pidFile
 }
 

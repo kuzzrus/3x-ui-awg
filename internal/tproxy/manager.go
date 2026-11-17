@@ -3,6 +3,7 @@ package tproxy
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -43,6 +44,8 @@ type Manager struct {
 	// managedMTProxy.fingerprint/managedServer.fingerprint already gate
 	// their own nft/process calls -- see that method's doc comment.
 	lastEgressFingerprint string
+	// reach is the last verdict of the probe that a fresh engine start waits for; see reachability.go.
+	reach dcReachability
 }
 
 var (
@@ -133,6 +136,8 @@ func (m *Manager) Ensure(hostname string, inst Instance) error {
 	if err := checkPlatform(runtime.GOOS, runtime.GOARCH); err != nil {
 		return err
 	}
+	// An admin who has just repaired the route to Telegram is not held to the failure that was seen before it.
+	m.probeBeforeStart([]Instance{inst}, true)
 	m.mu.Lock()
 	m.sweepOrphansLocked()
 	mtproxyStarted, err := m.ensureMTProxyLocked(inst)
@@ -198,6 +203,14 @@ func (m *Manager) ensureMTProxyLocked(inst Instance) (*childProcess, error) {
 		}
 	}
 
+	// Before anything is bound or started: an engine that cannot reach Telegram only floods the host's network. The verdict was
+	// taken before the lock (probeBeforeStart), so this does not wait on the network.
+	if m.gatedStartLocked(inst) {
+		if err := m.reach.err(); err != nil {
+			return nil, err
+		}
+	}
+
 	clientPort, statsPort, err := m.mtproxyPortsLocked(inst.Id)
 	if err != nil {
 		return nil, err
@@ -225,6 +238,29 @@ func (m *Manager) ensureMTProxyLocked(inst Instance) (*childProcess, error) {
 	}
 	m.mtproxies[inst.Id] = &managedMTProxy{proc: proc, clientPort: clientPort, statsPort: statsPort, fingerprint: fp}
 	return proc, nil
+}
+
+// gatedStartLocked reports whether starting inst's engine has to wait for Telegram to be reachable. An engine that is running is
+// left alone, since a restart of it follows an edit of its secrets and it was already serving; so is one whose own dials are
+// redirected through Xray, because this host's route to Telegram is not the one it takes.
+func (m *Manager) gatedStartLocked(inst Instance) bool {
+	if inst.RouteThroughXray || len(inst.Clients) == 0 {
+		return false
+	}
+	cur, ok := m.mtproxies[inst.Id]
+	return !ok || !cur.proc.IsRunning()
+}
+
+// probeBeforeStart takes the verdict on Telegram's reachability for ensureMTProxyLocked, which cannot wait for the network under
+// the lock; it dials only when one of insts has a start to be gated and the verdict held is stale. force looks again at a failure
+// that is not stale yet.
+func (m *Manager) probeBeforeStart(insts []Instance, force bool) {
+	m.mu.Lock()
+	gated := slices.ContainsFunc(insts, m.gatedStartLocked)
+	m.mu.Unlock()
+	if gated {
+		m.reach.refresh(context.Background(), force)
+	}
 }
 
 // mtproxyPortsLocked reuses inbound id's already-assigned ports across a
@@ -475,6 +511,7 @@ func (m *Manager) Reconcile(hostname string, desired []Instance) (changed bool) 
 		}
 		return false
 	}
+	m.probeBeforeStart(desired, false)
 	m.mu.Lock()
 	m.sweepOrphansLocked()
 
@@ -498,7 +535,10 @@ func (m *Manager) Reconcile(hostname string, desired []Instance) (changed bool) 
 	for _, inst := range desired {
 		proc, err := m.ensureMTProxyLocked(inst)
 		if err != nil {
-			logger.Warningf("tproxy: reconcile failed for inbound %d: %v", inst.Id, err)
+			// A refused start is said once, when the verdict changes; it would otherwise be repeated every tick.
+			if !errors.Is(err, errTelegramUnreachable) {
+				logger.Warningf("tproxy: reconcile failed for inbound %d: %v", inst.Id, err)
+			}
 			continue
 		}
 		if proc != nil {
