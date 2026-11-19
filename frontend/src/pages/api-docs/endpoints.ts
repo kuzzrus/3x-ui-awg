@@ -2779,9 +2779,9 @@ export const sections: readonly Section[] = [
         method: 'GET',
         path: '/panel/api/xray/portguard',
         summary:
-          'Report the ports closed in the host firewall, the change that waits to be confirmed, the ports that can never be closed (the SSH ports and 443/tcp), and the ports of the panel, the subscription server and the enabled inbounds that could be closed.',
+          "Report the ports closed in the host firewall, the change that waits to be confirmed (its deadline, and remainingMs, what is left of the lease by the host's clock), the ports that can never be closed (the SSH ports and 443/tcp), and the ports of the panel, the subscription server and the enabled inbounds that could be closed.",
         response:
-          '{\n  "success": true,\n  "obj": {\n    "available": true,\n    "closed": [{ "port": 8443, "proto": "tcp" }],\n    "pending": { "deadlineMs": 1790000000000, "previous": [] },\n    "protected": [{ "port": 22, "proto": "tcp" }, { "port": 443, "proto": "tcp" }],\n    "candidates": [\n      { "port": 8443, "proto": "tcp", "label": "cdn (vless)", "inboundId": 3, "viaFrontProxy": true, "loopback": false, "closed": true, "protected": false }\n    ],\n    "leaseSeconds": 120\n  }\n}',
+          '{\n  "success": true,\n  "obj": {\n    "available": true,\n    "closed": [{ "port": 8443, "proto": "tcp" }],\n    "pending": { "deadlineMs": 1790000000000, "remainingMs": 90000, "previous": [] },\n    "protected": [{ "port": 22, "proto": "tcp" }, { "port": 443, "proto": "tcp" }],\n    "candidates": [\n      { "port": 8443, "proto": "tcp", "label": "cdn (vless)", "inboundId": 3, "viaFrontProxy": true, "loopback": false, "closed": true, "protected": false }\n    ],\n    "leaseSeconds": 120\n  }\n}',
       },
       {
         method: 'POST',

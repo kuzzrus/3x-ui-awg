@@ -178,7 +178,7 @@ func TestListensOnLoopbackOnly(t *testing.T) {
 
 func TestPortGuardStatusShowsTheLeaseAndTheProtectedPorts(t *testing.T) {
 	store, _ := setupPortGuardTest(t, portguard.Port{Number: 22, Proto: portguard.TCP})
-	deadline := time.Unix(1_800_000_000, 0)
+	deadline := time.Now().Add(90 * time.Second)
 	store.state = portguard.State{
 		Closed:  []portguard.Port{{Number: 8443, Proto: portguard.TCP}},
 		Pending: &portguard.Pending{Deadline: deadline},
@@ -189,6 +189,10 @@ func TestPortGuardStatusShowsTheLeaseAndTheProtectedPorts(t *testing.T) {
 	}
 	if st.Pending == nil || st.Pending.DeadlineMs != deadline.UnixMilli() {
 		t.Errorf("Pending = %+v, want the deadline %d", st.Pending, deadline.UnixMilli())
+	}
+	// By the host's clock, in milliseconds: a few seconds of the 90 may have gone while the test ran, not tens.
+	if st.Pending != nil && (st.Pending.RemainingMs < 80_000 || st.Pending.RemainingMs > 90_000) {
+		t.Errorf("RemainingMs = %d, want what is left of 90 seconds, in milliseconds", st.Pending.RemainingMs)
 	}
 	if st.Pending != nil && st.Pending.Previous == nil {
 		t.Error("Pending.Previous is nil: the page reads a list, not null")
@@ -226,5 +230,21 @@ func TestPortGuardServiceClosesAndOpensThroughTheSharedManager(t *testing.T) {
 	}
 	if len(fw.closed) != 0 {
 		t.Errorf("the firewall still closes %v after the rollback", fw.closed)
+	}
+}
+
+// A lease that has run out has nothing left, not a negative time that a page would count from.
+func TestPortGuardStatusOfALeaseThatHasRunOutHasNothingRemaining(t *testing.T) {
+	store, _ := setupPortGuardTest(t)
+	store.state = portguard.State{
+		Closed:  []portguard.Port{{Number: 8443, Proto: portguard.TCP}},
+		Pending: &portguard.Pending{Deadline: time.Now().Add(-time.Minute)},
+	}
+	st, err := (&PortGuardService{}).Status()
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if st.Pending == nil || st.Pending.RemainingMs != 0 {
+		t.Errorf("Pending = %+v, want RemainingMs 0", st.Pending)
 	}
 }

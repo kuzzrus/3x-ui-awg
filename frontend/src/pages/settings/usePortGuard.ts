@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { HttpUtil } from '@/utils';
+import { getMessage } from '@/utils/messageBus';
 import { keys } from '@/api/queryKeys';
 
 export interface GuardPort {
@@ -21,7 +22,7 @@ export interface GuardCandidate extends GuardPort {
 export interface GuardStatus {
   available: boolean;
   closed: GuardPort[];
-  pending: { deadlineMs: number; previous: GuardPort[] } | null;
+  pending: { deadlineMs: number; remainingMs: number; previous: GuardPort[] } | null;
   protected: GuardPort[];
   candidates: GuardCandidate[];
   leaseSeconds: number;
@@ -145,6 +146,8 @@ export function usePortGuard() {
       return msg.obj;
     },
     onSuccess: setPlan,
+    // The request is silent, so that a refused plan is not told twice; a failed one has to be told by this.
+    onError: (error) => getMessage().error(error.message),
   });
 
   // The answer of an action is the new status, which takes the place of the one on the page.
@@ -168,7 +171,8 @@ export function usePortGuard() {
     }
   };
 
-  // The countdown: a tick a second while a change waits, from the moment the status that said so came.
+  // The countdown: what the host said was left when the status came, less the browser's own time since, so that the clock of the
+  // browser and that of the host never have to agree. A tick a second keeps it moving while a change waits.
   const pending = status?.pending ?? null;
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -177,12 +181,14 @@ export function usePortGuard() {
     return () => clearInterval(tick);
   }, [pending]);
   const secondsLeft = pending
-    ? Math.max(0, Math.ceil((pending.deadlineMs - Math.max(now, query.dataUpdatedAt)) / 1000))
+    ? Math.max(0, Math.ceil((pending.remainingMs - Math.max(0, now - query.dataUpdatedAt)) / 1000))
     : 0;
 
   return {
     status,
     loading: query.isPending,
+    loadError: query.isError ? query.error.message : null,
+    retry: () => void query.refetch(),
     rows,
     selected,
     dirty,

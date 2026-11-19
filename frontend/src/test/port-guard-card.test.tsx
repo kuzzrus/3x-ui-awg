@@ -182,7 +182,7 @@ describe('PortGuardCard', () => {
   it('counts down a change that waits, and confirms it', async () => {
     const waiting = status({
       closed: [{ port: 8443, proto: 'tcp' }],
-      pending: { deadlineMs: Date.now() + 90_000, previous: [] },
+      pending: { deadlineMs: Date.now() + 90_000, remainingMs: 90_000, previous: [] },
     });
     const { post } = serve(waiting, {
       '/confirm': status({ closed: [{ port: 8443, proto: 'tcp' }] }),
@@ -203,7 +203,7 @@ describe('PortGuardCard', () => {
   it('rolls a waiting change back on request', async () => {
     const waiting = status({
       closed: [{ port: 8443, proto: 'tcp' }],
-      pending: { deadlineMs: Date.now() + 90_000, previous: [] },
+      pending: { deadlineMs: Date.now() + 90_000, remainingMs: 90_000, previous: [] },
     });
     const { post } = serve(waiting, { '/rollback': status() });
     renderWithProviders(<PortGuardCard />);
@@ -299,7 +299,7 @@ describe('PortGuardCard, more', () => {
     serve(
       status({
         closed: [{ port: 8443, proto: 'tcp' }],
-        pending: { deadlineMs: Date.now() + 5_000, previous: [] },
+        pending: { deadlineMs: Date.now() + 5_000, remainingMs: 5_000, previous: [] },
       }),
     );
     renderWithProviders(<PortGuardCard />);
@@ -319,7 +319,7 @@ describe('PortGuardCard, more', () => {
             waiting
               ? status({
                   closed: [{ port: 8443, proto: 'tcp' }],
-                  pending: { deadlineMs: Date.now() + 90_000, previous: [] },
+                  pending: { deadlineMs: Date.now() + 90_000, remainingMs: 90_000, previous: [] },
                 })
               : status(),
           ),
@@ -354,7 +354,7 @@ describe('PortGuardCard, edges', () => {
             waiting
               ? status({
                   closed: [{ port: 8443, proto: 'tcp' }],
-                  pending: { deadlineMs: Date.now() + 90_000, previous: [] },
+                  pending: { deadlineMs: Date.now() + 90_000, remainingMs: 90_000, previous: [] },
                 })
               : status(),
           ),
@@ -384,7 +384,7 @@ describe('PortGuardCard, edges', () => {
     serve(
       status({
         closed: [{ port: 8443, proto: 'tcp' }],
-        pending: { deadlineMs: Date.now() - 5_000, previous: [] },
+        pending: { deadlineMs: Date.now() - 5_000, remainingMs: 0, previous: [] },
       }),
     );
     renderWithProviders(<PortGuardCard />);
@@ -403,7 +403,7 @@ describe('PortGuardCard, edges', () => {
   it('does not say a change is confirmed when it was not', async () => {
     const waiting = status({
       closed: [{ port: 8443, proto: 'tcp' }],
-      pending: { deadlineMs: Date.now() + 90_000, previous: [] },
+      pending: { deadlineMs: Date.now() + 90_000, remainingMs: 90_000, previous: [] },
     });
     serve(waiting);
     vi.spyOn(HttpUtil, 'post').mockResolvedValue(new Msg(false, 'no change waits'));
@@ -447,5 +447,112 @@ describe('PortGuardCard, edges', () => {
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('Will be opened:')).toBeTruthy();
     expect(within(dialog).queryByText('Will be closed:')).toBeNull();
+  });
+});
+
+describe('PortGuardCard, clocks and failures', () => {
+  // The host's deadline is on the host's clock: a browser whose clock is far ahead or behind must not be what decides.
+  it('counts down from what the host says is left, not from its deadline', async () => {
+    serve(
+      status({
+        closed: [{ port: 8443, proto: 'tcp' }],
+        pending: { deadlineMs: Date.now() - 10 * 60_000, remainingMs: 90_000, previous: [] },
+      }),
+    );
+    renderWithProviders(<PortGuardCard />);
+
+    expect(await screen.findByText(/confirmation: 1:(29|30) left/)).toBeTruthy();
+  });
+
+  it('goes on counting down while a change waits', async () => {
+    vi.useFakeTimers({
+      toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'Date'],
+    });
+    try {
+      vi.spyOn(HttpUtil, 'get').mockResolvedValue(
+        new Msg(
+          true,
+          '',
+          status({
+            closed: [{ port: 8443, proto: 'tcp' }],
+            pending: { deadlineMs: Date.now() + 90_000, remainingMs: 90_000, previous: [] },
+          }),
+        ),
+      );
+      renderWithProviders(<PortGuardCard />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(screen.queryByText(/confirmation: 1:(29|30) left/)).not.toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+      expect(screen.queryByText(/confirmation: 1:2[7-8] left/)).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops the countdown at 0:00 and does not go negative', async () => {
+    vi.useFakeTimers({
+      toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'Date'],
+    });
+    try {
+      // The server has not rolled it back yet (its job runs every 5 seconds): the status still says it waits.
+      vi.spyOn(HttpUtil, 'get').mockResolvedValue(
+        new Msg(
+          true,
+          '',
+          status({
+            closed: [{ port: 8443, proto: 'tcp' }],
+            pending: { deadlineMs: Date.now() + 1_000, remainingMs: 1_000, previous: [] },
+          }),
+        ),
+      );
+      renderWithProviders(<PortGuardCard />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(screen.queryByText(/confirmation: 0:01 left/)).not.toBeNull();
+
+      // Two seconds on, before the next look at the server (every 3): a second more has gone than there was.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+      expect(screen.queryByText(/confirmation: 0:00 left/)).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('tells the admin when the closed ports cannot be read, and reads them again on request', async () => {
+    const get = vi
+      .spyOn(HttpUtil, 'get')
+      .mockResolvedValue(new Msg(false, 'the stored state is unreadable'));
+    renderWithProviders(<PortGuardCard />);
+
+    expect(await screen.findByText('Could not read the closed ports')).toBeTruthy();
+    expect(screen.getByText('the stored state is unreadable')).toBeTruthy();
+
+    get.mockResolvedValue(new Msg(true, '', status()));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+    expect(await screen.findByText('8443/tcp')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText('Could not read the closed ports')).toBeNull());
+  });
+
+  it('tells the admin when a preview fails', async () => {
+    serve(status());
+    vi.spyOn(HttpUtil, 'post').mockResolvedValue(new Msg(false, 'the plan cannot be made'));
+    const error = vi.spyOn(getMessage(), 'error');
+    renderWithProviders(<PortGuardCard />);
+    await screen.findByText('8443/tcp');
+
+    fireEvent.click(screen.getByLabelText('Close 8443/tcp'));
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+
+    await waitFor(() => expect(error).toHaveBeenCalledWith('the plan cannot be made'));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

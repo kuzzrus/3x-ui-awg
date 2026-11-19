@@ -1772,6 +1772,7 @@
           "title": "Closed ports",
           "desc": "Close the public ports of your inbounds in the firewall, for example the ones that are also reachable through the reverse proxy on 443. A closed port drops what other hosts begin towards it, including a connection they already have; this host's own traffic and its VPN interfaces are not affected. SSH and 443/tcp can never be closed.",
           "noNft": "nft (nftables) is not available to the panel on this host, so ports cannot be closed here.",
+          "loadFailed": "Could not read the closed ports",
           "colClose": "Close",
           "colPort": "Port",
           "colUsedBy": "Used by",

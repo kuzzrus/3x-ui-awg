@@ -84,6 +84,19 @@ export default function PortGuardCard() {
   return (
     <Card size="small" className="mt-12">
       <Space orientation="vertical" size={12} style={{ width: '100%' }}>
+        {guard.loadError && (
+          <Alert
+            type="error"
+            showIcon
+            title={t('pages.settings.frontProxy.portGuard.loadFailed')}
+            description={guard.loadError}
+            action={
+              <Button size="small" onClick={guard.retry}>
+                {t('refresh')}
+              </Button>
+            }
+          />
+        )}
         {status && !status.available && (
           <Alert type="warning" showIcon title={t('pages.settings.frontProxy.portGuard.noNft')} />
         )}
