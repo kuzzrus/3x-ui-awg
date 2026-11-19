@@ -474,7 +474,14 @@ func openClosedPortsSetting() error {
 		fmt.Println("Failed to forget the closed ports:", err)
 		return err
 	}
-	if err := (portguard.NftFirewall{}).Remove(context.Background()); err != nil {
+	fw := portguard.NftFirewall{}
+	// Without nft there is no telling whether the rules are there, so it must not be said that they are gone.
+	if !fw.Installed() {
+		fmt.Println("The closed ports are forgotten, but nft was not found, so the rules could not be looked for.")
+		fmt.Println("If ports are still closed, remove the rules as root: nft delete table inet x_ui_portguard (nft is in /usr/sbin)")
+		return fmt.Errorf("nft was not found")
+	}
+	if err := fw.Remove(context.Background()); err != nil {
 		fmt.Println("The closed ports are forgotten, but the rules could not be removed:", err)
 		fmt.Println("Remove them by hand: nft delete table inet x_ui_portguard")
 		return err

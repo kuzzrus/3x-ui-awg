@@ -93,11 +93,13 @@ type Manager struct {
 	fw        Firewall
 	now       func() time.Time
 	protected func() []Port
+	// probeSSH tells whether sshd answers on a TCP port, which the sshd_config that protected is read from may not say.
+	probeSSH func(Port) bool
 }
 
 // New returns a Manager; protected lists the ports that must never be closed (it is asked again on every plan).
 func New(store Store, fw Firewall, protected func() []Port) *Manager {
-	return &Manager{store: store, fw: fw, now: time.Now, protected: protected}
+	return &Manager{store: store, fw: fw, now: time.Now, protected: protected, probeSSH: func(p Port) bool { return answersAsSSH(p.Number) }}
 }
 
 // Protected lists the ports that cannot be closed.
@@ -159,17 +161,45 @@ func (m *Manager) screen(desired []Port) (kept []Port, refused []Refusal) {
 	if m.protected != nil {
 		protected = m.protected()
 	}
-	for _, p := range sortedUnique(desired) {
+	candidates := sortedUnique(desired)
+	ssh := m.sshAnswering(candidates, protected)
+	for _, p := range candidates {
 		switch {
 		case !p.valid():
 			refused = append(refused, Refusal{Port: p, Reason: "not a port"})
 		case slices.Contains(protected, p):
 			refused = append(refused, Refusal{Port: p, Reason: "this port keeps the admin able to reach the host"})
+		case ssh[p]:
+			refused = append(refused, Refusal{Port: p, Reason: "sshd answers on this port, which keeps the admin able to reach the host"})
 		default:
 			kept = append(kept, p)
 		}
 	}
 	return kept, refused
+}
+
+// sshAnswering probes the TCP ports that are not protected already, side by side, and returns the ones where sshd answers.
+func (m *Manager) sshAnswering(ports, protected []Port) map[Port]bool {
+	found := map[Port]bool{}
+	if m.probeSSH == nil {
+		return found
+	}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, p := range ports {
+		if p.Proto != TCP || !p.valid() || slices.Contains(protected, p) {
+			continue
+		}
+		wg.Go(func() {
+			if m.probeSSH(p) {
+				mu.Lock()
+				found[p] = true
+				mu.Unlock()
+			}
+		})
+	}
+	wg.Wait()
+	return found
 }
 
 // confirmed is the set of closed ports that the admin has confirmed.
@@ -295,6 +325,7 @@ func (m *Manager) Restore(ctx context.Context) {
 		logger.Warning("portguard: cannot read the state:", err)
 		return
 	}
+	st, changed := m.screenState(st)
 	if st.Pending != nil && !m.now().Before(st.Pending.Deadline) {
 		logger.Warning("portguard: the change of the closed ports was not confirmed before the panel stopped, rolling it back")
 		if err := m.rollbackLocked(ctx, st); err != nil {
@@ -302,12 +333,41 @@ func (m *Manager) Restore(ctx context.Context) {
 		}
 		return
 	}
-	if len(st.Closed) == 0 {
+	if len(st.Closed) == 0 && !changed {
 		return
 	}
-	if err := m.fw.Apply(ctx, st.Closed); err != nil {
+	if err := m.applyLocked(ctx, st.Closed); err != nil {
 		logger.Warning("portguard: cannot restore the closed ports:", err)
 	}
+}
+
+// screenState takes out of the state the ports that can no longer be closed, since sshd may have been moved onto a port that was
+// closed while it was not the one it listens on; it saves what is left and says whether it took anything out.
+func (m *Manager) screenState(st State) (State, bool) {
+	kept, refused := m.screen(st.Closed)
+	var keptPrevious []Port
+	var refusedPrevious []Refusal
+	if st.Pending != nil {
+		keptPrevious, refusedPrevious = m.screen(st.Pending.Previous)
+	}
+	if len(refused)+len(refusedPrevious) == 0 {
+		return st, false
+	}
+	names := make([]string, 0, len(refused)+len(refusedPrevious))
+	for _, r := range slices.Concat(refused, refusedPrevious) {
+		names = append(names, r.Port.String())
+	}
+	logger.Warning("portguard: not closing ports that keep the host reachable:", strings.Join(names, ", "))
+	st.Closed = kept
+	if st.Pending != nil {
+		pending := *st.Pending
+		pending.Previous = keptPrevious
+		st.Pending = &pending
+	}
+	if err := m.store.Save(st); err != nil {
+		logger.Warning("portguard: cannot save the state without them:", err)
+	}
+	return st, true
 }
 
 func sortedUnique(ports []Port) []Port {

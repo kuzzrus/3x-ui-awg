@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -78,13 +79,23 @@ type guardRig struct {
 	fw     *fakeFirewall
 	now    time.Time
 	events []string
+	// sshOn is the ports where the fake probe finds sshd, and probed the ports it was asked about.
+	sshOn  map[Port]bool
+	probed []Port
+	mu     sync.Mutex
 }
 
 func newGuardRig(protected ...Port) *guardRig {
-	r := &guardRig{store: &fakeStore{}, fw: &fakeFirewall{}, now: time.Unix(1_800_000_000, 0)}
+	r := &guardRig{store: &fakeStore{}, fw: &fakeFirewall{}, now: time.Unix(1_800_000_000, 0), sshOn: map[Port]bool{}}
 	r.store.events, r.fw.events = &r.events, &r.events
 	r.m = New(r.store, r.fw, func() []Port { return protected })
 	r.m.now = func() time.Time { return r.now }
+	r.m.probeSSH = func(p Port) bool {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		r.probed = append(r.probed, p)
+		return r.sshOn[p]
+	}
 	return r
 }
 
@@ -508,5 +519,114 @@ func TestStateAndPlanSurfaceAStoreThatFails(t *testing.T) {
 	}
 	if err := r.m.Rollback(context.Background()); err == nil {
 		t.Error("Rollback hid the store's error")
+	}
+}
+
+func TestPlanRefusesAPortWhereSSHAnswers(t *testing.T) {
+	r := newGuardRig()
+	r.sshOn[Port{2222, TCP}] = true
+	plan, err := r.m.Plan([]Port{{2222, TCP}, {2222, UDP}, {8443, TCP}})
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if want := []Port{{8443, TCP}, {2222, UDP}}; !slices.Equal(plan.Closed, want) {
+		t.Errorf("Closed = %v, want %v: 2222/udp is not where sshd answers", plan.Closed, want)
+	}
+	if len(plan.Refused) != 1 || plan.Refused[0].Port != (Port{2222, TCP}) || !strings.Contains(plan.Refused[0].Reason, "sshd answers") {
+		t.Errorf("Refused = %+v, want 2222/tcp, with sshd named", plan.Refused)
+	}
+	if !slices.Contains(r.probed, Port{2222, TCP}) || slices.Contains(r.probed, Port{2222, UDP}) {
+		t.Errorf("probed %v, want the TCP ports only", r.probed)
+	}
+}
+
+func TestPlanDoesNotProbeWhatIsRefusedAlready(t *testing.T) {
+	r := newGuardRig(Port{22, TCP})
+	if _, err := r.m.Plan([]Port{{22, TCP}, {0, TCP}}); err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if len(r.probed) != 0 {
+		t.Errorf("probed %v, want nothing: a protected or invalid port needs no probe", r.probed)
+	}
+}
+
+// A port that takes its time to answer must not make the others wait for it.
+func TestPlanProbesThePortsSideBySide(t *testing.T) {
+	r := newGuardRig()
+	const n = 4
+	var started sync.WaitGroup
+	started.Add(n)
+	r.m.probeSSH = func(Port) bool {
+		started.Done()
+		all := make(chan struct{})
+		go func() { started.Wait(); close(all) }()
+		select {
+		case <-all:
+			return false
+		case <-time.After(5 * time.Second):
+			return true
+		}
+	}
+	plan, err := r.m.Plan(ports(TCP, 8001, 8002, 8003, 8004))
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if len(plan.Refused) != 0 {
+		t.Errorf("Refused = %+v: the probes did not run side by side", plan.Refused)
+	}
+}
+
+func TestApplyRefusesAPortWhereSSHAnswersAndChangesNothing(t *testing.T) {
+	r := newGuardRig()
+	r.sshOn[Port{2222, TCP}] = true
+	if _, err := r.m.Apply(context.Background(), ports(TCP, 2222, 8443)); !errors.Is(err, ErrRefused) {
+		t.Fatalf("Apply error = %v, want ErrRefused", err)
+	}
+	if r.fw.applied != 0 || r.store.saved != 0 {
+		t.Error("a refused change touched the firewall or the state")
+	}
+}
+
+func TestRestoreDoesNotCloseAPortThatKeepsTheHostReachable(t *testing.T) {
+	r := newGuardRig(Port{22, TCP})
+	r.sshOn[Port{2222, TCP}] = true
+	r.store.state = State{Closed: ports(TCP, 22, 2222, 8443)}
+	r.m.Restore(context.Background())
+	if want := ports(TCP, 8443); !slices.Equal(r.fw.closed, want) {
+		t.Errorf("the firewall closes %v, want %v", r.fw.closed, want)
+	}
+	if want := ports(TCP, 8443); !slices.Equal(r.store.state.Closed, want) {
+		t.Errorf("State.Closed = %v, want %v: what cannot be closed is forgotten", r.store.state.Closed, want)
+	}
+}
+
+func TestRestoreRemovesTheRulesWhenEveryClosedPortKeepsTheHostReachable(t *testing.T) {
+	r := newGuardRig(Port{22, TCP})
+	r.store.state = State{Closed: ports(TCP, 22)}
+	r.fw.closed = ports(TCP, 22)
+	r.m.Restore(context.Background())
+	if r.fw.removed != 1 || len(r.fw.closed) != 0 {
+		t.Errorf("removed %d, closed %v, want the rules removed: the table of the old run may still hold 22", r.fw.removed, r.fw.closed)
+	}
+	if len(r.store.state.Closed) != 0 {
+		t.Errorf("State.Closed = %v, want none", r.store.state.Closed)
+	}
+}
+
+func TestRestoreTakesProtectedPortsOutOfTheRollbackToo(t *testing.T) {
+	r := newGuardRig(Port{22, TCP})
+	r.store.state = State{Closed: ports(TCP, 8443), Pending: &Pending{Deadline: r.now.Add(-time.Second), Previous: ports(TCP, 22, 2053)}}
+	r.m.Restore(context.Background())
+	if want := ports(TCP, 2053); !slices.Equal(r.fw.closed, want) {
+		t.Errorf("the firewall closes %v, want %v: the rollback must not close 22 either", r.fw.closed, want)
+	}
+}
+
+func TestRestoreSaysNothingWhenNothingIsTakenOut(t *testing.T) {
+	r := newGuardRig(Port{22, TCP})
+	r.store.state = State{Closed: ports(TCP, 8443)}
+	r.m.Restore(context.Background())
+	if r.store.saved != 0 {
+		t.Error("Restore saved a state that it did not change")
 	}
 }

@@ -1,12 +1,15 @@
 package portguard
 
 import (
+	"context"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // sshdConfig is where sshd reads its settings from.
@@ -76,4 +79,27 @@ func collectSSHPorts(path, base string, seen map[string]bool, numbers *[]int) {
 func sshPortNumber(s string) (int, bool) {
 	n, err := strconv.Atoi(s)
 	return n, err == nil && n >= 1 && n <= 65535
+}
+
+// sshProbeTimeout is how long a port is given to answer, and then to show a banner.
+const sshProbeTimeout = 400 * time.Millisecond
+
+// answersAsSSH reports whether something on this host greets a connection to port with an SSH banner, which is how sshd shows
+// itself wherever it was told to listen: a socket unit, its command line, or a file that is not read here.
+func answersAsSSH(port int) bool {
+	dialer := net.Dialer{Timeout: sshProbeTimeout}
+	for _, host := range []string{"127.0.0.1", "::1"} {
+		conn, err := dialer.DialContext(context.Background(), "tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+		if err != nil {
+			continue
+		}
+		_ = conn.SetReadDeadline(time.Now().Add(sshProbeTimeout))
+		banner := make([]byte, 4)
+		n, _ := io.ReadFull(conn, banner)
+		_ = conn.Close()
+		if string(banner[:n]) == "SSH-" {
+			return true
+		}
+	}
+	return false
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/portguard"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/service"
 )
 
@@ -26,6 +27,7 @@ func fakeNftForCLI(t *testing.T, message string) (argsFile string) {
 		t.Fatalf("write the fake nft: %v", err)
 	}
 	t.Setenv("PATH", dir)
+	t.Cleanup(portguard.SetNftSearchDirs(nil))
 	return argsFile
 }
 
@@ -66,5 +68,24 @@ func TestOpenClosedPortsForgetsTheStateEvenWhenTheRulesCannotBeRemoved(t *testin
 	}
 	if state, _ := settings.GetPortGuardState(); state != "" {
 		t.Errorf("the stored state is %q, want it forgotten even then", state)
+	}
+}
+
+// A root shell entered with plain su has no /usr/sbin in its PATH on Debian; the command must not say the rules are gone when
+// it could not even look for them.
+func TestOpenClosedPortsDoesNotSayTheRulesAreGoneWhenNftCannotBeFound(t *testing.T) {
+	newTokenCLIEnv(t)
+	settings := service.SettingService{}
+	if err := settings.SetPortGuardState(`{"closed":[{"port":8443,"proto":"tcp"}]}`); err != nil {
+		t.Fatalf("SetPortGuardState: %v", err)
+	}
+	t.Setenv("PATH", t.TempDir())
+	t.Cleanup(portguard.SetNftSearchDirs(nil))
+
+	if err := openClosedPortsSetting(); err == nil {
+		t.Error("openClosedPortsSetting reported nothing wrong although it could not look for the rules")
+	}
+	if state, _ := settings.GetPortGuardState(); state != "" {
+		t.Errorf("the stored state is %q, want it forgotten even then: a restarted panel must not close the ports again", state)
 	}
 }
