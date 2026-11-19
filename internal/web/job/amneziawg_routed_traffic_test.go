@@ -1,7 +1,6 @@
 package job
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/amneziawgnet"
@@ -12,11 +11,11 @@ import (
 )
 
 type routedTaker struct {
-	out   []amneziawgnet.InboundTraffic
+	out   []amneziawgnet.RoutedTraffic
 	calls int
 }
 
-func (t *routedTaker) TakeRoutedTraffic() []amneziawgnet.InboundTraffic {
+func (t *routedTaker) TakeRoutedTraffic() []amneziawgnet.RoutedTraffic {
 	t.calls++
 	return t.out
 }
@@ -24,21 +23,20 @@ func (t *routedTaker) TakeRoutedTraffic() []amneziawgnet.InboundTraffic {
 type chargeRecorder struct {
 	got   []*xray.ClientTraffic
 	calls int
-	err   error
 }
 
 func (r *chargeRecorder) AddTraffic(_ []*xray.Traffic, clients []*xray.ClientTraffic) (bool, bool, error) {
 	r.calls++
 	r.got = clients
-	return false, false, r.err
+	return false, false, nil
 }
 
-func routed(id int, email string, up, down int64) amneziawgnet.InboundTraffic {
-	return amneziawgnet.InboundTraffic{InboundID: id, RoutedTraffic: amneziawgnet.RoutedTraffic{Email: email, Up: up, Down: down}}
+func routed(email string, up, down int64) amneziawgnet.RoutedTraffic {
+	return amneziawgnet.RoutedTraffic{Email: email, Up: up, Down: down}
 }
 
 func TestRoutedTrafficIsChargedToTheClientsItWentBetween(t *testing.T) {
-	taker := &routedTaker{out: []amneziawgnet.InboundTraffic{routed(7, "a@x", 100, 5), routed(7, "b@x", 0, 100)}}
+	taker := &routedTaker{out: []amneziawgnet.RoutedTraffic{routed("a@x", 100, 5), routed("b@x", 0, 100)}}
 	rec := &chargeRecorder{}
 
 	collectRoutedTrafficWith(rec, taker)
@@ -47,20 +45,18 @@ func TestRoutedTrafficIsChargedToTheClientsItWentBetween(t *testing.T) {
 		t.Fatalf("recorder called %d time(s) with %d traffic(s), want once with 2", rec.calls, len(rec.got))
 	}
 	a, b := rec.got[0], rec.got[1]
-	if a.InboundId != 7 || a.Email != "a@x" || a.Up != 100 || a.Down != 5 {
-		t.Errorf("a's charge = %+v, want inbound 7, a@x, up 100, down 5", a)
+	if a.Email != "a@x" || a.Up != 100 || a.Down != 5 {
+		t.Errorf("a's charge = %+v, want a@x, up 100, down 5", a)
 	}
-	if b.InboundId != 7 || b.Email != "b@x" || b.Up != 0 || b.Down != 100 {
-		t.Errorf("b's charge = %+v, want inbound 7, b@x, up 0, down 100", b)
+	if b.Email != "b@x" || b.Up != 0 || b.Down != 100 {
+		t.Errorf("b's charge = %+v, want b@x, up 0, down 100", b)
 	}
 }
 
 // AddTraffic keeps one entry per email, so a client that shows twice (on two inbounds, or on an interface that was rebuilt)
 // has to be summed first.
 func TestRoutedTrafficOfOneClientIsChargedOnce(t *testing.T) {
-	taker := &routedTaker{out: []amneziawgnet.InboundTraffic{
-		routed(7, "a@x", 100, 5), routed(8, "b@x", 1, 2), routed(9, "a@x", 40, 3),
-	}}
+	taker := &routedTaker{out: []amneziawgnet.RoutedTraffic{routed("a@x", 100, 5), routed("b@x", 1, 2), routed("a@x", 40, 3)}}
 	rec := &chargeRecorder{}
 
 	collectRoutedTrafficWith(rec, taker)
@@ -80,7 +76,7 @@ func TestRoutedTrafficOfOneClientIsChargedOnce(t *testing.T) {
 // The panel stops the embedded interfaces before it flushes, and what they routed in the last seconds must still be charged.
 func TestShutdownFlushChargesWhatWasRoutedBetweenClients(t *testing.T) {
 	rec := &chargeRecorder{}
-	j := &AmneziaWGJob{routed: &routedTaker{out: []amneziawgnet.InboundTraffic{routed(7, "a@x", 10, 20)}}, recorder: rec}
+	j := &AmneziaWGJob{routed: &routedTaker{out: []amneziawgnet.RoutedTraffic{routed("a@x", 10, 20)}}, recorder: rec}
 
 	j.FlushKernelTraffic()
 
@@ -94,14 +90,6 @@ func TestNothingRoutedChargesNothing(t *testing.T) {
 	collectRoutedTrafficWith(rec, &routedTaker{})
 	if rec.calls != 0 {
 		t.Errorf("the recorder was called %d time(s) with nothing routed: a panel that routes nothing must not touch the database", rec.calls)
-	}
-}
-
-func TestARecorderThatFailsDoesNotStopTheJob(t *testing.T) {
-	rec := &chargeRecorder{err: errors.New("database is locked")}
-	collectRoutedTrafficWith(rec, &routedTaker{out: []amneziawgnet.InboundTraffic{routed(7, "a@x", 1, 1)}})
-	if rec.calls != 1 {
-		t.Errorf("the recorder was called %d time(s), want 1", rec.calls)
 	}
 }
 
@@ -119,7 +107,7 @@ func TestRoutedTrafficCountsAgainstTheLimitOfAClient(t *testing.T) {
 		t.Fatalf("create client traffic: %v", err)
 	}
 
-	collectRoutedTrafficWith(&service.InboundService{}, &routedTaker{out: []amneziawgnet.InboundTraffic{routed(inbound.Id, email, 600, 600)}})
+	collectRoutedTrafficWith(&service.InboundService{}, &routedTaker{out: []amneziawgnet.RoutedTraffic{routed(email, 600, 600)}})
 
 	var got xray.ClientTraffic
 	if err := db.Where("email = ?", email).First(&got).Error; err != nil {

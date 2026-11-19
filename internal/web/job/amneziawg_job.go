@@ -61,7 +61,7 @@ func (j *AmneziaWGJob) Run() {
 
 // routedTrafficTaker is the embedded datapath, which counts what it carries between clients.
 type routedTrafficTaker interface {
-	TakeRoutedTraffic() []amneziawgnet.InboundTraffic
+	TakeRoutedTraffic() []amneziawgnet.RoutedTraffic
 }
 
 // trafficRecorder charges traffic to clients; the InboundService is one.
@@ -88,21 +88,12 @@ func collectRoutedTrafficWith(recorder trafficRecorder, taker routedTrafficTaker
 	if len(routed) == 0 {
 		return
 	}
-	// One entry per email: AddTraffic keeps only the last of several, and a client on two inbounds has one row of usage.
-	traffics := make([]*xray.ClientTraffic, 0, len(routed))
-	byEmail := make(map[string]*xray.ClientTraffic, len(routed))
+	clients := make(clientTrafficByEmail)
 	for _, r := range routed {
-		if t, ok := byEmail[r.Email]; ok {
-			t.Up += r.Up
-			t.Down += r.Down
-			continue
-		}
-		t := &xray.ClientTraffic{InboundId: r.InboundID, Email: r.Email, Up: r.Up, Down: r.Down}
-		byEmail[r.Email] = t
-		traffics = append(traffics, t)
+		clients.add(r.Email, r.Up, r.Down)
 	}
 	// A client that just crossed its limit is disabled here; the next reconcile tick drops its peer, which cuts it off.
-	if _, _, err := recorder.AddTraffic(nil, traffics); err != nil {
+	if _, _, err := recorder.AddTraffic(nil, clients.sortedRows()); err != nil {
 		logger.Warning("amneziawg job: recording the traffic routed between clients:", err)
 	}
 }

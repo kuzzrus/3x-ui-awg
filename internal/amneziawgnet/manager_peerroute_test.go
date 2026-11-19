@@ -149,26 +149,21 @@ func TestTakeRoutedTrafficGathersEveryInterfaceAndCountsFromNothing(t *testing.T
 		}
 	}
 
-	type key struct {
-		id    int
-		email string
-	}
-	got := map[key]RoutedTraffic{}
+	got := map[string]RoutedTraffic{}
 	for _, r := range m.TakeRoutedTraffic() {
-		got[key{r.InboundID, r.Email}] = r.RoutedTraffic
+		got[r.Email] = r
 	}
 	for _, want := range []struct {
-		id    int
 		email string
 		up    bool
-	}{{25, "a@x", true}, {25, "b@x", false}, {26, "c@x", true}, {26, "d@x", false}} {
-		r, ok := got[key{want.id, want.email}]
+	}{{"a@x", true}, {"b@x", false}, {"c@x", true}, {"d@x", false}} {
+		r, ok := got[want.email]
 		if !ok {
-			t.Errorf("nothing counted for %s on inbound %d: %+v", want.email, want.id, got)
+			t.Errorf("nothing counted for %s: %+v", want.email, got)
 			continue
 		}
 		if (want.up && r.Up == 0) || (!want.up && r.Down == 0) {
-			t.Errorf("%s on inbound %d = %+v, want its own direction counted", want.email, want.id, r)
+			t.Errorf("%s = %+v, want its own direction counted", want.email, r)
 		}
 	}
 	if again := m.TakeRoutedTraffic(); len(again) != 0 {
@@ -207,15 +202,15 @@ func TestRoutedTrafficOutlivesTheInterfaceThatCarriedIt(t *testing.T) {
 
 			c.drop(m, inst)
 
-			got := map[string]InboundTraffic{}
+			got := map[string]RoutedTraffic{}
 			for _, r := range m.TakeRoutedTraffic() {
 				got[r.Email] = r
 			}
-			if a := got["a@x"]; a.InboundID != 27 || a.Up == 0 {
-				t.Errorf("a@x = %+v, want what it sent on inbound 27", a)
+			if a := got["a@x"]; a.Up == 0 {
+				t.Errorf("a@x = %+v, want what it sent", a)
 			}
-			if b := got["b@x"]; b.InboundID != 27 || b.Down == 0 {
-				t.Errorf("b@x = %+v, want what it received on inbound 27", b)
+			if b := got["b@x"]; b.Down == 0 {
+				t.Errorf("b@x = %+v, want what it received", b)
 			}
 			if again := m.TakeRoutedTraffic(); len(again) != 0 {
 				t.Errorf("a second take = %+v, want nothing: what was handed over must not be handed over twice", again)

@@ -218,8 +218,8 @@ type ServerSettings struct {
 	// instead of the embedded amneziawg-go + gVisor stack.
 	KernelMode bool `json:"kernelMode,omitempty"`
 
-	// RouteBetweenClients lets the clients of the embedded datapath reach each other, and a network behind one (a CIDR after its
-	// tunnel address in its AllowedIPs); off, they stay apart. The kernel datapath routes between its peers anyway.
+	// RouteBetweenClients lets the clients of the embedded datapath reach each other, and a network behind one (an AllowedIPs
+	// entry besides its tunnel address); off, they stay apart. The kernel datapath routes between its peers anyway.
 	RouteBetweenClients bool `json:"routeBetweenClients,omitempty"`
 
 	// Obfuscation20's fields, repeated flat (not embedded) rather than

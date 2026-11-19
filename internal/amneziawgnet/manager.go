@@ -137,7 +137,7 @@ type Manager struct {
 	mu     sync.Mutex
 	ifaces map[int]*managed
 	// retired: what closed interfaces routed between clients, until TakeRoutedTraffic hands it over.
-	retired []InboundTraffic
+	retired []RoutedTraffic
 	// v6Owned: IPv6 aliases this Manager put on the host, the only ones it
 	// may delete again (see applyV6Aliases).
 	v6Owned map[v6Alias]struct{}
@@ -147,9 +147,7 @@ type Manager struct {
 // kept for the next one, so a removal, a rebuild or the panel's shutdown does not lose it.
 func (m *Manager) dropLocked(id int, cur *managed) {
 	cur.close()
-	for _, rt := range cur.dev.TakeRoutedTraffic() {
-		m.retired = append(m.retired, InboundTraffic{InboundID: id, RoutedTraffic: rt})
-	}
+	m.retired = append(m.retired, cur.dev.TakeRoutedTraffic()...)
 	delete(m.ifaces, id)
 }
 
@@ -405,23 +403,15 @@ func (m *Manager) Lookup(id int) (dev *Device, peers *PeerIndex, ok bool) {
 	return cur.dev, cur.peers.Load(), true
 }
 
-// InboundTraffic is what the routing between the clients of one inbound carried for one of them.
-type InboundTraffic struct {
-	InboundID int
-	RoutedTraffic
-}
-
 // TakeRoutedTraffic returns what the routing between clients has carried on every interface, closed ones included, since the
 // last call, and counts from nothing again: Xray never sees these packets, so the job that calls it charges them to the clients.
-func (m *Manager) TakeRoutedTraffic() []InboundTraffic {
+func (m *Manager) TakeRoutedTraffic() []RoutedTraffic {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := m.retired
 	m.retired = nil
-	for id, cur := range m.ifaces {
-		for _, rt := range cur.dev.TakeRoutedTraffic() {
-			out = append(out, InboundTraffic{InboundID: id, RoutedTraffic: rt})
-		}
+	for _, cur := range m.ifaces {
+		out = append(out, cur.dev.TakeRoutedTraffic()...)
 	}
 	return out
 }

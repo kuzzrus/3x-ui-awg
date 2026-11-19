@@ -1,6 +1,7 @@
 import type { HostEndpoint } from '@/lib/hosts/host-link';
 import { formatInboundLabel } from '@/lib/inbounds/label';
 import { effectiveMtu, preferPublicHost, resolveShareHost } from '@/lib/xray/inbound-link';
+import { tunnelAddressesText } from '@/lib/xray/amneziawg-tunnel-addresses';
 import { joinConfLines } from '@/lib/xray/conf-lines';
 import { AmneziaWGKeepAliveRangeSchema } from '@/schemas/primitives/keepalive';
 import type { ClientRecord, InboundOption } from '@/hooks/useClients';
@@ -52,7 +53,7 @@ export function buildAmneziaWGClientConfig(
   const endpointHost =
     hostEndpoint?.dest ||
     resolveShareHost(inbound ?? {}, inbound?.nodeAddress ?? '', preferPublicHost(host, publicHost));
-  const address = addressOverride || client.allowedIPs || '10.8.1.2/32';
+  const address = tunnelAddressesText(addressOverride || client.allowedIPs || '10.8.1.2/32');
   const endpoint = `${endpointHost}:${hostEndpoint?.port || inbound?.port || ''}`;
   const inboundName = inbound ? formatInboundLabel(inbound.tag, inbound.remark) : '';
   const remark = [inboundName, hostEndpoint?.remark, client.email, client.comment]

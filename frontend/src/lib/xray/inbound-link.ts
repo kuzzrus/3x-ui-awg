@@ -15,6 +15,7 @@ import type { XHttpStreamSettings } from '@/schemas/protocols/stream/xhttp';
 
 import { parseGeckoPacketSize } from '@/lib/xray/forms/transport/FinalMaskForm';
 import { UTLS_FINGERPRINT } from '@/schemas/primitives';
+import { tunnelAddresses } from './amneziawg-tunnel-addresses';
 import { hasWgQuickHook, joinConfLines } from './conf-lines';
 import { getHeaderValue } from './headers';
 import { canEnableTlsFlow } from './protocol-capabilities';
@@ -1193,7 +1194,7 @@ export function genAmneziaWGConfig(input: GenAmneziaWGLinkInput): string {
   const lines = [
     '[Interface]',
     `PrivateKey = ${client.privateKey ?? ''}`,
-    `Address = ${(client.allowedIPs ?? []).join(', ')}`,
+    `Address = ${tunnelAddresses(client.allowedIPs ?? []).join(', ')}`,
   ];
   const dns = [server.primaryDns, server.secondaryDns].filter((v) => !!v && v.trim() !== '');
   if (dns.length > 0) lines.push(`DNS = ${dns.join(', ')}`);

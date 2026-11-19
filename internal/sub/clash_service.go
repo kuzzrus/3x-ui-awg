@@ -770,9 +770,9 @@ func (s *SubClashService) buildTuicProxy(subReq *SubService, inbound *model.Inbo
 // a wireguard and an amneziawg inbound holds the other one's address.
 func amneziaWGClientAddresses(subReq *SubService, inbound *model.Inbound, client model.Client) []string {
 	if own, ok := subReq.clientForLink(inbound, client.Email); ok && len(own.AllowedIPs) > 0 {
-		return own.AllowedIPs
+		return amneziawg.TunnelAddresses(own.AllowedIPs)
 	}
-	return client.AllowedIPs
+	return amneziawg.TunnelAddresses(client.AllowedIPs)
 }
 
 // allBareIPs reports whether every entry is a plain IP address — no port,

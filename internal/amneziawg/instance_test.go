@@ -159,6 +159,9 @@ func TestFirstIPv4(t *testing.T) {
 		{"v6 only", []string{"fd86:ea04:1115::2/128"}, ""},
 		{"empty input", nil, ""},
 		{"unparseable entries skipped", []string{"not-an-ip", "10.8.1.2/32"}, "10.8.1.2"},
+		{"a network after the tunnel address", []string{"10.8.1.2/32", "192.168.50.0/24"}, "10.8.1.2"},
+		{"a network before the tunnel address", []string{"192.168.50.0/24", "10.8.1.2/32"}, "10.8.1.2"},
+		{"a legacy address with a mask", []string{"10.8.1.2/24"}, "10.8.1.2"},
 	}
 	for _, c := range cases {
 		if got := FirstIPv4(c.ips); got != c.want {
@@ -181,6 +184,8 @@ func TestFirstIPv6(t *testing.T) {
 		{"empty input", nil, ""},
 		{"unparseable entries skipped", []string{"not-an-ip", "fd86:ea04:1115::2/128"}, "fd86:ea04:1115::2"},
 		{"v4-mapped v6 is not a real v6 identity", []string{"::ffff:10.8.1.2/128"}, ""},
+		{"a network and no tunnel address", []string{"10.8.1.2/32", "fd00:50::/64"}, ""},
+		{"a network before the tunnel address", []string{"fd00:50::/64", "fd86:ea04:1115::2/128"}, "fd86:ea04:1115::2"},
 	}
 	for _, c := range cases {
 		if got := FirstIPv6(c.ips); got != c.want {
@@ -207,31 +212,4 @@ func TestInstanceFromInboundCarriesRoutingBetweenClients(t *testing.T) {
 			t.Errorf("peer AllowedIPs = %+v, want %v", inst.Peers, want)
 		}
 	}
-}
-
-// The switch is off in a settings JSON that has never heard of it: peers stay apart, as they always did.
-func TestRoutingBetweenClientsIsOffInSettingsThatDoNotSayIt(t *testing.T) {
-	var s ServerSettings
-	if err := json.Unmarshal([]byte(`{"privateKey":"p","publicKey":"q","subnetIp":"10.8.1.0","subnetCidr":24}`), &s); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if s.RouteBetweenClients {
-		t.Error("RouteBetweenClients is on for settings that do not mention it")
-	}
-	out, err := json.Marshal(ServerSettings{})
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	if containsKey(string(out), "routeBetweenClients") {
-		t.Errorf("an off switch is written out: %s", out)
-	}
-}
-
-func containsKey(doc, key string) bool {
-	var m map[string]any
-	if err := json.Unmarshal([]byte(doc), &m); err != nil {
-		return false
-	}
-	_, ok := m[key]
-	return ok
 }

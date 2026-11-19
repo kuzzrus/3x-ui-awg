@@ -5228,7 +5228,7 @@ export const SCHEMAS: Record<string, unknown> = {
         "type": "string"
       },
       "routeBetweenClients": {
-        "description": "RouteBetweenClients lets the clients of the embedded datapath reach each other, and a network behind one (a CIDR after its\ntunnel address in its AllowedIPs); off, they stay apart. The kernel datapath routes between its peers anyway.",
+        "description": "RouteBetweenClients lets the clients of the embedded datapath reach each other, and a network behind one (an AllowedIPs\nentry besides its tunnel address); off, they stay apart. The kernel datapath routes between its peers anyway.",
         "type": "boolean"
       },
       "routeThroughXray": {

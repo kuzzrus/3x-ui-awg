@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/amneziawg"
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
@@ -1167,8 +1168,8 @@ func tunnelInboundCount(inboundIds []int) (int64, error) {
 	return n, err
 }
 
-// addressesFitAmneziaWGInbound reports whether the tunnel addresses (the first IPv4 and IPv6 entry) lie in ib's own subnets, as
-// one inherited from elsewhere never connects; later entries are networks behind the client, which may lie anywhere.
+// addressesFitAmneziaWGInbound reports whether the client's tunnel addresses (see amneziawg.TunnelAddresses) lie in ib's own
+// subnets, as one inherited from elsewhere never connects; the networks behind the client may lie anywhere.
 func addressesFitAmneziaWGInbound(addrs []string, ib *model.Inbound) bool {
 	if ib.Protocol != model.AmneziaWG || len(addrs) == 0 {
 		return true
@@ -1188,20 +1189,17 @@ func addressesFitAmneziaWGInbound(addrs []string, ib *model.Inbound) bool {
 		}
 		bases = append(bases, prefix)
 	}
-	var seen4, seen6 bool
 	for _, a := range addrs {
-		host := wireguardHostAddr(a)
-		if !host.IsValid() {
+		if !wireguardHostAddr(a).IsValid() {
 			return false
 		}
-		seen := &seen6
-		if host.Is4() {
-			seen = &seen4
-		}
-		if *seen {
-			continue
-		}
-		*seen = true
+	}
+	tunnel := amneziawg.TunnelAddresses(addrs)
+	if len(tunnel) == 0 {
+		return false
+	}
+	for _, a := range tunnel {
+		host := wireguardHostAddr(a)
 		fits := false
 		for _, prefix := range bases {
 			if prefix.Contains(host) {

@@ -98,32 +98,47 @@ func TestAddressesFitAmneziaWGInbound(t *testing.T) {
 	}
 }
 
-// A network behind a client is listed after its tunnel address and lies outside the subnet: only the tunnel address
-// decides whether the list belongs to the inbound.
+// A network behind a client lies outside the subnet: only the tunnel addresses (see amneziawg.TunnelAddresses) decide whether
+// the list belongs to the inbound, wherever the networks stand in it.
 func TestAddressesFitAmneziaWGInboundLetsNetworksBehindAClientLieAnywhere(t *testing.T) {
 	setupConflictDB(t)
 	seedInboundConflict(t, "awg-lan", "0.0.0.0", 443, model.AmneziaWG, ``, `{"server":{"subnetIp":"10.8.1.0","subnetCidr":24},"clients":[]}`)
-	var awgInbound model.Inbound
-	if err := database.GetDB().Where("tag = ?", "awg-lan").First(&awgInbound).Error; err != nil {
-		t.Fatalf("read seeded awg row: %v", err)
+	seedInboundConflict(t, "awg-lan6", "0.0.0.0", 444, model.AmneziaWG, ``,
+		`{"server":{"subnetIp":"10.8.1.0","subnetCidr":24,"ipv6Enabled":true,"ipv6Subnet":"fd86:ea04:1115::/64"},"clients":[]}`)
+	inbounds := map[string]*model.Inbound{"IPv4 only": {}, "dual stack": {}}
+	for name, tag := range map[string]string{"IPv4 only": "awg-lan", "dual stack": "awg-lan6"} {
+		if err := database.GetDB().Where("tag = ?", tag).First(inbounds[name]).Error; err != nil {
+			t.Fatalf("read seeded %s row: %v", tag, err)
+		}
 	}
 
 	for _, tt := range []struct {
-		name  string
-		addrs []string
-		want  bool
+		name    string
+		inbound string
+		addrs   []string
+		want    bool
 	}{
-		{"a LAN after the tunnel address", []string{"10.8.1.21/32", "192.168.50.0/24"}, true},
-		{"several networks after the tunnel address", []string{"10.8.1.21/32", "192.168.50.0/24", "172.16.0.0/12"}, true},
-		{"a second address outside the subnet", []string{"10.8.1.21/32", "10.0.0.5/32"}, true},
-		{"the tunnel address is not first, the first one is foreign", []string{"192.168.50.0/24", "10.8.1.21/32"}, false},
-		{"a foreign tunnel address with a LAN after it", []string{"10.0.0.2/32", "192.168.50.0/24"}, false},
-		{"an entry that is not an address", []string{"10.8.1.21/32", "not-an-address"}, false},
-		{"an IPv6 address while the inbound has no IPv6 subnet", []string{"10.8.1.21/32", "fd00::21/128"}, false},
+		{"a LAN after the tunnel address", "IPv4 only", []string{"10.8.1.21/32", "192.168.50.0/24"}, true},
+		{"several networks after the tunnel address", "IPv4 only", []string{"10.8.1.21/32", "192.168.50.0/24", "172.16.0.0/12"}, true},
+		{"a LAN before the tunnel address", "IPv4 only", []string{"192.168.50.0/24", "10.8.1.21/32"}, true},
+		{"a second single host outside the subnet", "IPv4 only", []string{"10.8.1.21/32", "10.0.0.5/32"}, true},
+		{"default routes after the tunnel address", "IPv4 only", []string{"10.8.1.21/32", "0.0.0.0/0", "::/0"}, true},
+		{"a legacy address with a mask", "IPv4 only", []string{"10.8.1.21/24"}, true},
+		{"an IPv6 network behind an IPv4-only client", "IPv4 only", []string{"10.8.1.21/32", "fd00:50::/64"}, true},
+		{"a foreign tunnel address with a LAN after it", "IPv4 only", []string{"10.0.0.2/32", "192.168.50.0/24"}, false},
+		{"a LAN and no tunnel address", "IPv4 only", []string{"192.168.50.0/24"}, false},
+		{"an IPv6 network and no tunnel address", "IPv4 only", []string{"fd00:50::/64"}, false},
+		{"an entry that is not an address", "IPv4 only", []string{"10.8.1.21/32", "not-an-address"}, false},
+		{"an IPv6 address while the inbound has no IPv6 subnet", "IPv4 only", []string{"10.8.1.21/32", "fd00::21/128"}, false},
+		{"both tunnel addresses", "dual stack", []string{"10.8.1.21/32", "fd86:ea04:1115::21/128"}, true},
+		{"an IPv6 network and no IPv6 tunnel address", "dual stack", []string{"10.8.1.21/32", "fd00:50::/64"}, true},
+		{"a network in each family", "dual stack", []string{"10.8.1.21/32", "192.168.50.0/24", "fd86:ea04:1115::21/128", "fd00:50::/64"}, true},
+		{"an IPv6 tunnel address only", "dual stack", []string{"fd86:ea04:1115::21/128"}, true},
+		{"a foreign IPv6 tunnel address", "dual stack", []string{"10.8.1.21/32", "fd00::21/128"}, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := addressesFitAmneziaWGInbound(tt.addrs, &awgInbound); got != tt.want {
-				t.Errorf("addressesFitAmneziaWGInbound(%v) = %v, want %v", tt.addrs, got, tt.want)
+			if got := addressesFitAmneziaWGInbound(tt.addrs, inbounds[tt.inbound]); got != tt.want {
+				t.Errorf("addressesFitAmneziaWGInbound(%v) on the %s inbound = %v, want %v", tt.addrs, tt.inbound, got, tt.want)
 			}
 		})
 	}
