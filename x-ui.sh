@@ -304,6 +304,10 @@ uninstall() {
         systemctl reset-failed
     fi
 
+    # The rules of the closed-ports feature live in the kernel, not in the panel's files: an uninstall that left them would
+    # keep those ports closed until the next reboot.
+    PATH="$PATH:/usr/sbin:/sbin" nft delete table inet x_ui_portguard 2>/dev/null || true
+
     local panel_used_postgres="false"
     local db_env_file
     db_env_file="$(xui_env_file_path)"

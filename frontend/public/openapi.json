@@ -16702,6 +16702,277 @@
         }
       }
     },
+    "/panel/api/xray/portguard": {
+      "get": {
+        "tags": [
+          "Xray Settings"
+        ],
+        "summary": "Report the ports closed in the host firewall, the change that waits to be confirmed, the ports that can never be closed (the SSH ports and 443/tcp), and the ports of the panel, the subscription server and the enabled inbounds that could be closed.",
+        "operationId": "get_panel_api_xray_portguard",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "available": true,
+                    "closed": [
+                      {
+                        "port": 8443,
+                        "proto": "tcp"
+                      }
+                    ],
+                    "pending": {
+                      "deadlineMs": 1790000000000,
+                      "previous": []
+                    },
+                    "protected": [
+                      {
+                        "port": 22,
+                        "proto": "tcp"
+                      },
+                      {
+                        "port": 443,
+                        "proto": "tcp"
+                      }
+                    ],
+                    "candidates": [
+                      {
+                        "port": 8443,
+                        "proto": "tcp",
+                        "label": "cdn (vless)",
+                        "inboundId": 3,
+                        "viaFrontProxy": true,
+                        "loopback": false,
+                        "closed": true,
+                        "protected": false
+                      }
+                    ],
+                    "leaseSeconds": 120
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/xray/portguard/plan": {
+      "post": {
+        "tags": [
+          "Xray Settings"
+        ],
+        "summary": "Say what closing exactly these ports would do (the ports to close and to open, the ports that are refused, whether the change waits to be confirmed, and the nft script) and change nothing.",
+        "operationId": "post_panel_api_xray_portguard_plan",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ports": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Array of {port, proto} entries, proto tcp or udp: all the ports that are to be closed, so an empty array opens every one."
+                  }
+                },
+                "required": [
+                  "ports"
+                ]
+              },
+              "example": {
+                "ports": [
+                  {
+                    "port": 8443,
+                    "proto": "tcp"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "closed": [
+                      {
+                        "port": 8443,
+                        "proto": "tcp"
+                      }
+                    ],
+                    "close": [
+                      {
+                        "port": 8443,
+                        "proto": "tcp"
+                      }
+                    ],
+                    "open": [],
+                    "refused": [],
+                    "lease": true,
+                    "windowSeconds": 120,
+                    "ruleset": "add table inet x_ui_portguard\n..."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/xray/portguard/apply": {
+      "post": {
+        "tags": [
+          "Xray Settings"
+        ],
+        "summary": "Close exactly these ports in the host firewall: a drop rule for what a remote host begins towards them, including a connection it already has. A change that closes a port that was not closed before waits to be confirmed for 2 minutes and is rolled back if it is not; a change that only opens ports takes effect at once. The SSH ports and 443/tcp are refused. Answers with the same object as the status.",
+        "operationId": "post_panel_api_xray_portguard_apply",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ports": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Array of {port, proto} entries, proto tcp or udp: all the ports that are to be closed, so an empty array opens every one."
+                  }
+                },
+                "required": [
+                  "ports"
+                ]
+              },
+              "example": {
+                "ports": [
+                  {
+                    "port": 8443,
+                    "proto": "tcp"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/xray/portguard/confirm": {
+      "post": {
+        "tags": [
+          "Xray Settings"
+        ],
+        "summary": "Keep the change that waits to be confirmed. Call it from a connection that still reaches the panel: a port closed under the one the admin is on cuts that connection, and the change is rolled back after 2 minutes. Answers with the same object as the status.",
+        "operationId": "post_panel_api_xray_portguard_confirm",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/xray/portguard/rollback": {
+      "post": {
+        "tags": [
+          "Xray Settings"
+        ],
+        "summary": "Undo the change that waits to be confirmed at once, putting back the ports that were closed before it. Answers with the same object as the status.",
+        "operationId": "post_panel_api_xray_portguard_rollback",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/panel/api/xray/adguard/{action}": {
       "post": {
         "tags": [

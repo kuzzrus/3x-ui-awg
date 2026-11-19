@@ -2776,6 +2776,58 @@ export const sections: readonly Section[] = [
         response: '{\n  "success": true,\n  "msg": "Path routes saved"\n}',
       },
       {
+        method: 'GET',
+        path: '/panel/api/xray/portguard',
+        summary:
+          'Report the ports closed in the host firewall, the change that waits to be confirmed, the ports that can never be closed (the SSH ports and 443/tcp), and the ports of the panel, the subscription server and the enabled inbounds that could be closed.',
+        response:
+          '{\n  "success": true,\n  "obj": {\n    "available": true,\n    "closed": [{ "port": 8443, "proto": "tcp" }],\n    "pending": { "deadlineMs": 1790000000000, "previous": [] },\n    "protected": [{ "port": 22, "proto": "tcp" }, { "port": 443, "proto": "tcp" }],\n    "candidates": [\n      { "port": 8443, "proto": "tcp", "label": "cdn (vless)", "inboundId": 3, "viaFrontProxy": true, "loopback": false, "closed": true, "protected": false }\n    ],\n    "leaseSeconds": 120\n  }\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/xray/portguard/plan',
+        summary:
+          'Say what closing exactly these ports would do (the ports to close and to open, the ports that are refused, whether the change waits to be confirmed, and the nft script) and change nothing.',
+        params: [
+          {
+            name: 'ports',
+            in: 'body (json)',
+            type: 'object[]',
+            desc: 'Array of {port, proto} entries, proto tcp or udp: all the ports that are to be closed, so an empty array opens every one.',
+          },
+        ],
+        body: '{\n  "ports": [\n    { "port": 8443, "proto": "tcp" }\n  ]\n}',
+        response:
+          '{\n  "success": true,\n  "obj": {\n    "closed": [{ "port": 8443, "proto": "tcp" }],\n    "close": [{ "port": 8443, "proto": "tcp" }],\n    "open": [],\n    "refused": [],\n    "lease": true,\n    "windowSeconds": 120,\n    "ruleset": "add table inet x_ui_portguard\\n..."\n  }\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/xray/portguard/apply',
+        summary:
+          'Close exactly these ports in the host firewall: a drop rule for what a remote host begins towards them, including a connection it already has. A change that closes a port that was not closed before waits to be confirmed for 2 minutes and is rolled back if it is not; a change that only opens ports takes effect at once. The SSH ports and 443/tcp are refused. Answers with the same object as the status.',
+        params: [
+          {
+            name: 'ports',
+            in: 'body (json)',
+            type: 'object[]',
+            desc: 'Array of {port, proto} entries, proto tcp or udp: all the ports that are to be closed, so an empty array opens every one.',
+          },
+        ],
+        body: '{\n  "ports": [\n    { "port": 8443, "proto": "tcp" }\n  ]\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/xray/portguard/confirm',
+        summary:
+          'Keep the change that waits to be confirmed. Call it from a connection that still reaches the panel: a port closed under the one the admin is on cuts that connection, and the change is rolled back after 2 minutes. Answers with the same object as the status.',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/xray/portguard/rollback',
+        summary:
+          'Undo the change that waits to be confirmed at once, putting back the ports that were closed before it. Answers with the same object as the status.',
+      },
+      {
         method: 'POST',
         path: '/panel/api/xray/adguard/:action',
         summary:

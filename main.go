@@ -26,6 +26,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/crypto/nodetoken"
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
+	"github.com/mhsanaei/3x-ui/v3/internal/portguard"
 	"github.com/mhsanaei/3x-ui/v3/internal/sub"
 	"github.com/mhsanaei/3x-ui/v3/internal/tunnelmonitor"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/sys"
@@ -462,6 +463,33 @@ func disableFrontProxySetting() error {
 	return nil
 }
 
+// openClosedPortsSetting forgets the ports the panel closed in the firewall and removes its rules, so that it works over SSH
+// when a closed port has made the panel unreachable. The state goes first, so that a panel that restarts does not close them again.
+func openClosedPortsSetting() error {
+	if err := database.InitDB(config.GetDBPath()); err != nil {
+		fmt.Println("Database initialization failed:", err)
+		return err
+	}
+	if err := (&service.SettingService{}).SetPortGuardState(""); err != nil {
+		fmt.Println("Failed to forget the closed ports:", err)
+		return err
+	}
+	fw := portguard.NftFirewall{}
+	// Without nft there is no telling whether the rules are there, so it must not be said that they are gone.
+	if !fw.Installed() {
+		fmt.Println("The closed ports are forgotten, but nft was not found, so the rules could not be looked for.")
+		fmt.Println("If ports are still closed, remove the rules as root: nft delete table inet x_ui_portguard (nft is in /usr/sbin)")
+		return fmt.Errorf("nft was not found")
+	}
+	if err := fw.Remove(context.Background()); err != nil {
+		fmt.Println("The closed ports are forgotten, but the rules could not be removed:", err)
+		fmt.Println("Remove them by hand: nft delete table inet x_ui_portguard")
+		return err
+	}
+	fmt.Println("Every port the panel closed is open again.")
+	return nil
+}
+
 // updateCert updates the SSL certificate files for the panel.
 func updateCert(publicKey string, privateKey string) {
 	err := database.InitDB(config.GetDBPath())
@@ -663,6 +691,7 @@ func main() {
 	var tokenScope string
 	var resetTwoFactor bool
 	var disableFrontProxy bool
+	var openClosedPorts bool
 	settingCmd.BoolVar(&reset, "reset", false, "Reset all settings")
 	settingCmd.BoolVar(&show, "show", false, "Display current settings")
 	settingCmd.IntVar(&port, "port", 0, "Set panel port number")
@@ -672,6 +701,7 @@ func main() {
 	settingCmd.StringVar(&listenIP, "listenIP", "", "set panel listenIP IP")
 	settingCmd.BoolVar(&resetTwoFactor, "resetTwoFactor", false, "Reset two-factor authentication settings")
 	settingCmd.BoolVar(&disableFrontProxy, "disableFrontProxy", false, "Turn the built-in reverse proxy off (recovery path when it makes the panel unreachable)")
+	settingCmd.BoolVar(&openClosedPorts, "openClosedPorts", false, "Open every port the panel closed in the firewall (recovery path when a closed port makes the panel unreachable)")
 	settingCmd.BoolVar(&getListen, "getListen", false, "Display current panel listenIP IP")
 	settingCmd.BoolVar(&getCert, "getCert", false, "Display current certificate settings")
 	settingCmd.BoolVar(&getApiToken, "getApiToken", false, "Print an API token for CLI use, regenerating it and invalidating the previous one; on a panel with no tokens yet it mints one instead")
@@ -766,6 +796,11 @@ func main() {
 		}
 		if disableFrontProxy {
 			if err = disableFrontProxySetting(); err != nil {
+				return
+			}
+		}
+		if openClosedPorts {
+			if err = openClosedPortsSetting(); err != nil {
 				return
 			}
 		}

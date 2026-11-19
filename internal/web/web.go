@@ -319,6 +319,7 @@ const (
 	cadenceTuic          = "@every 10s"
 	cadenceTproxy        = "@every 10s"
 	cadenceNaiveProxy    = "@every 10s"
+	cadencePortGuard     = "@every 5s"
 	cadenceClientIPScan  = "@every 10s"
 	cadenceNodeHeartbeat = "@every 5s"
 	cadenceNodeTraffic   = "@every 5s"
@@ -380,6 +381,9 @@ func (s *Server) startTask(restartXray bool, loc *time.Location) {
 	naiveProxyJob := job.NewNaiveProxyJob()
 	_, _ = s.cron.AddJob(cadenceNaiveProxy, naiveProxyJob)
 	go naiveProxyJob.Run()
+
+	// Roll back a change of the closed ports that nobody confirmed within its lease
+	_, _ = s.cron.AddJob(cadencePortGuard, job.NewPortGuardJob())
 
 	// check client ips from log file every 10 sec
 	_, _ = s.cron.AddJob(cadenceClientIPScan, job.NewCheckClientIpJob())
@@ -601,6 +605,9 @@ func (s *Server) start(restartXray bool, startTgBot bool) (err error) {
 	// Same shape for the reverse proxy. AutoStart never returns an error: a
 	// proxy that cannot come up must not stop the panel itself from starting.
 	(&integration.FrontProxyService{}).AutoStart()
+
+	// The kernel forgets the closed ports at a reboot, so put them back (or roll back a change nobody confirmed).
+	service.PortGuard().Restore(context.Background())
 
 	// Wire the inbound-runtime manager once so InboundService can route
 	// add/update/delete to either the local xray or a remote node panel.

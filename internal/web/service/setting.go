@@ -1495,6 +1495,23 @@ func (s *SettingService) SetPsiphonRegionsConnected(value string) error {
 	return s.setString("psiphonRegionsConnected", value)
 }
 
+// GetPortGuardState returns the stored JSON of the ports closed in the firewall and of the change that waits to be confirmed, ""
+// when none was stored. The PortGuardService reads and writes it; the setting only keeps it.
+func (s *SettingService) GetPortGuardState() (string, error) {
+	setting, err := s.getSetting("portGuardState")
+	if database.IsNotFound(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return setting.Value, nil
+}
+
+func (s *SettingService) SetPortGuardState(value string) error {
+	return s.setString("portGuardState", value)
+}
+
 // GetPsiphonScanWeekly reports whether the scan of every Psiphon region is to start by itself once a week, false when it was
 // never switched on.
 func (s *SettingService) GetPsiphonScanWeekly() (bool, error) {
