@@ -5227,6 +5227,10 @@ export const SCHEMAS: Record<string, unknown> = {
       "rekeyTimeout": {
         "type": "string"
       },
+      "routeBetweenClients": {
+        "description": "RouteBetweenClients lets the clients of the embedded datapath reach each other, and a network that lies behind one of them\n(a CIDR in that client's AllowedIPs after its tunnel address); off, they stay apart, as they always did. The kernel\ndatapath routes between its peers by itself, so it has nothing to switch.",
+        "type": "boolean"
+      },
       "routeThroughXray": {
         "type": "boolean"
       },

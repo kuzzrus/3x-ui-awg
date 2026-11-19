@@ -1,6 +1,8 @@
 package service
 
 import (
+	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
@@ -74,6 +76,34 @@ func TestUpdateBroadcastAllowedIPsDoesNotOverwriteOtherInboundWhenMismatched(t *
 	}
 	if got := inboundAllowedIPs(t, inboundSvc, awgIb.Id, "dual@x"); len(got) != 1 || got[0] != "10.8.1.5/32" {
 		t.Fatalf("the real bug: awg AllowedIPs = %v, want unchanged [10.8.1.5/32] (must not inherit the wg-labeled shared value)", got)
+	}
+}
+
+// A client edit that lists a network behind the client after its tunnel address must keep that network: the form sends the
+// one shared field, and the subnet check used to clear the whole list because the network lies outside the inbound's subnet.
+func TestUpdateKeepsANetworkBehindAnAmneziaWGClient(t *testing.T) {
+	setupBulkDB(t)
+	inboundSvc := &InboundService{}
+	svc := &ClientService{}
+
+	client := model.Client{Email: "gateway@x", SubID: "sub-gateway", Enable: true, AllowedIPs: []string{"10.8.1.5/32"}}
+	clientJSON, err := json.Marshal([]model.Client{client})
+	if err != nil {
+		t.Fatalf("marshal client: %v", err)
+	}
+	awgIb := mkInbound(t, 443, model.AmneziaWG, `{"server":{"subnetIp":"10.8.1.0","subnetCidr":24},"clients":`+string(clientJSON)+`}`)
+	if err := svc.SyncInbound(nil, awgIb.Id, []model.Client{client}); err != nil {
+		t.Fatalf("seed linkage: %v", err)
+	}
+	recId := lookupClientRecord(t, "gateway@x").Id
+
+	want := []string{"10.8.1.5/32", "192.168.50.0/24"}
+	updated := model.Client{Email: "gateway@x", Enable: true, AllowedIPs: want}
+	if _, err := svc.Update(inboundSvc, recId, updated, 0); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if got := inboundAllowedIPs(t, inboundSvc, awgIb.Id, "gateway@x"); !slices.Equal(got, want) {
+		t.Fatalf("AllowedIPs = %v, want %v: the network behind the client was dropped by the edit", got, want)
 	}
 }
 

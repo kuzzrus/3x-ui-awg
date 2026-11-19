@@ -58,6 +58,19 @@ type managed struct {
 	uapiConfig string
 }
 
+// publishPeers makes inst's peers the live ones: for the TCP and UDP handlers, and, when the inbound routes between its clients,
+// for the device that carries a packet from one peer to another. It returns the index it replaced.
+func (m *managed) publishPeers(inst amneziawg.Instance) *PeerIndex {
+	idx := NewPeerIndex(inst.Peers)
+	before := m.peers.Swap(idx)
+	if inst.RouteBetweenClients {
+		m.dev.SetPeerRouting(idx)
+	} else {
+		m.dev.SetPeerRouting(nil)
+	}
+	return before
+}
+
 func (m *managed) lookupPeer(addr netip.Addr) (amneziawg.Peer, bool) {
 	peers := m.peers.Load()
 	if peers == nil {
@@ -123,9 +136,21 @@ func (m *managed) close() {
 type Manager struct {
 	mu     sync.Mutex
 	ifaces map[int]*managed
+	// retired: what closed interfaces routed between clients, until TakeRoutedTraffic hands it over.
+	retired []InboundTraffic
 	// v6Owned: IPv6 aliases this Manager put on the host, the only ones it
 	// may delete again (see applyV6Aliases).
 	v6Owned map[v6Alias]struct{}
+}
+
+// dropLocked closes inbound id's interface and forgets it. What it routed between clients since the last TakeRoutedTraffic is
+// kept for the next one, so a removal, a rebuild or the panel's shutdown does not lose it.
+func (m *Manager) dropLocked(id int, cur *managed) {
+	cur.close()
+	for _, rt := range cur.dev.TakeRoutedTraffic() {
+		m.retired = append(m.retired, InboundTraffic{InboundID: id, RoutedTraffic: rt})
+	}
+	delete(m.ifaces, id)
 }
 
 var (
@@ -200,7 +225,7 @@ func (m *Manager) ensureLocked(d Desired) error {
 		// buildUAPIConfig actually reads, the way a hand-maintained field
 		// list could.
 		if conf == cur.uapiConfig {
-			cur.peers.Store(NewPeerIndex(inst.Peers))
+			cur.publishPeers(inst)
 			cur.inst = inst
 			m.applyV6Aliases(diffV6Aliases(oldInst, inst))
 			// buildUAPIConfig never reads ForwardedPorts (it's a panel-level
@@ -216,7 +241,7 @@ func (m *Manager) ensureLocked(d Desired) error {
 		if err := cur.dev.IpcSet(conf); err != nil {
 			return fmt.Errorf("amneziawgnet: reconfigure inbound %d: %w", inst.Id, err)
 		}
-		oldPeers := cur.peers.Swap(NewPeerIndex(inst.Peers))
+		oldPeers := cur.publishPeers(inst)
 		cur.inst = inst
 		cur.uapiConfig = conf
 		m.applyV6Aliases(diffV6Aliases(oldInst, inst))
@@ -226,8 +251,7 @@ func (m *Manager) ensureLocked(d Desired) error {
 	}
 
 	if exists {
-		cur.close()
-		delete(m.ifaces, inst.Id)
+		m.dropLocked(inst.Id, cur)
 	}
 	dev, err := newUnconfiguredDevice(inst, opts)
 	if err != nil {
@@ -244,7 +268,7 @@ func (m *Manager) ensureLocked(d Desired) error {
 		inst:         inst,
 		structFP:     structFP,
 	}
-	next.peers.Store(NewPeerIndex(inst.Peers))
+	next.publishPeers(inst)
 	AttachTCPForwarder(dev.Stack, next.peerEmail, func(conn *gonet.TCPConn, src, dest netip.AddrPort) {
 		// Reload for every connection: in-place reconfiguration swaps the peer
 		// index without reattaching handlers and may hold the lifecycle lock.
@@ -326,8 +350,7 @@ func (m *Manager) Reconcile(desired []Desired) {
 			continue
 		}
 		m.applyV6Aliases(diffV6Aliases(cur.inst, amneziawg.Instance{}))
-		cur.close()
-		delete(m.ifaces, id)
+		m.dropLocked(id, cur)
 		logger.Infof("amneziawgnet: stopped embedded interface for removed inbound %d", id)
 	}
 	for _, d := range desired {
@@ -349,8 +372,7 @@ func (m *Manager) Remove(id int) {
 		return
 	}
 	m.applyV6Aliases(diffV6Aliases(cur.inst, amneziawg.Instance{}))
-	cur.close()
-	delete(m.ifaces, id)
+	m.dropLocked(id, cur)
 	logger.Infof("amneziawgnet: stopped embedded interface for removed inbound %d", id)
 }
 
@@ -360,8 +382,7 @@ func (m *Manager) StopAll() {
 	defer m.mu.Unlock()
 	for id, cur := range m.ifaces {
 		m.applyV6Aliases(diffV6Aliases(cur.inst, amneziawg.Instance{}))
-		cur.close()
-		delete(m.ifaces, id)
+		m.dropLocked(id, cur)
 	}
 }
 
@@ -382,4 +403,25 @@ func (m *Manager) Lookup(id int) (dev *Device, peers *PeerIndex, ok bool) {
 		return nil, nil, false
 	}
 	return cur.dev, cur.peers.Load(), true
+}
+
+// InboundTraffic is what the routing between the clients of one inbound carried for one of them.
+type InboundTraffic struct {
+	InboundID int
+	RoutedTraffic
+}
+
+// TakeRoutedTraffic returns what the routing between clients has carried on every interface, closed ones included, since the
+// last call, and counts from nothing again: Xray never sees these packets, so the job that calls it charges them to the clients.
+func (m *Manager) TakeRoutedTraffic() []InboundTraffic {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := m.retired
+	m.retired = nil
+	for id, cur := range m.ifaces {
+		for _, rt := range cur.dev.TakeRoutedTraffic() {
+			out = append(out, InboundTraffic{InboundID: id, RoutedTraffic: rt})
+		}
+	}
+	return out
 }

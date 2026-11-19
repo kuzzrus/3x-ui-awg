@@ -74,6 +74,7 @@ func InstanceFromInbound(ib *model.Inbound) (Instance, bool) {
 		IPv6ExternalInterface:  server.IPv6ExternalInterface,
 		RouteThroughXray:       server.RouteThroughXray,
 		KernelMode:             server.KernelMode,
+		RouteBetweenClients:    server.RouteBetweenClients,
 	}, true
 }
 

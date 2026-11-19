@@ -98,6 +98,37 @@ func TestAddressesFitAmneziaWGInbound(t *testing.T) {
 	}
 }
 
+// A network behind a client is listed after its tunnel address and lies outside the subnet: only the tunnel address
+// decides whether the list belongs to the inbound.
+func TestAddressesFitAmneziaWGInboundLetsNetworksBehindAClientLieAnywhere(t *testing.T) {
+	setupConflictDB(t)
+	seedInboundConflict(t, "awg-lan", "0.0.0.0", 443, model.AmneziaWG, ``, `{"server":{"subnetIp":"10.8.1.0","subnetCidr":24},"clients":[]}`)
+	var awgInbound model.Inbound
+	if err := database.GetDB().Where("tag = ?", "awg-lan").First(&awgInbound).Error; err != nil {
+		t.Fatalf("read seeded awg row: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name  string
+		addrs []string
+		want  bool
+	}{
+		{"a LAN after the tunnel address", []string{"10.8.1.21/32", "192.168.50.0/24"}, true},
+		{"several networks after the tunnel address", []string{"10.8.1.21/32", "192.168.50.0/24", "172.16.0.0/12"}, true},
+		{"a second address outside the subnet", []string{"10.8.1.21/32", "10.0.0.5/32"}, true},
+		{"the tunnel address is not first, the first one is foreign", []string{"192.168.50.0/24", "10.8.1.21/32"}, false},
+		{"a foreign tunnel address with a LAN after it", []string{"10.0.0.2/32", "192.168.50.0/24"}, false},
+		{"an entry that is not an address", []string{"10.8.1.21/32", "not-an-address"}, false},
+		{"an IPv6 address while the inbound has no IPv6 subnet", []string{"10.8.1.21/32", "fd00::21/128"}, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := addressesFitAmneziaWGInbound(tt.addrs, &awgInbound); got != tt.want {
+				t.Errorf("addressesFitAmneziaWGInbound(%v) = %v, want %v", tt.addrs, got, tt.want)
+			}
+		})
+	}
+}
+
 // A /0 reported by a node contains every address of the target inbound, and its
 // host bits are what the AmneziaWG forwarder reads as the peer's address, so
 // Attach refuses it next to another client exactly as it refuses the /32.

@@ -188,3 +188,50 @@ func TestFirstIPv6(t *testing.T) {
 		}
 	}
 }
+
+func TestInstanceFromInboundCarriesRoutingBetweenClients(t *testing.T) {
+	clients := []model.Client{{Email: "a@x", Enable: true, PublicKey: "pubA", AllowedIPs: []string{"10.8.1.2/32", "192.168.50.0/24"}}}
+	for _, on := range []bool{false, true} {
+		server := validServer()
+		server.RouteBetweenClients = on
+		ib := &model.Inbound{Id: 7, Protocol: model.AmneziaWG, Port: 51820, Settings: mkInboundSettings(t, server, clients)}
+		inst, ok := InstanceFromInbound(ib)
+		if !ok {
+			t.Fatal("expected a usable instance")
+		}
+		if inst.RouteBetweenClients != on {
+			t.Errorf("RouteBetweenClients = %v, want %v as set in the server block", inst.RouteBetweenClients, on)
+		}
+		// A network behind a client rides in its AllowedIPs, after the tunnel address that names the client.
+		if want := []string{"10.8.1.2/32", "192.168.50.0/24"}; len(inst.Peers) != 1 || len(inst.Peers[0].AllowedIPs) != 2 || inst.Peers[0].AllowedIPs[1] != want[1] {
+			t.Errorf("peer AllowedIPs = %+v, want %v", inst.Peers, want)
+		}
+	}
+}
+
+// The switch is off in a settings JSON that has never heard of it: peers stay apart, as they always did.
+func TestRoutingBetweenClientsIsOffInSettingsThatDoNotSayIt(t *testing.T) {
+	var s ServerSettings
+	if err := json.Unmarshal([]byte(`{"privateKey":"p","publicKey":"q","subnetIp":"10.8.1.0","subnetCidr":24}`), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if s.RouteBetweenClients {
+		t.Error("RouteBetweenClients is on for settings that do not mention it")
+	}
+	out, err := json.Marshal(ServerSettings{})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if containsKey(string(out), "routeBetweenClients") {
+		t.Errorf("an off switch is written out: %s", out)
+	}
+}
+
+func containsKey(doc, key string) bool {
+	var m map[string]any
+	if err := json.Unmarshal([]byte(doc), &m); err != nil {
+		return false
+	}
+	_, ok := m[key]
+	return ok
+}

@@ -1167,11 +1167,8 @@ func tunnelInboundCount(inboundIds []int) (int64, error) {
 	return n, err
 }
 
-// addressesFitAmneziaWGInbound reports whether every entry in addrs falls
-// inside ib's own configured subnet(s). AmneziaWG only: its kernel interface
-// Address is exactly that subnet, so an address inherited from elsewhere (an
-// identity attached to a WireGuard inbound first, say) produces a peer that
-// can never connect -- Attach allocates fresh instead.
+// addressesFitAmneziaWGInbound reports whether the tunnel addresses (the first IPv4 and IPv6 entry) lie in ib's own subnets, as
+// one inherited from elsewhere never connects; later entries are networks behind the client, which may lie anywhere.
 func addressesFitAmneziaWGInbound(addrs []string, ib *model.Inbound) bool {
 	if ib.Protocol != model.AmneziaWG || len(addrs) == 0 {
 		return true
@@ -1191,11 +1188,20 @@ func addressesFitAmneziaWGInbound(addrs []string, ib *model.Inbound) bool {
 		}
 		bases = append(bases, prefix)
 	}
+	var seen4, seen6 bool
 	for _, a := range addrs {
 		host := wireguardHostAddr(a)
 		if !host.IsValid() {
 			return false
 		}
+		seen := &seen6
+		if host.Is4() {
+			seen = &seen4
+		}
+		if *seen {
+			continue
+		}
+		*seen = true
 		fits := false
 		for _, prefix := range bases {
 			if prefix.Contains(host) {
