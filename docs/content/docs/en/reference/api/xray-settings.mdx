@@ -105,10 +105,11 @@ _openapi:
       url: '#replace-the-entire-panel-wide-path-route-list-body-is-json-reloads-the-running-reverse-proxy-does-not-touch-or-restart-xray'
     - depth: 2
       title: Report the ports closed in the host firewall, the change that waits to be
-        confirmed, the ports that can never be closed (the SSH ports and
+        confirmed (its deadline, and remainingMs, what is left of the lease by
+        the host's clock), the ports that can never be closed (the SSH ports and
         443/tcp), and the ports of the panel, the subscription server and the
         enabled inbounds that could be closed.
-      url: '#report-the-ports-closed-in-the-host-firewall-the-change-that-waits-to-be-confirmed-the-ports-that-can-never-be-closed-the-ssh-ports-and-443tcp-and-the-ports-of-the-panel-the-subscription-server-and-the-enabled-inbounds-that-could-be-closed'
+      url: '#report-the-ports-closed-in-the-host-firewall-the-change-that-waits-to-be-confirmed-its-deadline-and-remainingms-what-is-left-of-the-lease-by-the-hosts-clock-the-ports-that-can-never-be-closed-the-ssh-ports-and-443tcp-and-the-ports-of-the-panel-the-subscription-server-and-the-enabled-inbounds-that-could-be-closed'
     - depth: 2
       title: Say what closing exactly these ports would do (the ports to close and to
         open, the ports that are refused, whether the change waits to be
@@ -296,10 +297,11 @@ _openapi:
           the running reverse proxy (does not touch or restart Xray).
         id: replace-the-entire-panel-wide-path-route-list-body-is-json-reloads-the-running-reverse-proxy-does-not-touch-or-restart-xray
       - content: Report the ports closed in the host firewall, the change that waits to
-          be confirmed, the ports that can never be closed (the SSH ports and
-          443/tcp), and the ports of the panel, the subscription server and the
-          enabled inbounds that could be closed.
-        id: report-the-ports-closed-in-the-host-firewall-the-change-that-waits-to-be-confirmed-the-ports-that-can-never-be-closed-the-ssh-ports-and-443tcp-and-the-ports-of-the-panel-the-subscription-server-and-the-enabled-inbounds-that-could-be-closed
+          be confirmed (its deadline, and remainingMs, what is left of the lease
+          by the host's clock), the ports that can never be closed (the SSH
+          ports and 443/tcp), and the ports of the panel, the subscription
+          server and the enabled inbounds that could be closed.
+        id: report-the-ports-closed-in-the-host-firewall-the-change-that-waits-to-be-confirmed-its-deadline-and-remainingms-what-is-left-of-the-lease-by-the-hosts-clock-the-ports-that-can-never-be-closed-the-ssh-ports-and-443tcp-and-the-ports-of-the-panel-the-subscription-server-and-the-enabled-inbounds-that-could-be-closed
       - content: Say what closing exactly these ports would do (the ports to close and
           to open, the ports that are refused, whether the change waits to be
           confirmed, and the nft script) and change nothing.

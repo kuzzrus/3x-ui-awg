@@ -16707,7 +16707,7 @@
         "tags": [
           "Xray Settings"
         ],
-        "summary": "Report the ports closed in the host firewall, the change that waits to be confirmed, the ports that can never be closed (the SSH ports and 443/tcp), and the ports of the panel, the subscription server and the enabled inbounds that could be closed.",
+        "summary": "Report the ports closed in the host firewall, the change that waits to be confirmed (its deadline, and remainingMs, what is left of the lease by the host's clock), the ports that can never be closed (the SSH ports and 443/tcp), and the ports of the panel, the subscription server and the enabled inbounds that could be closed.",
         "operationId": "get_panel_api_xray_portguard",
         "responses": {
           "200": {
@@ -16738,6 +16738,7 @@
                     ],
                     "pending": {
                       "deadlineMs": 1790000000000,
+                      "remainingMs": 90000,
                       "previous": []
                     },
                     "protected": [

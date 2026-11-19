@@ -80,8 +80,11 @@ type PortGuardCandidate struct {
 
 // PortGuardPending is a change of the closed ports that waits to be confirmed.
 type PortGuardPending struct {
-	DeadlineMs int64            `json:"deadlineMs"`
-	Previous   []portguard.Port `json:"previous"`
+	DeadlineMs int64 `json:"deadlineMs"`
+	// RemainingMs is what is left of the lease by the host's clock when the status is made: a browser whose clock differs from the
+	// host's counts down from it, not from the deadline.
+	RemainingMs int64            `json:"remainingMs"`
+	Previous    []portguard.Port `json:"previous"`
 }
 
 // PortGuardStatus is what the page of the closed ports shows.
@@ -118,7 +121,11 @@ func (s *PortGuardService) Status() (PortGuardStatus, error) {
 		LeaseSeconds: int(portguard.LeaseWindow / time.Second),
 	}
 	if st.Pending != nil {
-		out.Pending = &PortGuardPending{DeadlineMs: st.Pending.Deadline.UnixMilli(), Previous: nonNil(st.Pending.Previous)}
+		out.Pending = &PortGuardPending{
+			DeadlineMs:  st.Pending.Deadline.UnixMilli(),
+			RemainingMs: max(0, time.Until(st.Pending.Deadline).Milliseconds()),
+			Previous:    nonNil(st.Pending.Previous),
+		}
 	}
 	return out, nil
 }
