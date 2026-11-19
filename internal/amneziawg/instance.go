@@ -74,6 +74,7 @@ func InstanceFromInbound(ib *model.Inbound) (Instance, bool) {
 		IPv6ExternalInterface:  server.IPv6ExternalInterface,
 		RouteThroughXray:       server.RouteThroughXray,
 		KernelMode:             server.KernelMode,
+		RouteBetweenClients:    server.RouteBetweenClients,
 	}, true
 }
 
@@ -124,43 +125,23 @@ func serverAddressV6(subnetCIDR string) (addr string, ok bool) {
 	return fmt.Sprintf("%s/%d", host, prefix.Bits()), true
 }
 
-// FirstIPv4 returns the first IPv4 address (mask stripped) among allowedIPs,
-// or "" if none — used by internal/web/service/server.go's
-// amneziawgEmailIndex to derive a peer's tunnel IPv4 address for the panel's
-// access-log viewer.
+// FirstIPv4 is the IPv4 tunnel address of a client (mask stripped), "" if none; see TunnelAddresses. Port forwards, the access-log
+// viewer and the IPv6 alias read a peer's identity from it.
 func FirstIPv4(allowedIPs []string) string {
-	for _, a := range allowedIPs {
-		if prefix, err := netip.ParsePrefix(a); err == nil {
-			if prefix.Addr().Is4() {
-				return prefix.Addr().String()
-			}
-			continue
-		}
-		if addr, err := netip.ParseAddr(a); err == nil && addr.Is4() {
-			return addr.String()
+	for _, a := range TunnelAddresses(allowedIPs) {
+		if prefix, ok := parseAllowedIP(a); ok && prefix.Addr().Is4() {
+			return prefix.Addr().String()
 		}
 	}
 	return ""
 }
 
-// FirstIPv6 returns the first IPv6 address (mask stripped) among allowedIPs,
-// or "" if none — the IPv6 counterpart of FirstIPv4, used by
-// internal/amneziawgnet's IPv6-address-alias mechanism to find which
-// address, if any, a peer wants aliased onto the host, and by
-// internal/web/service/xray.go's injectAmneziawgV6Egress to build that
-// peer's own freedom outbound (sendThrough). Only the first match is
-// returned, exactly like FirstIPv4 — more than one IPv6 AllowedIPs entry
-// per peer is not a supported configuration for either feature.
+// FirstIPv6 is the IPv6 counterpart of FirstIPv4; the host alias and a peer's own freedom outbound (sendThrough) are built from
+// it, so a network behind the client must never be taken for it.
 func FirstIPv6(allowedIPs []string) string {
-	for _, a := range allowedIPs {
-		if prefix, err := netip.ParsePrefix(a); err == nil {
-			if prefix.Addr().Is6() && !prefix.Addr().Is4In6() {
-				return prefix.Addr().String()
-			}
-			continue
-		}
-		if addr, err := netip.ParseAddr(a); err == nil && addr.Is6() && !addr.Is4In6() {
-			return addr.String()
+	for _, a := range TunnelAddresses(allowedIPs) {
+		if prefix, ok := parseAllowedIP(a); ok && !prefix.Addr().Is4() {
+			return prefix.Addr().String()
 		}
 	}
 	return ""

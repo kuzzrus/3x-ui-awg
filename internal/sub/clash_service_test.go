@@ -1416,6 +1416,46 @@ func TestBuildAmneziaWGProxyForClashPerInboundAddress(t *testing.T) {
 	}
 }
 
+// A network behind a client is in its AllowedIPs too, and must not become the ip or ipv6 of its own interface: mihomo would
+// take the last of them, and the client would lose its tunnel address.
+func TestBuildAmneziaWGProxyForClashKeepsTheTunnelAddressWhenANetworkIsBehindTheClient(t *testing.T) {
+	serverPriv, serverPub, err := wgutil.GenerateWireguardKeypair()
+	if err != nil {
+		t.Fatalf("server keypair: %v", err)
+	}
+	clientPriv, clientPub, err := wgutil.GenerateWireguardKeypair()
+	if err != nil {
+		t.Fatalf("client keypair: %v", err)
+	}
+	for _, c := range []struct {
+		name     string
+		ips      string
+		ip, ipv6 any
+	}{
+		{"a network after the address", `["10.8.1.5/32","192.168.50.0/24"]`, "10.8.1.5", nil},
+		{"a network before the address", `["192.168.50.0/24","10.8.1.5/32"]`, "10.8.1.5", nil},
+		{"an IPv6 network and no IPv6 address", `["10.8.1.5/32","fd00:50::/64"]`, "10.8.1.5", nil},
+		{"a network in each family", `["10.8.1.5/32","192.168.50.0/24","fd00::5/128","fd00:50::/64"]`, "10.8.1.5", "fd00::5"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			settings := `{"server":{"privateKey":"` + serverPriv + `","publicKey":"` + serverPub +
+				`","jc":3,"jmin":66,"jmax":150},"clients":[{"email":"gw@x","publicKey":"` + clientPub +
+				`","allowedIPs":` + c.ips + `,"enable":true}]}`
+			svc := &SubClashService{SubService: &SubService{}}
+			inbound := &model.Inbound{Listen: "203.0.113.7", Port: 51820, Protocol: model.AmneziaWG, Settings: settings}
+			client := model.Client{Email: "gw@x", PrivateKey: clientPriv, AllowedIPs: []string{"10.8.1.5/32"}}
+
+			proxy := svc.buildProxy(svc.SubService, inbound, client, nil, nil)
+			if proxy == nil {
+				t.Fatal("buildProxy returned nil for a valid amneziawg client")
+			}
+			if proxy["ip"] != c.ip || proxy["ipv6"] != c.ipv6 {
+				t.Errorf("ip = %v, ipv6 = %v, want %v and %v", proxy["ip"], proxy["ipv6"], c.ip, c.ipv6)
+			}
+		})
+	}
+}
+
 // TestBuildAmneziaWGProxyForClashFallsBackToClientAddress covers an inbound
 // whose settings.clients[] has no entry for this email: the shared column is
 // then the only address there is.

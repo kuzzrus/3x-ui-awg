@@ -418,6 +418,7 @@ export function createDefaultAmneziawgInboundSettings(): AmneziawgInboundSetting
       maxHandshakeAttempts: '',
       randomTrailers: false,
       disableCookies: false,
+      routeBetweenClients: false,
     },
     clients: [],
   };

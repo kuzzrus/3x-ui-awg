@@ -1164,7 +1164,7 @@ func amneziaWGConfigText(server *amneziawg.ServerSettings, client *model.Client,
 	lines := []string{
 		"[Interface]",
 		"PrivateKey = " + client.PrivateKey,
-		"Address = " + strings.Join(client.AllowedIPs, ", "),
+		"Address = " + strings.Join(amneziawg.TunnelAddresses(client.AllowedIPs), ", "),
 	}
 
 	var dns []string

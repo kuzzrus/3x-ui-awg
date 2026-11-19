@@ -46,12 +46,26 @@ func NewPeerIndex(peers []amneziawg.Peer) *PeerIndex {
 // reverse to attribute an inbound (tunnel-internal-source) packet back to
 // its owning peer.
 func (idx *PeerIndex) Lookup(addr netip.Addr) (amneziawg.Peer, bool) {
+	return idx.lookup(addr, 0)
+}
+
+// minRoutedBits is the shortest prefix that can be a network behind a client: a shorter one (0.0.0.0/0, or 0.0.0.0/1 with
+// 128.0.0.0/1) is a default route in disguise, which claims no network and must not draw other clients' traffic to its peer.
+const minRoutedBits = 8
+
+// LookupRouted is Lookup for an address that is on its way to a peer, not one that came from it: a prefix shorter than
+// minRoutedBits never matches.
+func (idx *PeerIndex) LookupRouted(addr netip.Addr) (amneziawg.Peer, bool) {
+	return idx.lookup(addr, minRoutedBits)
+}
+
+func (idx *PeerIndex) lookup(addr netip.Addr, minBits int) (amneziawg.Peer, bool) {
 	bestBits := -1
 	var bestPeer amneziawg.Peer
 	for _, e := range idx.entries {
 		// Equal length: the later peer wins, as in the device's allowed-IPs
 		// table, which buildUAPIConfig fills from the same peers in this order.
-		if e.prefix.Bits() < bestBits || !e.prefix.Contains(addr) {
+		if e.prefix.Bits() < minBits || e.prefix.Bits() < bestBits || !e.prefix.Contains(addr) {
 			continue
 		}
 		bestBits = e.prefix.Bits()

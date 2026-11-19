@@ -159,6 +159,9 @@ func TestFirstIPv4(t *testing.T) {
 		{"v6 only", []string{"fd86:ea04:1115::2/128"}, ""},
 		{"empty input", nil, ""},
 		{"unparseable entries skipped", []string{"not-an-ip", "10.8.1.2/32"}, "10.8.1.2"},
+		{"a network after the tunnel address", []string{"10.8.1.2/32", "192.168.50.0/24"}, "10.8.1.2"},
+		{"a network before the tunnel address", []string{"192.168.50.0/24", "10.8.1.2/32"}, "10.8.1.2"},
+		{"a legacy address with a mask", []string{"10.8.1.2/24"}, "10.8.1.2"},
 	}
 	for _, c := range cases {
 		if got := FirstIPv4(c.ips); got != c.want {
@@ -181,10 +184,32 @@ func TestFirstIPv6(t *testing.T) {
 		{"empty input", nil, ""},
 		{"unparseable entries skipped", []string{"not-an-ip", "fd86:ea04:1115::2/128"}, "fd86:ea04:1115::2"},
 		{"v4-mapped v6 is not a real v6 identity", []string{"::ffff:10.8.1.2/128"}, ""},
+		{"a network and no tunnel address", []string{"10.8.1.2/32", "fd00:50::/64"}, ""},
+		{"a network before the tunnel address", []string{"fd00:50::/64", "fd86:ea04:1115::2/128"}, "fd86:ea04:1115::2"},
 	}
 	for _, c := range cases {
 		if got := FirstIPv6(c.ips); got != c.want {
 			t.Errorf("%s: FirstIPv6(%v) = %q, want %q", c.name, c.ips, got, c.want)
+		}
+	}
+}
+
+func TestInstanceFromInboundCarriesRoutingBetweenClients(t *testing.T) {
+	clients := []model.Client{{Email: "a@x", Enable: true, PublicKey: "pubA", AllowedIPs: []string{"10.8.1.2/32", "192.168.50.0/24"}}}
+	for _, on := range []bool{false, true} {
+		server := validServer()
+		server.RouteBetweenClients = on
+		ib := &model.Inbound{Id: 7, Protocol: model.AmneziaWG, Port: 51820, Settings: mkInboundSettings(t, server, clients)}
+		inst, ok := InstanceFromInbound(ib)
+		if !ok {
+			t.Fatal("expected a usable instance")
+		}
+		if inst.RouteBetweenClients != on {
+			t.Errorf("RouteBetweenClients = %v, want %v as set in the server block", inst.RouteBetweenClients, on)
+		}
+		// A network behind a client rides in its AllowedIPs, after the tunnel address that names the client.
+		if want := []string{"10.8.1.2/32", "192.168.50.0/24"}; len(inst.Peers) != 1 || len(inst.Peers[0].AllowedIPs) != 2 || inst.Peers[0].AllowedIPs[1] != want[1] {
+			t.Errorf("peer AllowedIPs = %+v, want %v", inst.Peers, want)
 		}
 	}
 }

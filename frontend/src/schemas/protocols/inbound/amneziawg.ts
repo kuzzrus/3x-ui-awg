@@ -145,6 +145,9 @@ export const AmneziawgServerSchema = z.object({
   // enabled (see amneziawg.tsx's hint); disableCookies is purely local.
   randomTrailers: z.boolean().default(false),
   disableCookies: z.boolean().default(false),
+  // routeBetweenClients lets the embedded datapath carry a packet from one client to another (and to a network behind it);
+  // the kernel datapath always does, so the form hides the switch there.
+  routeBetweenClients: z.boolean().default(false),
 });
 export type AmneziawgServer = z.infer<typeof AmneziawgServerSchema>;
 

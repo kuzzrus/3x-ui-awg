@@ -1335,6 +1335,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "rejectAfterTime": "",
     "rekeyAfterTime": "",
     "rekeyTimeout": "",
+    "routeBetweenClients": false,
     "routeThroughXray": false,
     "s1": 0,
     "s2": 0,

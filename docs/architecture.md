@@ -31,7 +31,9 @@ inbounds exist — a dedicated child proxy binary:
 
 In contrast, **AmneziaWG** (`internal/amneziawgnet/`) and **TUIC v5** (`internal/tuic/`) run as
 **in-process native Go servers** without external child processes, bridging client traffic into
-Xray-core via loopback SOCKS5 relays.
+Xray-core via loopback SOCKS5 relays. With an AmneziaWG inbound's `routeBetweenClients` switch the
+device also carries packets between its own peers at the tun layer; Xray never sees them, so
+`amneziawg_job` charges that traffic to the clients.
 
 Servers and processes, all launched from `main.go`:
 
@@ -425,7 +427,7 @@ All registered in `web.go` → `startTask()`. Each is a struct with a `Run()` me
 | `@every 5s`         | `portguard_job`                                                                                  | Roll back a change of the closed ports that nobody confirmed within its lease         |
 | `@every 10s`        | `check_client_ip_job`                                                                            | Record client IPs (30-min window) and enforce per-client IP limits                    |
 | `@every 10s`        | `mtproto_job`                                                                                    | Reconcile `mtg` sidecars against enabled MTProto inbounds                             |
-| `@every 10s`        | `amneziawg_job`                                                                                  | Reconcile embedded AmneziaWG interfaces against enabled local inbounds                |
+| `@every 10s`        | `amneziawg_job`                                                                                  | Reconcile embedded AmneziaWG interfaces; charge traffic routed between clients        |
 | `@every 10s`        | `tuic_job`                                                                                       | Reconcile embedded TUIC servers; submit per-client traffic, broadcast speed samples   |
 | `@every 10s`        | `tproxy_job`                                                                                     | Reconcile the tproxy relay and MTProxy engines (Telegram WEB proxy); online status    |
 | `@every 10s`        | `naiveproxy_job`                                                                                 | Reconcile NaiveProxy's Caddy sidecars; meter per-client traffic from their logs       |

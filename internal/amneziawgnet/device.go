@@ -77,10 +77,26 @@ type Device struct {
 	// localAddrs snapshots the netstack interface addresses (gVisor exposes
 	// no read-back); set once at construction, read-only afterwards.
 	localAddrs []netip.Addr
+
+	// tun is the stack's end of the device, which SetPeerRouting reaches.
+	tun *stackTun
 }
 
 // LocalAddresses returns the configured tunnel-local address(es).
 func (d *Device) LocalAddresses() []netip.Addr { return d.localAddrs }
+
+// SetPeerRouting makes the device route between its peers by their AllowedIPs, as a kernel interface would; a nil peers
+// switches it off, which is how a device starts.
+func (d *Device) SetPeerRouting(peers *PeerIndex) {
+	if peers == nil {
+		d.tun.peerRoute.Store(nil)
+		return
+	}
+	d.tun.peerRoute.Store(&peerRoute{peers: peers})
+}
+
+// TakeRoutedTraffic returns what the routing between peers has carried since the last call, by client, and counts from nothing.
+func (d *Device) TakeRoutedTraffic() []RoutedTraffic { return d.tun.routed.take() }
 
 // NewDevice constructs, configures, and brings up an embedded AmneziaWG
 // interface for inst in one call: a gVisor-backed tun.Device sized to
@@ -142,7 +158,7 @@ func newUnconfiguredDevice(inst amneziawg.Instance, opts DeviceOptions) (*Device
 	bind := newResolvingBind(inst.Listen)
 	dev := device.NewDevice(tun, bind, logger)
 
-	return &Device{Device: dev, Stack: gstack, localAddrs: addrs}, nil
+	return &Device{Device: dev, Stack: gstack, localAddrs: addrs, tun: tun.(*stackTun)}, nil
 }
 
 // Configure applies inst/opts to d via UAPI and brings the interface up.

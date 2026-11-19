@@ -229,6 +229,37 @@ func TestAmneziaWGConfigTextPeerFieldOrder(t *testing.T) {
 	})
 }
 
+// A network behind a client is routed to it by the server, but it is not an address of the client's own interface: the config
+// must carry the tunnel addresses alone.
+func TestAmneziaWGConfigTextAddressIsTheTunnelAddressesOnly(t *testing.T) {
+	server := &amneziawg.ServerSettings{PublicKey: "serverPub", MTU: 1420}
+	for _, c := range []struct {
+		name string
+		ips  []string
+		want string
+	}{
+		{"one address", []string{"10.8.1.2/32"}, "Address = 10.8.1.2/32"},
+		{"both families", []string{"10.8.1.2/32", "fd00::2/128"}, "Address = 10.8.1.2/32, fd00::2/128"},
+		{"a network after the address", []string{"10.8.1.5/32", "192.168.50.0/24"}, "Address = 10.8.1.5/32"},
+		{"a network before the address", []string{"192.168.50.0/24", "10.8.1.5/32"}, "Address = 10.8.1.5/32"},
+		{"a network in each family", []string{"10.8.1.5/32", "192.168.50.0/24", "fd00::5/128", "fd00:50::/64"}, "Address = 10.8.1.5/32, fd00::5/128"},
+		{"an IPv6 network and no IPv6 address", []string{"10.8.1.5/32", "fd00:50::/64"}, "Address = 10.8.1.5/32"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			conf := amneziaWGConfigText(server, &model.Client{PrivateKey: "clientPriv", AllowedIPs: c.ips}, "203.0.113.7", 51820, "remark")
+			var got string
+			for line := range strings.SplitSeq(conf, "\n") {
+				if strings.HasPrefix(line, "Address = ") {
+					got = line
+				}
+			}
+			if got != c.want {
+				t.Errorf("address line = %q, want %q\n%s", got, c.want, conf)
+			}
+		})
+	}
+}
+
 // A value carrying a line break would add a line such as a root PostUp to the
 // subscriber's .conf; a node reports server fields that no save path validated.
 func TestAmneziaWGConfigTextRejectsLineBreakInAnyValue(t *testing.T) {

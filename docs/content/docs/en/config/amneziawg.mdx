@@ -31,6 +31,7 @@ fingerprint gets through.
 | **MTU**                   | Interface MTU. Leave at the default unless you have a reason to change it. |
 | **DNS (primary/secondary)** | Seeded into downloadable client configs; the server's own interface doesn't need one. |
 | **External interface**    | The host NIC a peer's IPv6 address gets aliased onto when IPv6 is enabled (see below). Leave blank to auto-detect. |
+| **Routing between clients** | Off by default: a client reaches only the internet. On, the clients of the inbound can reach each other and the networks behind them (see [Routing between clients](#routing-between-clients)). Embedded backend only. |
 
 ### Obfuscation (AmneziaWG 3.1)
 
@@ -114,12 +115,66 @@ tunnel address — useful for a client that needs to expose a service through
 the server.
 </Step>
 
+<Step>
+### Optional: let clients reach each other
+
+Turn on **Routing between clients** to let the clients of this inbound reach
+each other, and a network behind a client. See
+[Routing between clients](#routing-between-clients).
+</Step>
+
 </Steps>
 
 In the **embedded** backend, each peer relays into its own loopback SOCKS5
 inbound, tagged with the AmneziaWG inbound's tag. Its traffic therefore uses
 Xray routing and appears on the [Routing](/docs/operations/outbounds-routing)
 page, like other Xray inbounds.
+
+## Routing between clients
+
+By default the clients of an inbound are kept apart: everything a client sends
+goes out to the internet through Xray, and none of it reaches another client.
+Turn on **Routing between clients** in the inbound's form (the switch is not
+shown in kernel mode) and the server also sends a packet from one client to
+another when its destination lies in the other client's **AllowedIPs**: its
+tunnel address, or a network behind it.
+
+- **Tunnel addresses.** Every client of the inbound can reach every other
+  client's tunnel address, such as `10.8.1.3` from `10.8.1.2`. Nothing limits
+  which clients may talk to which, so enable it only for clients that trust
+  each other, and keep groups apart on separate inbounds.
+- **A network behind a client.** List it in that client's **AllowedIPs**
+  next to its tunnel address, for example `10.8.1.5/32, 192.168.50.0/24`. The
+  first single-host entry (`/32` or `/128`) of each family is the client's
+  tunnel address, wherever it stands; every other entry is a network behind
+  it, and may lie anywhere. The client's config carries the tunnel addresses
+  alone. The panel refuses a network that overlaps another client's
+  addresses. The client's own device has to route that network: forwarding
+  on, and the LAN's router pointing the tunnel subnet at it. An entry shorter
+  than `/8` is taken for a default route (`0.0.0.0/0`, or `0.0.0.0/1` with
+  `128.0.0.0/1`) and claims no network, so a client that holds one does not
+  become the way out for the others.
+- **The client's side.** A client sends traffic into the tunnel only for the
+  networks in its own config's `AllowedIPs`. The generated config uses
+  `0.0.0.0/0, ::/0`, which includes them; a split-tunnel client has to add the
+  tunnel subnet and the networks behind other clients.
+- **Traffic.** What clients send each other never reaches Xray, so its routing
+  rules, blocks and sniffing do not apply to it, and the panel counts it
+  itself, about every 10 seconds: upload for the sender and download for the
+  receiver, both against their limits. It is counted as whole IP packets, a
+  little more per byte than traffic that Xray relays and counts as payload. A
+  client over its limit is disabled and cut off like any other.
+- **Hops.** Each pass through the server lowers a packet's TTL (hop limit) by
+  one, and a packet with none left is dropped without an ICMP "time exceeded"
+  answer. A packet whose destination lies in the sender's own AllowedIPs is
+  dropped rather than sent back to it.
+- **Kernel mode** always forwards between its peers, because the panel turns on
+  IPv4 forwarding for it, and accepts only addresses inside the tunnel subnet.
+  The switch and the networks behind a client are therefore for the embedded
+  backend.
+- **Sub-nodes.** The switch is part of the inbound's settings and follows the
+  inbound to a sub-node. A node running an older panel ignores it and keeps its
+  clients apart.
 
 ## Optional Linux kernel backend
 

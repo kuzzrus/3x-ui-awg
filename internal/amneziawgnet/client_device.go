@@ -121,7 +121,7 @@ func newUnconfiguredClientDevice(inst amneziawg.OutboundInstance, opts DeviceOpt
 	bind := newResolvingBind("")
 	dev := device.NewDevice(tun, bind, logger)
 
-	return &Device{Device: dev, Stack: gstack, localAddrs: addrs}, nil
+	return &Device{Device: dev, Stack: gstack, localAddrs: addrs, tun: tun.(*stackTun)}, nil
 }
 
 // ConfigureClient applies inst/opts via UAPI and brings the interface up;

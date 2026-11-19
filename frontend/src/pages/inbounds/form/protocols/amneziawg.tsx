@@ -475,6 +475,16 @@ export default function AmneziawgFields({
       >
         <Switch />
       </FormField>
+      {!kernelModeOn && (
+        <FormField
+          name={['settings', 'server', 'routeBetweenClients']}
+          label={t('pages.xray.amneziawg.routeBetweenClients')}
+          tooltip={t('pages.xray.amneziawg.routeBetweenClientsHint')}
+          valueProp="checked"
+        >
+          <Switch />
+        </FormField>
+      )}
       <FormField
         name={['settings', 'server', 'kernelMode']}
         label={t('pages.xray.amneziawg.kernelMode')}

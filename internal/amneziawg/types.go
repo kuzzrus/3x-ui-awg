@@ -174,6 +174,10 @@ type Instance struct {
 	// KernelMode selects internal/amneziawgkern over internal/amneziawgnet as
 	// this inbound's datapath. See ServerSettings.KernelMode.
 	KernelMode bool
+
+	// RouteBetweenClients lets the embedded datapath send a packet from one peer to another when its destination lies in
+	// that peer's AllowedIPs; the kernel datapath always does. See ServerSettings.RouteBetweenClients.
+	RouteBetweenClients bool
 }
 
 // ServerSettings is the "server" block of an AmneziaWG inbound's Settings
@@ -213,6 +217,10 @@ type ServerSettings struct {
 	// KernelMode runs this inbound on the AmneziaWG kernel module (internal/amneziawgkern)
 	// instead of the embedded amneziawg-go + gVisor stack.
 	KernelMode bool `json:"kernelMode,omitempty"`
+
+	// RouteBetweenClients lets the clients of the embedded datapath reach each other, and a network behind one (an AllowedIPs
+	// entry besides its tunnel address); off, they stay apart. The kernel datapath routes between its peers anyway.
+	RouteBetweenClients bool `json:"routeBetweenClients,omitempty"`
 
 	// Obfuscation20's fields, repeated flat (not embedded) rather than
 	// nested under their own key: encoding/json would happily inline an

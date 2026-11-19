@@ -22,6 +22,9 @@ type AmneziaWGJob struct {
 	inboundService service.InboundService
 	settingService service.SettingService
 	xrayService    service.XrayService
+	// Set by tests to stand in for the embedded datapath's counters and for the accounting that charges them.
+	routed   routedTrafficTaker
+	recorder trafficRecorder
 }
 
 // NewAmneziaWGJob creates a new AmneziaWG reconcile job instance.
@@ -41,6 +44,7 @@ func (j *AmneziaWGJob) Run() {
 	// Counters first: reconcile drops disabled peers and removed interfaces,
 	// and their counters with them.
 	j.collectKernelTraffic(kernel)
+	j.collectRoutedTraffic()
 	reconcileAmneziaWGDatapaths(embedded, kernel, amneziawgnet.GetManager(), amneziawgkern.GetManager())
 
 	outboundDesired, err := j.desiredOutboundInstances()
@@ -55,9 +59,49 @@ func (j *AmneziaWGJob) Run() {
 	}
 }
 
-// FlushKernelTraffic charges what kernel interfaces counted since the last
-// tick; shutdown runs it before tearing the interfaces and counters down.
+// routedTrafficTaker is the embedded datapath, which counts what it carries between clients.
+type routedTrafficTaker interface {
+	TakeRoutedTraffic() []amneziawgnet.RoutedTraffic
+}
+
+// trafficRecorder charges traffic to clients; the InboundService is one.
+type trafficRecorder interface {
+	AddTraffic(inboundTraffics []*xray.Traffic, clientTraffics []*xray.ClientTraffic) (bool, bool, error)
+}
+
+// collectRoutedTraffic charges what the embedded datapath carried from one client to another: Xray never sees those packets, so
+// no count of its has them.
+func (j *AmneziaWGJob) collectRoutedTraffic() {
+	var taker routedTrafficTaker = amneziawgnet.GetManager()
+	if j.routed != nil {
+		taker = j.routed
+	}
+	var recorder trafficRecorder = &j.inboundService
+	if j.recorder != nil {
+		recorder = j.recorder
+	}
+	collectRoutedTrafficWith(recorder, taker)
+}
+
+func collectRoutedTrafficWith(recorder trafficRecorder, taker routedTrafficTaker) {
+	routed := taker.TakeRoutedTraffic()
+	if len(routed) == 0 {
+		return
+	}
+	clients := make(clientTrafficByEmail)
+	for _, r := range routed {
+		clients.add(r.Email, r.Up, r.Down)
+	}
+	// A client that just crossed its limit is disabled here; the next reconcile tick drops its peer, which cuts it off.
+	if _, _, err := recorder.AddTraffic(nil, clients.sortedRows()); err != nil {
+		logger.Warning("amneziawg job: recording the traffic routed between clients:", err)
+	}
+}
+
+// FlushKernelTraffic charges what kernel interfaces counted since the last tick, and what the stopped embedded interfaces
+// routed between clients; shutdown runs it before the kernel interfaces and counters are torn down.
 func (j *AmneziaWGJob) FlushKernelTraffic() {
+	j.collectRoutedTraffic()
 	// With no kernel interface there is nothing to charge, so a panel that
 	// never used kernel mode shuts down without touching the database.
 	if !amneziawgkern.GetManager().HasRunning() {

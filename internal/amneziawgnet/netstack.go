@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"os"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -59,6 +60,10 @@ type stackTun struct {
 	closeMu        sync.Mutex
 	closed         bool
 	mtu            int
+	// peerRoute, when set, turns the stack into a router between the peers: see peerroute.go.
+	peerRoute atomic.Pointer[peerRoute]
+	// routed counts what that router carried between peers, by client.
+	routed routedTraffic
 }
 
 // createNetTUNWithStack builds a gVisor-backed tun.Device for localAddresses
@@ -175,6 +180,10 @@ func (t *stackTun) Write(buf [][]byte, offset int) (int, error) {
 		if len(packet) == 0 {
 			continue
 		}
+		// A packet for another peer's range goes back out to that peer, not into the stack.
+		if t.forwardToPeer(packet) {
+			continue
+		}
 		pkb := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: buffer.MakeWithData(packet)})
 		switch packet[0] >> 4 {
 		case 4:
@@ -206,10 +215,15 @@ func (t *stackTun) WriteNotify() {
 	}
 	view := pkt.ToView()
 	pkt.DecRef()
+	t.enqueue(view)
+}
 
+// enqueue hands view to the reader of the tun, which encrypts it for the peer that owns its destination. It reports whether
+// the packet was queued, not dropped.
+func (t *stackTun) enqueue(view *buffer.View) bool {
 	select {
 	case t.incomingPacket <- view:
-		return
+		return true
 	default:
 	}
 	// Echo replies and RSTs are emitted on amneziawg-go's per-peer receiver, which the
@@ -220,11 +234,13 @@ func (t *stackTun) WriteNotify() {
 	// without blocking Close or panicking on closed channel.
 	select {
 	case t.incomingPacket <- view:
+		return true
 	case <-timer.C:
 		view.Release()
 	case <-t.done:
 		view.Release()
 	}
+	return false
 }
 
 func (t *stackTun) Close() error {

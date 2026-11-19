@@ -1261,6 +1261,7 @@ export const ServerSettingsSchema = z.object({
   rejectAfterTime: z.string().optional(),
   rekeyAfterTime: z.string().optional(),
   rekeyTimeout: z.string().optional(),
+  routeBetweenClients: z.boolean().optional(),
   routeThroughXray: z.boolean().optional(),
   s1: z.number().int(),
   s2: z.number().int(),
