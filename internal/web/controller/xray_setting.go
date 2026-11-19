@@ -36,6 +36,7 @@ type XraySettingController struct {
 	WireproxyService            integration.WireproxyService
 	FrontProxyService           integration.FrontProxyService
 	FrontProxyPathService       service.FrontProxyPathService
+	PortGuardService            service.PortGuardService
 	AdGuardService              integration.AdGuardService
 	PiaService                  integration.PiaService
 	OutboundSubscriptionService service.OutboundSubscriptionService
@@ -69,6 +70,11 @@ func (a *XraySettingController) initRouter(g *gin.RouterGroup) {
 	g.POST("/frontproxy/decoy/upload", allowSlowUpload, a.frontProxyDecoyUpload)
 	g.GET("/frontproxy/pathRoutes", a.getFrontProxyPathRoutes)
 	g.POST("/frontproxy/pathRoutes", a.setFrontProxyPathRoutes)
+	g.GET("/portguard", a.portGuardStatus)
+	g.POST("/portguard/plan", a.portGuardPlan)
+	g.POST("/portguard/apply", a.portGuardApply)
+	g.POST("/portguard/confirm", a.portGuardConfirm)
+	g.POST("/portguard/rollback", a.portGuardRollback)
 	g.POST("/adguard/:action", allowSlowAction, a.adGuard)
 	g.POST("/pia/:action", a.pia)
 	g.POST("/update", a.updateSetting)

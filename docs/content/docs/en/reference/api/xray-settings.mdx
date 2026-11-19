@@ -104,6 +104,36 @@ _openapi:
         running reverse proxy (does not touch or restart Xray).
       url: '#replace-the-entire-panel-wide-path-route-list-body-is-json-reloads-the-running-reverse-proxy-does-not-touch-or-restart-xray'
     - depth: 2
+      title: Report the ports closed in the host firewall, the change that waits to be
+        confirmed, the ports that can never be closed (the SSH ports and
+        443/tcp), and the ports of the panel, the subscription server and the
+        enabled inbounds that could be closed.
+      url: '#report-the-ports-closed-in-the-host-firewall-the-change-that-waits-to-be-confirmed-the-ports-that-can-never-be-closed-the-ssh-ports-and-443tcp-and-the-ports-of-the-panel-the-subscription-server-and-the-enabled-inbounds-that-could-be-closed'
+    - depth: 2
+      title: Say what closing exactly these ports would do (the ports to close and to
+        open, the ports that are refused, whether the change waits to be
+        confirmed, and the nft script) and change nothing.
+      url: '#say-what-closing-exactly-these-ports-would-do-the-ports-to-close-and-to-open-the-ports-that-are-refused-whether-the-change-waits-to-be-confirmed-and-the-nft-script-and-change-nothing'
+    - depth: 2
+      title: 'Close exactly these ports in the host firewall: a drop rule for what a
+        remote host begins towards them, including a connection it already has.
+        A change that closes a port that was not closed before waits to be
+        confirmed for 2 minutes and is rolled back if it is not; a change that
+        only opens ports takes effect at once. The SSH ports and 443/tcp are
+        refused. Answers with the same object as the status.'
+      url: '#close-exactly-these-ports-in-the-host-firewall-a-drop-rule-for-what-a-remote-host-begins-towards-them-including-a-connection-it-already-has-a-change-that-closes-a-port-that-was-not-closed-before-waits-to-be-confirmed-for-2-minutes-and-is-rolled-back-if-it-is-not-a-change-that-only-opens-ports-takes-effect-at-once-the-ssh-ports-and-443tcp-are-refused-answers-with-the-same-object-as-the-status'
+    - depth: 2
+      title: 'Keep the change that waits to be confirmed. Call it from a connection
+        that still reaches the panel: a port closed under the one the admin is
+        on cuts that connection, and the change is rolled back after 2 minutes.
+        Answers with the same object as the status.'
+      url: '#keep-the-change-that-waits-to-be-confirmed-call-it-from-a-connection-that-still-reaches-the-panel-a-port-closed-under-the-one-the-admin-is-on-cuts-that-connection-and-the-change-is-rolled-back-after-2-minutes-answers-with-the-same-object-as-the-status'
+    - depth: 2
+      title: Undo the change that waits to be confirmed at once, putting back the
+        ports that were closed before it. Answers with the same object as the
+        status.
+      url: '#undo-the-change-that-waits-to-be-confirmed-at-once-putting-back-the-ports-that-were-closed-before-it-answers-with-the-same-object-as-the-status'
+    - depth: 2
       title: Manage the AdGuard Home instance the reverse proxy can serve as its
         decoy. Unlike the template decoys this is a real service, so the domain
         answers with a working admin UI and DNS-over-HTTPS.
@@ -265,6 +295,31 @@ _openapi:
       - content: Replace the entire panel-wide path-route list. Body is JSON. Reloads
           the running reverse proxy (does not touch or restart Xray).
         id: replace-the-entire-panel-wide-path-route-list-body-is-json-reloads-the-running-reverse-proxy-does-not-touch-or-restart-xray
+      - content: Report the ports closed in the host firewall, the change that waits to
+          be confirmed, the ports that can never be closed (the SSH ports and
+          443/tcp), and the ports of the panel, the subscription server and the
+          enabled inbounds that could be closed.
+        id: report-the-ports-closed-in-the-host-firewall-the-change-that-waits-to-be-confirmed-the-ports-that-can-never-be-closed-the-ssh-ports-and-443tcp-and-the-ports-of-the-panel-the-subscription-server-and-the-enabled-inbounds-that-could-be-closed
+      - content: Say what closing exactly these ports would do (the ports to close and
+          to open, the ports that are refused, whether the change waits to be
+          confirmed, and the nft script) and change nothing.
+        id: say-what-closing-exactly-these-ports-would-do-the-ports-to-close-and-to-open-the-ports-that-are-refused-whether-the-change-waits-to-be-confirmed-and-the-nft-script-and-change-nothing
+      - content: 'Close exactly these ports in the host firewall: a drop rule for what a
+          remote host begins towards them, including a connection it already
+          has. A change that closes a port that was not closed before waits to
+          be confirmed for 2 minutes and is rolled back if it is not; a change
+          that only opens ports takes effect at once. The SSH ports and 443/tcp
+          are refused. Answers with the same object as the status.'
+        id: close-exactly-these-ports-in-the-host-firewall-a-drop-rule-for-what-a-remote-host-begins-towards-them-including-a-connection-it-already-has-a-change-that-closes-a-port-that-was-not-closed-before-waits-to-be-confirmed-for-2-minutes-and-is-rolled-back-if-it-is-not-a-change-that-only-opens-ports-takes-effect-at-once-the-ssh-ports-and-443tcp-are-refused-answers-with-the-same-object-as-the-status
+      - content: 'Keep the change that waits to be confirmed. Call it from a connection
+          that still reaches the panel: a port closed under the one the admin is
+          on cuts that connection, and the change is rolled back after 2
+          minutes. Answers with the same object as the status.'
+        id: keep-the-change-that-waits-to-be-confirmed-call-it-from-a-connection-that-still-reaches-the-panel-a-port-closed-under-the-one-the-admin-is-on-cuts-that-connection-and-the-change-is-rolled-back-after-2-minutes-answers-with-the-same-object-as-the-status
+      - content: Undo the change that waits to be confirmed at once, putting back the
+          ports that were closed before it. Answers with the same object as the
+          status.
+        id: undo-the-change-that-waits-to-be-confirmed-at-once-putting-back-the-ports-that-were-closed-before-it-answers-with-the-same-object-as-the-status
       - content: Manage the AdGuard Home instance the reverse proxy can serve as its
           decoy. Unlike the template decoys this is a real service, so the
           domain answers with a working admin UI and DNS-over-HTTPS.
@@ -362,7 +417,7 @@ export default function Layout(props) {
   return (
     <>
       {props.children}
-      <OpenAPIPage document="./public/openapi.json" webhooks={[]} operations={[{"path":"/panel/api/xray/","method":"post"},{"path":"/panel/api/xray/getDefaultJsonConfig","method":"get"},{"path":"/panel/api/xray/getOutboundsTraffic","method":"get"},{"path":"/panel/api/xray/getXrayResult","method":"get"},{"path":"/panel/api/xray/update","method":"post"},{"path":"/panel/api/xray/warp/{action}","method":"post"},{"path":"/panel/api/xray/nord/{action}","method":"post"},{"path":"/panel/api/xray/tor/{action}","method":"post"},{"path":"/panel/api/xray/psiphon/{action}","method":"post"},{"path":"/panel/api/xray/psiphon/config/upload","method":"post"},{"path":"/panel/api/xray/psiphon/regions","method":"get"},{"path":"/panel/api/xray/psiphon/countries","method":"get"},{"path":"/panel/api/xray/psiphon/countries/{action}","method":"post"},{"path":"/panel/api/xray/psiphon/scan","method":"get"},{"path":"/panel/api/xray/psiphon/scan/{action}","method":"post"},{"path":"/panel/api/xray/naiveproxy/{action}","method":"post"},{"path":"/panel/api/xray/wireproxy/{action}","method":"post"},{"path":"/panel/api/xray/pia/{action}","method":"post"},{"path":"/panel/api/xray/frontproxy/{action}","method":"post"},{"path":"/panel/api/xray/frontproxy/decoy/upload","method":"post"},{"path":"/panel/api/xray/frontproxy/pathRoutes","method":"get"},{"path":"/panel/api/xray/frontproxy/pathRoutes","method":"post"},{"path":"/panel/api/xray/adguard/{action}","method":"post"},{"path":"/panel/api/xray/resetOutboundsTraffic","method":"post"},{"path":"/panel/api/xray/testOutbound","method":"post"},{"path":"/panel/api/xray/testOutbounds","method":"post"},{"path":"/panel/api/xray/balancerStatus","method":"post"},{"path":"/panel/api/xray/balancerOverride","method":"post"},{"path":"/panel/api/xray/routeTest","method":"post"},{"path":"/panel/api/xray/geodata/files","method":"get"},{"path":"/panel/api/xray/geodata/categories","method":"get"},{"path":"/panel/api/xray/geodata/entries","method":"get"},{"path":"/panel/api/xray/geodata/validate","method":"post"},{"path":"/panel/api/xray/outbound-subs","method":"get"},{"path":"/panel/api/xray/outbound-subs","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}","method":"delete"},{"path":"/panel/api/xray/outbound-subs/{id}/del","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}/refresh","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}/move","method":"post"},{"path":"/panel/api/xray/outbound-subs/parse","method":"post"}]} showTitle />
+      <OpenAPIPage document="./public/openapi.json" webhooks={[]} operations={[{"path":"/panel/api/xray/","method":"post"},{"path":"/panel/api/xray/getDefaultJsonConfig","method":"get"},{"path":"/panel/api/xray/getOutboundsTraffic","method":"get"},{"path":"/panel/api/xray/getXrayResult","method":"get"},{"path":"/panel/api/xray/update","method":"post"},{"path":"/panel/api/xray/warp/{action}","method":"post"},{"path":"/panel/api/xray/nord/{action}","method":"post"},{"path":"/panel/api/xray/tor/{action}","method":"post"},{"path":"/panel/api/xray/psiphon/{action}","method":"post"},{"path":"/panel/api/xray/psiphon/config/upload","method":"post"},{"path":"/panel/api/xray/psiphon/regions","method":"get"},{"path":"/panel/api/xray/psiphon/countries","method":"get"},{"path":"/panel/api/xray/psiphon/countries/{action}","method":"post"},{"path":"/panel/api/xray/psiphon/scan","method":"get"},{"path":"/panel/api/xray/psiphon/scan/{action}","method":"post"},{"path":"/panel/api/xray/naiveproxy/{action}","method":"post"},{"path":"/panel/api/xray/wireproxy/{action}","method":"post"},{"path":"/panel/api/xray/pia/{action}","method":"post"},{"path":"/panel/api/xray/frontproxy/{action}","method":"post"},{"path":"/panel/api/xray/frontproxy/decoy/upload","method":"post"},{"path":"/panel/api/xray/frontproxy/pathRoutes","method":"get"},{"path":"/panel/api/xray/frontproxy/pathRoutes","method":"post"},{"path":"/panel/api/xray/portguard","method":"get"},{"path":"/panel/api/xray/portguard/plan","method":"post"},{"path":"/panel/api/xray/portguard/apply","method":"post"},{"path":"/panel/api/xray/portguard/confirm","method":"post"},{"path":"/panel/api/xray/portguard/rollback","method":"post"},{"path":"/panel/api/xray/adguard/{action}","method":"post"},{"path":"/panel/api/xray/resetOutboundsTraffic","method":"post"},{"path":"/panel/api/xray/testOutbound","method":"post"},{"path":"/panel/api/xray/testOutbounds","method":"post"},{"path":"/panel/api/xray/balancerStatus","method":"post"},{"path":"/panel/api/xray/balancerOverride","method":"post"},{"path":"/panel/api/xray/routeTest","method":"post"},{"path":"/panel/api/xray/geodata/files","method":"get"},{"path":"/panel/api/xray/geodata/categories","method":"get"},{"path":"/panel/api/xray/geodata/entries","method":"get"},{"path":"/panel/api/xray/geodata/validate","method":"post"},{"path":"/panel/api/xray/outbound-subs","method":"get"},{"path":"/panel/api/xray/outbound-subs","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}","method":"delete"},{"path":"/panel/api/xray/outbound-subs/{id}/del","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}/refresh","method":"post"},{"path":"/panel/api/xray/outbound-subs/{id}/move","method":"post"},{"path":"/panel/api/xray/outbound-subs/parse","method":"post"}]} showTitle />
     </>
   );
 }
