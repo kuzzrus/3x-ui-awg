@@ -48,6 +48,7 @@ export const keys = {
     outboundsTraffic: () => ['xray', 'outboundsTraffic'] as const,
     naiveProxyEngine: () => ['xray', 'naiveProxyEngine'] as const,
     naiveProxyCerts: () => ['xray', 'naiveProxyCerts'] as const,
+    portGuard: () => ['xray', 'portGuard'] as const,
     geodata: {
       root: () => ['xray', 'geodata'] as const,
       files: () => ['xray', 'geodata', 'files'] as const,

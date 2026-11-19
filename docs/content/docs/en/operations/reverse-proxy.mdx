@@ -48,6 +48,41 @@ Reach for Nginx or Caddy instead when you need things the reverse proxy
 deliberately does not do: routing for services other than this panel, CDN
 fronting, or per-path rate limiting and access rules.
 
+## Closing ports
+
+Once an inbound is reachable through a path on 443, its own public port is one
+more thing for a scanner to find. **Settings → Reverse proxy → Closed ports**
+lists the ports of the panel, the subscription server and your enabled inbounds
+(TCP and UDP), marks the ones that are also reachable on 443, and closes the
+ones you tick in the host firewall. A closed port drops what other hosts begin
+towards it, including a connection they already have; the host's own traffic,
+loopback and the `awg*`/`wg*` interfaces are never affected.
+
+Closing a port you reach the panel on would lock you out, so a change that
+closes a port that was open waits for your confirmation:
+
+1. **Preview** shows what would be closed and opened, the ports that are
+   refused, and the nft rules, and changes nothing.
+2. **Apply** puts the rules in. A banner counts down 2 minutes.
+3. Open the panel by a route that is still open (the reverse proxy on 443, or a
+   VPN) and press **Confirm**. If you cannot, do nothing: the change is rolled
+   back by itself. Opening ports never needs a confirmation.
+
+The SSH ports (read from `sshd_config` and the files it includes, and any port
+where sshd answers) and `443/tcp` cannot be closed. If a closed port ever cuts
+you off, run `x-ui setting -openClosedPorts` as root over SSH: it forgets the
+closed ports and removes the rules without needing the panel.
+
+<Callout type="info">
+  The rules live in the kernel, which forgets them at a reboot. The panel puts
+  them back when it starts, so a closed port is open for the few seconds between
+  boot and the panel starting. After a downgrade to a build without this feature
+  the rules stay until the next reboot, or until `nft delete table inet
+  x_ui_portguard`. The uninstall script removes them. A connection the host
+  itself starts from a closed port still gets its replies, and closing the panel
+  port of a node cuts the master's access to it.
+</Callout>
+
 ## Generate a config
 
 <ReverseProxyGenerator />

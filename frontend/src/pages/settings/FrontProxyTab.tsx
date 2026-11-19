@@ -33,6 +33,7 @@ import { onNumber } from '@/utils/onNumber';
 import { DefaultSettingTag, SettingListItem } from '@/components/ui';
 
 import FrontProxyPathRoutesCard from './FrontProxyPathRoutesCard';
+import PortGuardCard from './PortGuardCard';
 import { useFrontProxyPathRoutes } from './useFrontProxyPathRoutes';
 
 interface FrontProxyTabProps {
@@ -752,6 +753,14 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
             {t('save')}
           </Button>
         </Space>
+      </SettingListItem>
+
+      <SettingListItem
+        paddings="small"
+        title={t('pages.settings.frontProxy.portGuard.title')}
+        description={t('pages.settings.frontProxy.portGuard.desc')}
+      >
+        <PortGuardCard />
       </SettingListItem>
     </>
   );
