@@ -93,7 +93,7 @@ func TestConnectionClearedMidCallDoesNotPanic(t *testing.T) {
 		{"liveNotice", func() { tb.liveNotice(1, "kind", "body") }},
 		{"sendNoticeNoKeyboard", func() { tb.sendNoticeNoKeyboard(1, "text") }},
 		{"sendNoticeReturningID", func() { tb.sendNoticeReturningID(1, "text") }},
-		{"sendDocumentWithCaption", func() { tb.sendDocumentWithCaption(1, []byte("db"), "x-ui.db", "caption") }},
+		{"sendBackupFile", func() { tb.sendBackupFile(1, []byte("db"), "x-ui.db", "caption") }},
 		{"sendTGPicker", func() { tb.sendTGPicker(1, 1) }},
 	}
 	for _, tt := range tests {

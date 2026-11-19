@@ -31,7 +31,7 @@ func (s *XrayService) GetAgentConfig(nodeID int) (*xray.Config, error) {
 		if !inbound.Enable || !isAgentEligibleProtocol(inbound.Protocol) {
 			continue
 		}
-		inboundConfig, err := s.renderInboundConfig(inbound)
+		inboundConfig, _, err := s.renderInboundConfig(inbound)
 		if err != nil {
 			return nil, err
 		}
