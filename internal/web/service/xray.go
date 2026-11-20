@@ -199,14 +199,14 @@ func inboundOwnWireguardClients(settings string) map[string]model.Client {
 	return byEmail
 }
 
-// renderInboundConfig turns a stored inbound into the config Xray runs: its enabled
-// clients, its fallbacks, and the fixes every stream setting gets before the core sees it.
-func (s *XrayService) renderInboundConfig(inbound *model.Inbound) (*xray.InboundConfig, error) {
+// renderInboundConfig turns a stored inbound into the config Xray runs: its enabled clients, its
+// fallbacks, the fixes every stream setting gets, and how many clients it left out as depleted.
+func (s *XrayService) renderInboundConfig(inbound *model.Inbound) (*xray.InboundConfig, int, error) {
 	if err := normalizeVlessFallbacks(inbound); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if err := validateVlessManagedFallbacks(nil, inbound); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	settings := map[string]any{}
 	_ = json.Unmarshal([]byte(inbound.Settings), &settings)
@@ -215,7 +215,7 @@ func (s *XrayService) renderInboundConfig(inbound *model.Inbound) (*xray.Inbound
 
 	dbClients, listErr := s.inboundService.clientService.ListForInbound(nil, inbound.Id)
 	if listErr != nil {
-		return nil, listErr
+		return nil, 0, listErr
 	}
 
 	clientStats := inbound.ClientStats
@@ -231,10 +231,11 @@ func (s *XrayService) renderInboundConfig(inbound *model.Inbound) (*xray.Inbound
 
 	finalClients := make([]any, 0, len(dbClients))
 	var wgPeers []any
+	excluded := 0
 	for i := range dbClients {
 		c := dbClients[i]
 		if enable, exists := enableMap[c.Email]; exists && !enable {
-			logger.Infof("Remove Inbound User %s due to expiration or traffic limit", c.Email)
+			excluded++
 			continue
 		}
 		if !c.Enable {
@@ -326,7 +327,7 @@ func (s *XrayService) renderInboundConfig(inbound *model.Inbound) (*xray.Inbound
 	if inboundCanHostFallbacks(inbound) {
 		fallbacks, fbErr := s.inboundService.fallbackService.BuildFallbacksJSON(nil, inbound.Id)
 		if fbErr != nil {
-			return nil, fbErr
+			return nil, 0, fbErr
 		}
 		if len(fallbacks) > 0 {
 			generic := make([]any, 0, len(fallbacks))
@@ -341,7 +342,7 @@ func (s *XrayService) renderInboundConfig(inbound *model.Inbound) (*xray.Inbound
 	if mutated {
 		modifiedSettings, err := json.MarshalIndent(settings, "", "  ")
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		inbound.Settings = string(modifiedSettings)
 	}
@@ -393,7 +394,7 @@ func (s *XrayService) renderInboundConfig(inbound *model.Inbound) (*xray.Inbound
 
 		newStream, err := json.MarshalIndent(stream, "", "  ")
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		inbound.StreamSettings = string(newStream)
 	}
@@ -405,7 +406,7 @@ func (s *XrayService) renderInboundConfig(inbound *model.Inbound) (*xray.Inbound
 	}
 
 	inboundConfig := inbound.GenXrayInboundConfig()
-	return inboundConfig, nil
+	return inboundConfig, excluded, nil
 }
 
 // newConfigFromTemplate is the panel's Xray template with the fixes every config built
@@ -480,6 +481,7 @@ func (s *XrayService) buildXrayConfig() (*xray.Config, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	excludedClients, excludedInbounds := 0, 0
 	for _, inbound := range inbounds {
 		if !inbound.Enable {
 			continue
@@ -492,9 +494,13 @@ func (s *XrayService) buildXrayConfig() (*xray.Config, string, error) {
 			inbound.Protocol == model.TUIC {
 			continue
 		}
-		inboundConfig, err := s.renderInboundConfig(inbound)
+		inboundConfig, excluded, err := s.renderInboundConfig(inbound)
 		if err != nil {
 			return nil, "", err
+		}
+		if excluded > 0 {
+			excludedClients += excluded
+			excludedInbounds++
 		}
 		xrayConfig.InboundConfigs = append(xrayConfig.InboundConfigs, *inboundConfig)
 	}
@@ -583,6 +589,9 @@ func (s *XrayService) buildXrayConfig() (*xray.Config, string, error) {
 
 	xrayConfig.RouterConfig = dropRefusedScript(xrayConfig.RouterConfig, "routing", routingScriptRefused)
 	xrayConfig.DNSConfig = dropRefusedScript(xrayConfig.DNSConfig, "dns", dnsScriptRefused)
+	if excludedClients > 0 {
+		logger.Infof("Xray config generated: excluded %d disabled client entries across %d inbounds", excludedClients, excludedInbounds)
+	}
 	return xrayConfig, nodeOutbounds, nil
 }
 

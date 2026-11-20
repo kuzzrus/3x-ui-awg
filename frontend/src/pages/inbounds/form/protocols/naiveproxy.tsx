@@ -232,7 +232,8 @@ function CertNotice({
     ) : null;
   }
   // The time of the last fetch stands in for now: reading the clock during render is not pure.
-  const view = describeCert(cert, t as Translate, dataUpdatedAt, datepicker);
+  const translate: Translate = (key, options) => (options ? t(key, options) : t(key));
+  const view = describeCert(cert, translate, dataUpdatedAt, datepicker);
   return (
     <Alert
       type={view.type}
