@@ -100,7 +100,7 @@ func (s *FrontProxyService) Options() (frontproxy.Options, error) {
 	if err != nil {
 		return frontproxy.Options{}, err
 	}
-	panelPort, err := s.GetPort()
+	panelPort, err := s.GetListenPort()
 	if err != nil {
 		return frontproxy.Options{}, err
 	}

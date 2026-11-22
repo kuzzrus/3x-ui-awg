@@ -168,7 +168,7 @@ func (s *PortGuardService) candidates(closed, protected []portguard.Port) ([]Por
 		out = append(out, c)
 	}
 
-	if port, err := s.SettingService.GetPort(); err == nil && port > 0 {
+	if port, err := s.SettingService.GetListenPort(); err == nil && port > 0 {
 		listen, _ := s.SettingService.GetListen()
 		add(PortGuardCandidate{Port: portguard.Port{Number: port, Proto: portguard.TCP}, Label: "panel", Loopback: listensOnLoopbackOnly(listen)})
 	}

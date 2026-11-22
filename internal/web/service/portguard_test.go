@@ -154,6 +154,29 @@ func TestPortGuardCandidatesJoinTheServicesOfOnePort(t *testing.T) {
 	}
 }
 
+// With XUI_PORT set the panel listens there, so that is the port the firewall page has to call "panel".
+func TestPortGuardCandidatesLabelThePortThePanelListensOn(t *testing.T) {
+	setupPortGuardTest(t)
+	if err := (&SettingService{}).SetPort(2053); err != nil {
+		t.Fatalf("SetPort: %v", err)
+	}
+	t.Setenv("XUI_PORT", "8124")
+
+	got, err := (&PortGuardService{}).candidates(nil, nil)
+	if err != nil {
+		t.Fatalf("candidates: %v", err)
+	}
+	var panel []int
+	for _, c := range got {
+		if strings.Contains(c.Label, "panel") {
+			panel = append(panel, c.Number)
+		}
+	}
+	if !slices.Equal(panel, []int{8124}) {
+		t.Fatalf("ports called panel = %v, want [8124]", panel)
+	}
+}
+
 func TestListensOnLoopbackOnly(t *testing.T) {
 	cases := map[string]bool{
 		"":                      false,

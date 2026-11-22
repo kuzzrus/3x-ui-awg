@@ -54,3 +54,27 @@ func TestFrontProxyOptionsCarryTheJSONAndClashSubscriptions(t *testing.T) {
 		t.Errorf("after the switches were flipped: JSON %v, Clash %v, want off and on", opts.Routing.SubJsonEnabled, opts.Routing.SubClashEnabled)
 	}
 }
+
+// The panel answers on XUI_PORT when it is set and valid, so that is the port the reverse proxy has to forward to.
+func TestFrontProxyOptionsForwardToThePortThePanelListensOn(t *testing.T) {
+	dbtest.InitDB(t, filepath.Join(t.TempDir(), "x-ui.db"))
+	svc := &FrontProxyService{}
+	setSetting(t, "webPort", "2053")
+
+	opts, err := svc.Options()
+	if err != nil {
+		t.Fatalf("Options: %v", err)
+	}
+	if opts.Routing.PanelPort != 2053 {
+		t.Fatalf("panel port = %d, want the stored 2053", opts.Routing.PanelPort)
+	}
+
+	t.Setenv("XUI_PORT", "8123")
+	opts, err = svc.Options()
+	if err != nil {
+		t.Fatalf("Options: %v", err)
+	}
+	if opts.Routing.PanelPort != 8123 {
+		t.Fatalf("panel port = %d, want the XUI_PORT override 8123", opts.Routing.PanelPort)
+	}
+}
