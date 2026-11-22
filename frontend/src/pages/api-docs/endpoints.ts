@@ -1745,7 +1745,7 @@ export const sections: readonly Section[] = [
         method: 'POST',
         path: '/panel/api/clients/hwids/:email/:id/block',
         summary:
-          'Block or unblock one device for the client subscription. Send an explicit boolean blocked value. A ban denies subscription bodies for that HWID even with limitHwid=0, does not consume a device slot, and survives clearing devices or changing the limit. It does not revoke copied credentials or identify requests with a different or missing HWID.',
+          'Block or unblock one device for the client subscription. Send an explicit boolean blocked value. A ban denies subscription bodies for that HWID even with limitHwid=0, does not consume a device slot, and survives clearing devices or changing the limit. Unblocking needs a free slot under the HWID limit. It does not revoke copied credentials or identify requests with a different or missing HWID.',
         params: [
           { name: 'email', in: 'path', type: 'string', desc: 'Client email.' },
           { name: 'id', in: 'path', type: 'number', desc: 'Device id, from the list endpoint.' },

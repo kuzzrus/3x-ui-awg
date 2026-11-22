@@ -273,9 +273,10 @@ _openapi:
       title: Block or unblock one device for the client subscription. Send an explicit
         boolean blocked value. A ban denies subscription bodies for that HWID
         even with limitHwid=0, does not consume a device slot, and survives
-        clearing devices or changing the limit. It does not revoke copied
-        credentials or identify requests with a different or missing HWID.
-      url: '#block-or-unblock-one-device-for-the-client-subscription-send-an-explicit-boolean-blocked-value-a-ban-denies-subscription-bodies-for-that-hwid-even-with-limithwid0-does-not-consume-a-device-slot-and-survives-clearing-devices-or-changing-the-limit-it-does-not-revoke-copied-credentials-or-identify-requests-with-a-different-or-missing-hwid'
+        clearing devices or changing the limit. Unblocking needs a free slot
+        under the HWID limit. It does not revoke copied credentials or identify
+        requests with a different or missing HWID.
+      url: '#block-or-unblock-one-device-for-the-client-subscription-send-an-explicit-boolean-blocked-value-a-ban-denies-subscription-bodies-for-that-hwid-even-with-limithwid0-does-not-consume-a-device-slot-and-survives-clearing-devices-or-changing-the-limit-unblocking-needs-a-free-slot-under-the-hwid-limit-it-does-not-revoke-copied-credentials-or-identify-requests-with-a-different-or-missing-hwid'
     - depth: 2
       title: List the emails of currently connected clients (last seen within the
         heartbeat window), deduped across every node.
@@ -557,10 +558,10 @@ _openapi:
       - content: Block or unblock one device for the client subscription. Send an
           explicit boolean blocked value. A ban denies subscription bodies for
           that HWID even with limitHwid=0, does not consume a device slot, and
-          survives clearing devices or changing the limit. It does not revoke
-          copied credentials or identify requests with a different or missing
-          HWID.
-        id: block-or-unblock-one-device-for-the-client-subscription-send-an-explicit-boolean-blocked-value-a-ban-denies-subscription-bodies-for-that-hwid-even-with-limithwid0-does-not-consume-a-device-slot-and-survives-clearing-devices-or-changing-the-limit-it-does-not-revoke-copied-credentials-or-identify-requests-with-a-different-or-missing-hwid
+          survives clearing devices or changing the limit. Unblocking needs a
+          free slot under the HWID limit. It does not revoke copied credentials
+          or identify requests with a different or missing HWID.
+        id: block-or-unblock-one-device-for-the-client-subscription-send-an-explicit-boolean-blocked-value-a-ban-denies-subscription-bodies-for-that-hwid-even-with-limithwid0-does-not-consume-a-device-slot-and-survives-clearing-devices-or-changing-the-limit-unblocking-needs-a-free-slot-under-the-hwid-limit-it-does-not-revoke-copied-credentials-or-identify-requests-with-a-different-or-missing-hwid
       - content: List the emails of currently connected clients (last seen within the
           heartbeat window), deduped across every node.
         id: list-the-emails-of-currently-connected-clients-last-seen-within-the-heartbeat-window-deduped-across-every-node

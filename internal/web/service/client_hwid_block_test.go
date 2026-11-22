@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -41,8 +42,8 @@ func TestClientHwidBanIndependentOfLimit(t *testing.T) {
 				}
 				assertBanned()
 			}
-			if err := svc.DeleteClientHwid(rec.Email, id); err == nil {
-				t.Fatal("deleting a banned row must require unblocking first")
+			if err := svc.DeleteClientHwid(rec.Email, id); err == nil || err.Error() != "device not found or blocked; unblock it before removing" {
+				t.Fatalf("deleting a banned row: err = %v, want the unblock-first refusal", err)
 			}
 			if err := svc.ClearClientHwids(rec.Email); err != nil {
 				t.Fatal(err)
@@ -77,8 +78,8 @@ func TestClientHwidBanScopeAndSlots(t *testing.T) {
 	if err := database.GetDB().Create(other).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.SetClientHwidBlocked(other.Email, list[0].Id, true); err == nil {
-		t.Fatal("must not ban a foreign subscription's device")
+	if err := svc.SetClientHwidBlocked(other.Email, list[0].Id, true); err == nil || err.Error() != "device not found" {
+		t.Fatalf("banning a foreign subscription's device: err = %v, want \"device not found\"", err)
 	}
 	if err := svc.SetClientHwidBlocked(rec.Email, list[0].Id, true); err != nil {
 		t.Fatal(err)
@@ -93,7 +94,73 @@ func TestClientHwidBanScopeAndSlots(t *testing.T) {
 	if r, err := svc.EnforceHwidForSubID(other.SubID, HwidRequest{Hwid: "shared-device"}); err != nil || !r.Allowed {
 		t.Fatalf("same HWID in other subscription: %+v, %v", r, err)
 	}
-	if err := svc.SetClientHwidBlocked(other.Email, list[0].Id, false); err == nil {
-		t.Fatal("must not unblock a foreign subscription's device")
+	if err := svc.SetClientHwidBlocked(other.Email, list[0].Id, false); err == nil || err.Error() != "device not found" {
+		t.Fatalf("unblocking a foreign subscription's device: err = %v, want \"device not found\"", err)
+	}
+}
+
+// Unblocking hands a banned device its slot back, so it must not push the subscription over its limit.
+func TestClientHwidUnblockNeedsAFreeSlot(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		limit int
+	}{{"limited", 1}, {"unlimited", 0}} {
+		t.Run(tc.name, func(t *testing.T) {
+			initClientHwidTestDB(t)
+			rec := seedHwidClient(t, tc.limit)
+			svc := &ClientService{}
+			register := func(hwid, label string) {
+				t.Helper()
+				if r, err := svc.EnforceHwidForSubID(rec.SubID, HwidRequest{Hwid: hwid, UserAgent: label}); err != nil || !r.Allowed {
+					t.Fatalf("register %s: %+v, %v", label, r, err)
+				}
+			}
+			idOf := func(label string) int {
+				t.Helper()
+				list, err := svc.ListClientHwids(rec.Email)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, d := range list {
+					if d.UserAgent == label {
+						return d.Id
+					}
+				}
+				t.Fatalf("no device %q in %+v", label, list)
+				return 0
+			}
+
+			register("device-aaaa", "A")
+			a := idOf("A")
+			if err := svc.SetClientHwidBlocked(rec.Email, a, true); err != nil {
+				t.Fatal(err)
+			}
+			register("device-bbbb", "B") // takes the slot the ban freed
+			err := svc.SetClientHwidBlocked(rec.Email, a, false)
+			if tc.limit == 0 {
+				if err != nil {
+					t.Fatalf("unblocking on an unlimited subscription: %v", err)
+				}
+				return
+			}
+			if !errors.Is(err, errHwidNoFreeSlot) {
+				t.Fatalf("unblocking over the limit: err = %v, want errHwidNoFreeSlot", err)
+			}
+			if r, err := svc.EnforceHwidForSubID(rec.SubID, HwidRequest{Hwid: "device-aaaa"}); err != nil || !r.Blocked {
+				t.Fatalf("the refused unblock must leave the ban in place: %+v, %v", r, err)
+			}
+			if err := svc.SetClientHwidBlocked(rec.Email, idOf("B"), false); err != nil {
+				t.Fatalf("unblocking a device that is not blocked changes nothing, got: %v", err)
+			}
+			if err := svc.DeleteClientHwid(rec.Email, idOf("B")); err != nil {
+				t.Fatal(err)
+			}
+			if err := svc.SetClientHwidBlocked(rec.Email, a, false); err != nil {
+				t.Fatalf("unblocking with a free slot: %v", err)
+			}
+			if r, err := svc.EnforceHwidForSubID(rec.SubID, HwidRequest{Hwid: "device-aaaa"}); err != nil || !r.Allowed || r.Blocked {
+				t.Fatalf("the unblocked device: %+v, %v", r, err)
+			}
+		})
 	}
 }

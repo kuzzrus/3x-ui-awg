@@ -11928,7 +11928,7 @@
         "tags": [
           "Clients"
         ],
-        "summary": "Block or unblock one device for the client subscription. Send an explicit boolean blocked value. A ban denies subscription bodies for that HWID even with limitHwid=0, does not consume a device slot, and survives clearing devices or changing the limit. It does not revoke copied credentials or identify requests with a different or missing HWID.",
+        "summary": "Block or unblock one device for the client subscription. Send an explicit boolean blocked value. A ban denies subscription bodies for that HWID even with limitHwid=0, does not consume a device slot, and survives clearing devices or changing the limit. Unblocking needs a free slot under the HWID limit. It does not revoke copied credentials or identify requests with a different or missing HWID.",
         "operationId": "post_panel_api_clients_hwids_email_id_block",
         "parameters": [
           {
