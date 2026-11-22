@@ -29,6 +29,8 @@ const (
 	subRateLimitMaxKeys = 4096
 	// subRateLimitIdleTTL drops buckets for clients that stopped requesting.
 	subRateLimitIdleTTL = 20 * time.Minute
+	// subRateLimitWarnEvery spaces the warning that names a throttled address.
+	subRateLimitWarnEvery = time.Minute
 )
 
 // subRateLimiter is a fixed-capacity sliding-window rate limiter keyed by client identity: a subId
@@ -134,8 +136,8 @@ func (l *subRateLimiter) removeLocked(element *list.Element, key string) {
 	delete(l.buckets, key)
 }
 
-// clientIPResolver keys the limiter on the panel login limiter's identity (util.go getRemoteIp).
-// A partially invalid CIDR list fails closed to loopback, unlike the panel's skip-bad-entries parse.
+// clientIPResolver keys the limiter like the panel's getRemoteIp (controller/util.go); forwarded_trust.go
+// holds a third copy of the CIDR rule. An invalid list fails closed to loopback here, those two skip bad entries.
 type clientIPResolver struct {
 	trusted []netip.Prefix
 }
@@ -273,9 +275,26 @@ func extractIP(value string) (netip.Addr, bool) {
 // resolver: trust loopback only, never widen it.
 var loopbackIPResolver = newLoopbackIPResolver()
 
+// warnGate lets one warning through per interval, so a flood of throttled requests logs a single line.
+type warnGate struct {
+	mu   sync.Mutex
+	last time.Time
+}
+
+func (g *warnGate) due(now time.Time, every time.Duration) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !g.last.IsZero() && now.Sub(g.last) < every {
+		return false
+	}
+	g.last = now
+	return true
+}
+
 // subRateLimitGuard rejects over-limit requests with 429 + Retry-After; a nil limiter is a no-op
 // so direct NewSUBController users (tests, embedders) keep the historical behavior.
 func subRateLimitGuard(limiter *subRateLimiter, resolver *clientIPResolver) gin.HandlerFunc {
+	var gate warnGate
 	return func(c *gin.Context) {
 		if limiter == nil {
 			c.Next()
@@ -293,6 +312,9 @@ func subRateLimitGuard(limiter *subRateLimiter, resolver *clientIPResolver) gin.
 			}
 			c.Header("Retry-After", strconv.Itoa(seconds))
 			logger.Debugf("sub: rate limit hit for %s, retry after %ds", ip, seconds)
+			if gate.due(limiter.now(), subRateLimitWarnEvery) {
+				logger.Warningf("sub: rate limit of %d requests a minute hit for %s; clients behind one address (a NAT, a proxy outside trustedProxyCIDRs) share one budget", limiter.limit, ip)
+			}
 			c.AbortWithStatus(http.StatusTooManyRequests)
 			return
 		}

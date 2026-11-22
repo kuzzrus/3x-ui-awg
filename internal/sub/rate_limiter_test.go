@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -122,6 +124,8 @@ func TestSubRateLimiterEvictsIdleAndCapacity(t *testing.T) {
 
 func TestSubRateLimiterConcurrentKeys(t *testing.T) {
 	limiter := newSubRateLimiter(50, time.Minute)
+	now := baseTime()
+	limiter.now = func() time.Time { return now }
 
 	const clients = 8
 	const perClient = 100
@@ -144,13 +148,13 @@ func TestSubRateLimiterConcurrentKeys(t *testing.T) {
 	}
 	wg.Wait()
 
-	for key, count := range allowed {
-		if count > 50 {
-			t.Fatalf("%s got %d allowed requests, limit is 50", key, count)
-		}
+	if len(allowed) != clients {
+		t.Fatalf("%d clients were served, want all %d", len(allowed), clients)
 	}
-	if len(allowed) == 0 {
-		t.Fatal("no requests were allowed at all")
+	for key, count := range allowed {
+		if count != 50 {
+			t.Fatalf("%s got %d allowed requests, want exactly the limit of 50", key, count)
+		}
 	}
 }
 
@@ -159,14 +163,16 @@ func TestParseTrustedCIDRs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if len(prefixes) != 3 {
-		t.Fatalf("prefixes = %d, want 3", len(prefixes))
+	want := []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32"), netip.MustParsePrefix("::1/128"), netip.MustParsePrefix("10.0.0.0/8")}
+	if !slices.Equal(prefixes, want) {
+		t.Fatalf("prefixes = %v, want %v", prefixes, want)
 	}
 	if _, err := parseTrustedCIDRs("*"); err == nil || !strings.Contains(err.Error(), "must not trust every address") {
 		t.Fatalf("wildcard error = %v, want the exact trust-widening refusal", err)
 	}
-	if _, err := parseTrustedCIDRs("10.0.0.0/8,not-an-ip"); err == nil {
-		t.Fatal("a malformed entry must be refused")
+	_, wantErr := netip.ParseAddr("not-an-ip")
+	if _, err := parseTrustedCIDRs("10.0.0.0/8,not-an-ip"); err == nil || err.Error() != wantErr.Error() {
+		t.Fatalf("malformed entry error = %v, want %v", err, wantErr)
 	}
 }
 
@@ -254,7 +260,7 @@ func TestSubRateLimitGuard(t *testing.T) {
 	if w.Code != http.StatusTooManyRequests {
 		t.Fatalf("third request: code = %d, want 429", w.Code)
 	}
-	// limit=1, first hit at t=0, reject at t=0: the window frees in exactly 60s.
+	// limit=2, both hits at t=0, the third is rejected at t=0: the window frees in exactly 60s.
 	if got := w.Header().Get("Retry-After"); got != "60" {
 		t.Fatalf("Retry-After = %q, want \"60\"", got)
 	}
@@ -374,5 +380,22 @@ func TestClientIPResolverUntrustedPeerCannotNameItsAddress(t *testing.T) {
 				t.Fatalf("ip = %q, want the peer address 203.0.113.7", ip)
 			}
 		})
+	}
+}
+
+func TestWarnGateLetsOneWarningThroughPerInterval(t *testing.T) {
+	var gate warnGate
+	now := baseTime()
+	if !gate.due(now, time.Minute) {
+		t.Fatal("the first warning must be due")
+	}
+	if gate.due(now.Add(59*time.Second), time.Minute) {
+		t.Fatal("a second warning inside the interval must be held back")
+	}
+	if !gate.due(now.Add(time.Minute), time.Minute) {
+		t.Fatal("a warning after the interval must be due")
+	}
+	if gate.due(now.Add(time.Minute+time.Second), time.Minute) {
+		t.Fatal("the interval restarts from the last warning")
 	}
 }

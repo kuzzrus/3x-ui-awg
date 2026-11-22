@@ -52,7 +52,10 @@ Behind a reverse proxy the client address comes from `X-Forwarded-For`, but only
 the proxy is listed in **Trusted proxy CIDRs**. Loopback is trusted by default, which
 covers the panel's own front proxy. A proxy on another host has to be added there:
 otherwise every client counts as the proxy and the limit can answer `429` to legitimate
-users. An IPv6 client that rotates its address is counted per address.
+users. Clients that share one address, such as a carrier NAT or an app that updates
+through the server's own proxy, share one budget, and the panel log then carries one
+warning a minute that names the throttled address. An IPv6 client that rotates its
+address is counted per address.
 
 ## Output formats
 
