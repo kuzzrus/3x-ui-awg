@@ -92,6 +92,9 @@ type SUBController struct {
 	subTemplateCache map[string]*cachedSubTemplate
 
 	releaseSettingsCache func()
+
+	rateLimiter      *subRateLimiter
+	clientIPResolver *clientIPResolver
 }
 
 type subControllerConfig struct {
@@ -136,9 +139,21 @@ type subControllerConfig struct {
 	subIncyEnableRouting bool
 	subIncyRoutingRules  string
 	subIncyRoutingSource string
+
+	rateLimiter      *subRateLimiter
+	clientIPResolver *clientIPResolver
 }
 
 type SUBControllerOption func(*subControllerConfig)
+
+// WithSUBRateLimit installs the per-client subscription rate limit guard.
+// A nil limiter keeps the historical unlimited behavior.
+func WithSUBRateLimit(limiter *subRateLimiter, resolver *clientIPResolver) SUBControllerOption {
+	return func(c *subControllerConfig) {
+		c.rateLimiter = limiter
+		c.clientIPResolver = resolver
+	}
+}
 
 func WithSUBPath(value string) SUBControllerOption {
 	return func(config *subControllerConfig) { config.subPath = value }
@@ -356,6 +371,9 @@ func NewSUBController(g *gin.RouterGroup, options ...SUBControllerOption) *SUBCo
 
 		subTemplateCache:     map[string]*cachedSubTemplate{},
 		releaseSettingsCache: releaseSettingsCache,
+
+		rateLimiter:      config.rateLimiter,
+		clientIPResolver: config.clientIPResolver,
 	}
 	a.initRouter(g)
 	return a
@@ -364,6 +382,8 @@ func NewSUBController(g *gin.RouterGroup, options ...SUBControllerOption) *SUBCo
 // initRouter registers HTTP routes for subscription links and JSON endpoints
 // on the provided router group.
 func (a *SUBController) initRouter(g *gin.RouterGroup) {
+	// Static assets mount on the engine outside this group: cheap, no DB reads, intentionally unguarded.
+	g.Use(subRateLimitGuard(a.rateLimiter, a.clientIPResolver))
 	gLink := g.Group(a.subPath, setNoCacheHeaders)
 	gLink.GET(":subid", a.subs)
 	gLink.HEAD(":subid", a.subs)

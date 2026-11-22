@@ -691,6 +691,14 @@
           "subProfileUrl": {
             "type": "string"
           },
+          "subRateLimit": {
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "subRateLimitEnable": {
+            "type": "boolean"
+          },
           "subRoutingRules": {
             "type": "string"
           },
@@ -959,6 +967,8 @@
           "subPort",
           "subProfileMode",
           "subProfileUrl",
+          "subRateLimit",
+          "subRateLimitEnable",
           "subRoutingRules",
           "subRoutingSource",
           "subShowIdentityOnAllLinks",
@@ -1528,6 +1538,14 @@
           "subProfileUrl": {
             "type": "string"
           },
+          "subRateLimit": {
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "subRateLimitEnable": {
+            "type": "boolean"
+          },
           "subRoutingRules": {
             "type": "string"
           },
@@ -1804,6 +1822,8 @@
           "subPort",
           "subProfileMode",
           "subProfileUrl",
+          "subRateLimit",
+          "subRateLimitEnable",
           "subRoutingRules",
           "subRoutingSource",
           "subShowIdentityOnAllLinks",
