@@ -160,3 +160,39 @@ func TestParseAmneziaVPNLinkRejectsAKeyThatInflatesPastItsCap(t *testing.T) {
 		t.Fatalf("ParseLink = %v, %v; want the error %q", res, err, want)
 	}
 }
+
+// qCompressRaw is qCompressKey for raw bytes; corruptSum flips the last byte of the zlib checksum.
+func qCompressRaw(raw []byte, corruptSum bool) string {
+	var buf bytes.Buffer
+	_ = binary.Write(&buf, binary.BigEndian, uint32(len(raw)))
+	zw := zlib.NewWriter(&buf)
+	_, _ = zw.Write(raw)
+	_ = zw.Close()
+	if corruptSum {
+		buf.Bytes()[buf.Len()-1] ^= 0xff
+	}
+	return "vpn://" + base64.RawURLEncoding.EncodeToString(buf.Bytes())
+}
+
+// A refused key has still cost its inflate, so it draws on the 8 MiB subscription budget like a good one.
+func TestParseSubscriptionBodyChargesRefusedKeysToTheInflateBudget(t *testing.T) {
+	// Each bomb inflates 1 MiB (the literals keep the test small if a cap constant is raised by mistake).
+	bombs := map[string]string{
+		"key past the per-key cap":    qCompressKey(t, map[string]any{"description": strings.Repeat("a", 1<<20+1)}),
+		"key with a corrupt checksum": qCompressRaw(bytes.Repeat([]byte("a"), 1<<20), true),
+	}
+	good := amneziaVPNKey(t, awgConf)
+	for name, bomb := range bombs {
+		t.Run(name, func(t *testing.T) {
+			for _, c := range []struct{ bombs, want int }{{0, 1}, {7, 1}, {8, 0}} {
+				obs, _, err := ParseSubscriptionBody([]byte(strings.Repeat(bomb+"\n", c.bombs) + good))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(obs) != c.want {
+					t.Fatalf("%d bombs before a good key: parsed %d outbounds, want %d", c.bombs, len(obs), c.want)
+				}
+			}
+		})
+	}
+}

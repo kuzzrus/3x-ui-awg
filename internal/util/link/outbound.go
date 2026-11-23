@@ -768,14 +768,15 @@ func amneziaVPNKeyConf(zlibData []byte, inflateBudget *int) (conf, description s
 	}
 	defer zr.Close()
 	raw, err := io.ReadAll(io.LimitReader(zr, int64(limit)+1))
+	if inflateBudget != nil {
+		// Charged before any refusal: a key that is then rejected has still cost the inflate.
+		*inflateBudget -= len(raw)
+	}
 	if err != nil {
 		return "", "", err
 	}
 	if len(raw) > limit {
 		return "", "", fmt.Errorf("amneziavpn key exceeds the %d bytes left to inflate", limit)
-	}
-	if inflateBudget != nil {
-		*inflateBudget -= len(raw)
 	}
 	var key struct {
 		Description string `json:"description"`
