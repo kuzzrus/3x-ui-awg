@@ -23,6 +23,8 @@ panel's subscription settings:
 | `subCertFile` / `subKeyFile` | _(none)_ | TLS cert + key — when set, the server serves **HTTPS**. |
 | `subEncrypt`  | `true`  | Base64-encode the raw subscription body.                        |
 | `subUpdates`  | `12`    | Suggested refresh interval (hours) sent to clients.             |
+| `subRateLimitEnable` | `false` | Per-client rate limit for subscription fetches (see [Rate limit](#rate-limit)). |
+| `subRateLimit` | `60`  | Fetches per client address and minute while the limit is on (1–1000). |
 
 A subscription URL looks like:
 
@@ -37,6 +39,23 @@ list at `subPath` and the **JSON** (Xray-json) config at the JSON path. Build th
 URLs and preview both bodies here:
 
 <SubscriptionBuilder />
+
+## Rate limit
+
+Switch on **Subscription rate limit** to cap how often one client address may fetch
+subscription URLs, so a loop that probes guessed Sub IDs cannot turn into database
+load. A request over the limit gets HTTP `429` with a `Retry-After` header. The limit
+is per client address and covers every subscription route (raw, JSON, Clash/Mihomo,
+the HTML page and the HWID status), not the static assets.
+
+Behind a reverse proxy the client address comes from `X-Forwarded-For`, but only when
+the proxy is listed in **Trusted proxy CIDRs**. Loopback is trusted by default, which
+covers the panel's own front proxy. A proxy on another host has to be added there:
+otherwise every client counts as the proxy and the limit can answer `429` to legitimate
+users. Clients that share one address, such as a carrier NAT or an app that updates
+through the server's own proxy, share one budget, and the panel log then carries one
+warning a minute that names the throttled address. An IPv6 client that rotates its
+address is counted per address.
 
 ## Output formats
 
