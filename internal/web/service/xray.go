@@ -508,6 +508,10 @@ func (s *XrayService) buildXrayConfig() (*xray.Config, string, error) {
 
 	// Merge subscription-derived outbounds (if any) into the final outbounds array.
 	mergeActiveSubscriptionOutbounds(xrayConfig)
+	// The bridge above ran before the merge, so a subscribed amneziawg outbound still needs its own.
+	if err := transformAmneziaWGOutbounds(xrayConfig); err != nil {
+		return nil, "", err
+	}
 	nodeOutbounds := s.expandNodeBalancers(xrayConfig)
 	for _, note := range repairLeftOut(xrayConfig, left) {
 		logger.Warning("panel's own core:", note)
