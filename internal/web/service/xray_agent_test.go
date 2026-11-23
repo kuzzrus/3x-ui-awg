@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"slices"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/amneziawgnet"
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
+	wgutil "github.com/mhsanaei/3x-ui/v3/internal/util/wireguard"
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
 
@@ -238,4 +240,45 @@ func TestGetAgentConfigMakesAnAmneziaWGOutboundInert(t *testing.T) {
 	if strings.Contains(string(body), amneziawgnet.SocksPassword()) {
 		t.Fatal("the agent's render carries the master's per-process socks password")
 	}
+}
+
+// A refresh keeps a subscribed amneziawg outbound now, and an agent hosts no tunnel for it.
+func TestGetAgentConfigMakesASubscribedAmneziaWGOutboundInert(t *testing.T) {
+	setupSettingTestDB(t)
+	node := seedAgentRow(t, "agent")
+	priv, pub, err := wgutil.GenerateWireguardKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf := "[Interface]\nPrivateKey = " + priv + "\nAddress = 10.8.1.2/32\nJc = 4\nJmin = 10\nJmax = 50\nS1 = 30\nS2 = 40\n" +
+		"H1 = 1\nH2 = 2\nH3 = 3\nH4 = 4\n# awg\n[Peer]\nPublicKey = " + pub + "\nAllowedIPs = 0.0.0.0/0\nEndpoint = 8.8.8.8:51820"
+	subID := serveOutboundSubscription(t, "p-", func(int) string {
+		return "vpn://" + base64.RawURLEncoding.EncodeToString([]byte(conf))
+	})
+	obs, err := (&OutboundSubscriptionService{}).Refresh(subID)
+	if err != nil || len(obs) != 1 {
+		t.Fatalf("Refresh = %v, %v, want the amneziawg outbound kept", obs, err)
+	}
+	tag, _ := obs[0].(map[string]any)["tag"].(string)
+	if err := database.GetDB().Model(&model.OutboundSubscription{}).Where("id = ?", subID).Update("enabled", true).Error; err != nil {
+		t.Fatalf("enable: %v", err)
+	}
+
+	agent, err := (&XrayService{}).GetAgentConfig(node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var outbounds []struct{ Protocol, Tag string }
+	if err := json.Unmarshal(agent.OutboundConfigs, &outbounds); err != nil {
+		t.Fatal(err)
+	}
+	for _, out := range outbounds {
+		if out.Tag == tag {
+			if out.Protocol != "blackhole" {
+				t.Fatalf("the agent's subscribed outbound is %q, want a blackhole that keeps the tag", out.Protocol)
+			}
+			return
+		}
+	}
+	t.Fatalf("outbound %q missing from the agent config", tag)
 }

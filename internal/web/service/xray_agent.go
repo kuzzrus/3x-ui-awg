@@ -39,6 +39,10 @@ func (s *XrayService) GetAgentConfig(nodeID int) (*xray.Config, error) {
 	}
 	xrayConfig.InboundConfigs = dropInboundsRefusedByXDrive(xrayConfig.InboundConfigs)
 	mergeActiveSubscriptionOutbounds(xrayConfig)
+	// An agent hosts no tunnel, so a subscribed amneziawg outbound goes inert like the template's.
+	if err := inertAmneziaWGOutbounds(xrayConfig); err != nil {
+		return nil, err
+	}
 	notes := append(repairLeftOut(xrayConfig, left), leaveNodesOutOfBalancers(xrayConfig)...)
 	setAgentConfigProblem(nodeID, adjustedConfigProblem(notes))
 	xrayConfig.RouterConfig = dropRefusedScript(xrayConfig.RouterConfig, "routing", routingScriptRefused)
