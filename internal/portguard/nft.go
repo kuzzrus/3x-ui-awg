@@ -14,6 +14,9 @@ import (
 // table is the nftables table this package owns, so that its rules are replaced or removed without touching the admin's own.
 const table = "x_ui_portguard"
 
+// TableName is that table's name, for a caller that has to leave it out of what it reads of the host's firewall.
+const TableName = table
+
 // nftTimeout bounds every call of nft.
 const nftTimeout = 5 * time.Second
 
@@ -90,6 +93,27 @@ func (NftFirewall) Available() bool {
 	ctx, cancel := context.WithTimeout(context.Background(), nftTimeout)
 	defer cancel()
 	return exec.CommandContext(ctx, nft, "list", "tables").Run() == nil
+}
+
+// Loaded reports whether the table of this package is in the kernel now. A host where nft is missing, or does not answer, cannot
+// say: that is an error, and not a no. The command runs in the C locale, so that "no such table" has the words it is told by.
+func (NftFirewall) Loaded(ctx context.Context) (bool, error) {
+	nft, err := findNft()
+	if err != nil {
+		return false, fmt.Errorf("portguard: nft (nftables) was not found: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, nftTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, nft, "list", "table", "inet", table)
+	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return true, nil
+	}
+	if strings.Contains(string(out), "No such file or directory") {
+		return false, nil
+	}
+	return false, fmt.Errorf("portguard: nft list table: %w: %s", err, strings.TrimSpace(string(out)))
 }
 
 // Apply replaces the rules with the ones that close ports.

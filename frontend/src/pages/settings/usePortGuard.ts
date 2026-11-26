@@ -19,6 +19,17 @@ export interface GuardCandidate extends GuardPort {
   protected: boolean;
 }
 
+// What the rules of the host do with an incoming packet that no rule lets in; '' when they could not be read.
+export type FirewallPolicy = 'allow' | 'deny' | '';
+
+// The firewall of the host, apart from the table of the guard itself.
+export interface HostFirewall {
+  readable: boolean;
+  managers: string[];
+  incoming4: FirewallPolicy;
+  incoming6: FirewallPolicy;
+}
+
 export interface GuardStatus {
   available: boolean;
   closed: GuardPort[];
@@ -26,6 +37,9 @@ export interface GuardStatus {
   protected: GuardPort[];
   candidates: GuardCandidate[];
   leaseSeconds: number;
+  // True when ports are saved as closed but the table of the guard is not in the kernel, so that they are open.
+  rulesMissing: boolean;
+  firewall: HostFirewall;
 }
 
 export interface GuardPlan {
@@ -64,6 +78,13 @@ function wholeStatus(obj: Partial<GuardStatus>): GuardStatus {
     protected: obj.protected ?? [],
     candidates: obj.candidates ?? [],
     leaseSeconds: obj.leaseSeconds ?? 120,
+    rulesMissing: !!obj.rulesMissing,
+    firewall: {
+      readable: !!obj.firewall?.readable,
+      managers: obj.firewall?.managers ?? [],
+      incoming4: obj.firewall?.incoming4 ?? '',
+      incoming6: obj.firewall?.incoming6 ?? '',
+    },
   };
 }
 
@@ -198,6 +219,8 @@ export function usePortGuard() {
     toggle,
     preview: () => previewMutation.mutate(),
     apply: () => run('/apply', { ports: desired }),
+    // The same ports that are closed, so that the rules the kernel lost are put in again.
+    reload: () => run('/apply', { ports: status?.closed ?? [] }),
     confirm: () => run('/confirm'),
     rollback: () => run('/rollback'),
     closePlan: () => setPlan(null),

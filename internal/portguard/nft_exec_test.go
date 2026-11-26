@@ -182,3 +182,54 @@ func TestNftFirewallRemoveWithoutNftHasNothingToRemove(t *testing.T) {
 		t.Errorf("Remove error = %v, want none: without nft there are no rules of ours", err)
 	}
 }
+
+func TestNftFirewallLoadedAsksNftForItsOwnTable(t *testing.T) {
+	args, _ := fakeNft(t, "")
+	loaded, err := (NftFirewall{}).Loaded(context.Background())
+	if err != nil || !loaded {
+		t.Fatalf("Loaded = %v, %v, want true: nft listed the table", loaded, err)
+	}
+	if got := strings.TrimSpace(readFile(t, args)); got != "list table inet x_ui_portguard" {
+		t.Errorf("nft was run with %q, want it asked for the table of the guard", got)
+	}
+}
+
+func TestNftFirewallLoadedSaysNoWhenTheTableIsNotThere(t *testing.T) {
+	fakeNft(t, "Error: No such file or directory; did you mean table 'x' in family inet?")
+	loaded, err := (NftFirewall{}).Loaded(context.Background())
+	if err != nil || loaded {
+		t.Errorf("Loaded = %v, %v, want false and no error: the table is simply not there", loaded, err)
+	}
+}
+
+// A host that cannot be asked has not said no, and a page that took it for one would cry wolf.
+func TestNftFirewallLoadedIsAnErrorWhenNftCannotSay(t *testing.T) {
+	fakeNft(t, "Error: Operation not permitted")
+	loaded, err := (NftFirewall{}).Loaded(context.Background())
+	if loaded || err == nil || !strings.Contains(err.Error(), "Operation not permitted") {
+		t.Errorf("Loaded = %v, %v, want false and an error that holds what nft said", loaded, err)
+	}
+}
+
+func TestNftFirewallLoadedWithoutNftIsAnError(t *testing.T) {
+	noNft(t)
+	loaded, err := (NftFirewall{}).Loaded(context.Background())
+	if loaded || err == nil || !strings.Contains(err.Error(), "nft") {
+		t.Errorf("Loaded = %v, %v, want false and an error that says nft was not found", loaded, err)
+	}
+}
+
+// What nft says about a missing table is in the words of the host's language unless it is asked in the C locale.
+func TestNftFirewallLoadedAsksInTheCLocale(t *testing.T) {
+	dir := t.TempDir()
+	script := "#!/bin/sh\nif [ \"$LC_ALL\" = C ]; then echo 'Error: No such file or directory' >&2; else echo 'Ошибка: Нет такого файла или каталога' >&2; fi\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "nft"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	t.Setenv("LC_ALL", "ru_RU.UTF-8")
+	t.Cleanup(SetNftSearchDirs(nil))
+	if loaded, err := (NftFirewall{}).Loaded(context.Background()); loaded || err != nil {
+		t.Errorf("Loaded = %v, %v, want false and no error", loaded, err)
+	}
+}

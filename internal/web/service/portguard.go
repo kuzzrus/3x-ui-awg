@@ -12,6 +12,7 @@ import (
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
+	"github.com/mhsanaei/3x-ui/v3/internal/hostfw"
 	"github.com/mhsanaei/3x-ui/v3/internal/portguard"
 )
 
@@ -95,6 +96,42 @@ type PortGuardStatus struct {
 	Protected    []portguard.Port     `json:"protected"`
 	Candidates   []PortGuardCandidate `json:"candidates"`
 	LeaseSeconds int                  `json:"leaseSeconds"`
+	// RulesMissing is true when ports are saved as closed but the table of the guard is not in the kernel, so that they are open:
+	// another tool cleared the rules, or the host's firewall was reloaded.
+	RulesMissing bool `json:"rulesMissing"`
+	// Firewall is the firewall of the host apart from the guard's own table.
+	Firewall hostfw.Status `json:"firewall"`
+}
+
+// hostFirewallTTL is how long what was read of the host's firewall is kept: a page that looks again every few seconds must not
+// start four commands each time.
+const hostFirewallTTL = 15 * time.Second
+
+var (
+	hostFirewallMu     sync.Mutex
+	hostFirewallAt     time.Time
+	hostFirewallStatus hostfw.Status
+
+	// What the status asks of the host; a test puts its own in the place of each.
+	detectHostFirewall = realDetectHostFirewall
+	portGuardAvailable = portguard.NftFirewall{}.Available
+	portGuardLoaded    = portguard.NftFirewall{}.Loaded
+)
+
+// realDetectHostFirewall reads the firewall of the host, leaving out the table that the guard itself keeps.
+func realDetectHostFirewall(ctx context.Context) hostfw.Status {
+	return hostfw.Detect(ctx, hostfw.ExecRunner, portguard.TableName)
+}
+
+// hostFirewall is the firewall of the host, read again once hostFirewallTTL has passed.
+func hostFirewall() hostfw.Status {
+	hostFirewallMu.Lock()
+	defer hostFirewallMu.Unlock()
+	if time.Since(hostFirewallAt) >= hostFirewallTTL {
+		hostFirewallStatus = detectHostFirewall(context.Background())
+		hostFirewallAt = time.Now()
+	}
+	return hostFirewallStatus
 }
 
 // PortGuardService closes ports of the host for the admin; the rules and the lease are kept by internal/portguard.
@@ -114,11 +151,18 @@ func (s *PortGuardService) Status() (PortGuardStatus, error) {
 		return PortGuardStatus{}, err
 	}
 	out := PortGuardStatus{
-		Available:    portguard.NftFirewall{}.Available(),
+		Available:    portGuardAvailable(),
 		Closed:       nonNil(st.Closed),
 		Protected:    protected,
 		Candidates:   candidates,
 		LeaseSeconds: int(portguard.LeaseWindow / time.Second),
+		Firewall:     hostFirewall(),
+	}
+	// A host that cannot be asked has not said that the rules are gone, so only a clear no counts.
+	if out.Available && len(st.Closed) > 0 {
+		if loaded, err := portGuardLoaded(context.Background()); err == nil && !loaded {
+			out.RulesMissing = true
+		}
 	}
 	if st.Pending != nil {
 		out.Pending = &PortGuardPending{

@@ -5,7 +5,7 @@ import type { TableColumnsType } from 'antd';
 import { getMessage } from '@/utils/messageBus';
 
 import { portKey, usePortGuard } from './usePortGuard';
-import type { GuardPort, GuardRow } from './usePortGuard';
+import type { FirewallPolicy, GuardPort, GuardRow, HostFirewall } from './usePortGuard';
 
 const mmss = (seconds: number) =>
   `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -17,6 +17,46 @@ function PortTags({ ports }: { ports: GuardPort[] }) {
         <Tag key={portKey(p)}>{portKey(p)}</Tag>
       ))}
     </>
+  );
+}
+
+const POLICY_LABEL: Record<FirewallPolicy, string> = {
+  deny: 'pages.settings.frontProxy.portGuard.policyDeny',
+  allow: 'pages.settings.frontProxy.portGuard.policyAllow',
+  '': 'pages.settings.frontProxy.portGuard.policyUnknown',
+};
+
+// What the host's own firewall is, so that whoever closes ports here knows whether anything else filters them.
+function FirewallNote({ firewall }: { firewall: HostFirewall }) {
+  const { t } = useTranslation();
+  if (!firewall.readable) {
+    return (
+      <Typography.Text type="secondary">
+        {t('pages.settings.frontProxy.portGuard.firewallUnreadable')}
+      </Typography.Text>
+    );
+  }
+  const filtering =
+    firewall.managers.length > 0 || firewall.incoming4 === 'deny' || firewall.incoming6 === 'deny';
+  if (!filtering) {
+    return (
+      <Alert type="info" showIcon title={t('pages.settings.frontProxy.portGuard.firewallNone')} />
+    );
+  }
+  return (
+    <Space wrap size={[8, 4]}>
+      {firewall.managers.map((name) => (
+        <Tag key={name} color="blue">
+          {t('pages.settings.frontProxy.portGuard.firewallManager', { name })}
+        </Tag>
+      ))}
+      <Typography.Text type="secondary">
+        {t('pages.settings.frontProxy.portGuard.firewallIncoming', {
+          v4: t(POLICY_LABEL[firewall.incoming4]),
+          v6: t(POLICY_LABEL[firewall.incoming6]),
+        })}
+      </Typography.Text>
+    </Space>
   );
 }
 
@@ -80,6 +120,10 @@ export default function PortGuardCard() {
     if (await guard.rollback())
       getMessage().success(t('pages.settings.frontProxy.portGuard.rolledBack'));
   };
+  const reload = async () => {
+    if (await guard.reload())
+      getMessage().success(t('pages.settings.frontProxy.portGuard.reloaded'));
+  };
 
   return (
     <Card size="small" className="mt-12">
@@ -100,6 +144,20 @@ export default function PortGuardCard() {
         {status && !status.available && (
           <Alert type="warning" showIcon title={t('pages.settings.frontProxy.portGuard.noNft')} />
         )}
+        {status?.rulesMissing && (
+          <Alert
+            type="warning"
+            showIcon
+            title={t('pages.settings.frontProxy.portGuard.rulesMissingTitle')}
+            description={t('pages.settings.frontProxy.portGuard.rulesMissingDesc')}
+            action={
+              <Button type="primary" size="small" loading={guard.busy} onClick={reload}>
+                {t('pages.settings.frontProxy.portGuard.reload')}
+              </Button>
+            }
+          />
+        )}
+        {status && <FirewallNote firewall={status.firewall} />}
         {status?.pending && (
           <Alert
             type="warning"

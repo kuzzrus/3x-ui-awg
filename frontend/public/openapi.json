@@ -18916,7 +18916,7 @@
         "tags": [
           "Xray Settings"
         ],
-        "summary": "Report the ports closed in the host firewall, the change that waits to be confirmed (its deadline, and remainingMs, what is left of the lease by the host's clock), the ports that can never be closed (the SSH ports and 443/tcp), and the ports of the panel, the subscription server and the enabled inbounds that could be closed.",
+        "summary": "Report the ports closed in the host firewall, the change that waits to be confirmed (its deadline, and remainingMs, what is left of the lease by the host's clock), the ports that can never be closed (the SSH ports and 443/tcp), and the ports of the panel, the subscription server and the enabled inbounds that could be closed. rulesMissing is true when ports are saved as closed but the guard's nft table is not in the kernel, so they are open: post the same closed ports to apply to load the rules again. firewall is the host's own firewall, left out the guard's table: readable, the managers loaded (ufw, firewalld), and incoming4 and incoming6, what the rules do with an incoming packet that no rule lets in (deny, allow, or empty when unknown).",
         "operationId": "get_panel_api_xray_portguard",
         "responses": {
           "200": {
@@ -18972,7 +18972,16 @@
                         "protected": false
                       }
                     ],
-                    "leaseSeconds": 120
+                    "leaseSeconds": 120,
+                    "rulesMissing": false,
+                    "firewall": {
+                      "readable": true,
+                      "managers": [
+                        "ufw"
+                      ],
+                      "incoming4": "deny",
+                      "incoming6": "deny"
+                    }
                   }
                 }
               }

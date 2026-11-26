@@ -49,6 +49,8 @@ function status(patch: Partial<GuardStatus> = {}): GuardStatus {
       },
     ],
     leaseSeconds: 120,
+    rulesMissing: false,
+    firewall: { readable: true, managers: ['ufw'], incoming4: 'deny', incoming6: 'deny' },
     ...patch,
   };
   // As the server answers: a candidate says whether its port is closed.
@@ -398,6 +400,9 @@ describe('PortGuardCard, edges', () => {
 
     expect(await screen.findByText(/nft \(nftables\) is not available/)).toBeTruthy();
     expect(screen.getByText('No ports to show')).toBeTruthy();
+    // What nobody said is not a firewall that was read.
+    expect(screen.getByText(/The firewall of this host could not be read/)).toBeTruthy();
+    expect(screen.queryByText(/their rules are not in the firewall/)).toBeNull();
   });
 
   it('does not say a change is confirmed when it was not', async () => {
@@ -554,5 +559,119 @@ describe('PortGuardCard, clocks and failures', () => {
 
     await waitFor(() => expect(error).toHaveBeenCalledWith('the plan cannot be made'));
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('names the firewall of the host and what it does with traffic that no rule lets in', async () => {
+    serve(
+      status({
+        firewall: { readable: true, managers: ['ufw'], incoming4: 'deny', incoming6: 'allow' },
+      }),
+    );
+    renderWithProviders(<PortGuardCard />);
+
+    expect(await screen.findByText('Managed by ufw')).toBeTruthy();
+    expect(
+      screen.getByText('Incoming traffic that no rule lets in. IPv4: blocked, IPv6: let in.'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/No firewall is filtering/)).toBeNull();
+  });
+
+  it('shows a firewall that has no front end by its policy alone', async () => {
+    serve(
+      status({ firewall: { readable: true, managers: [], incoming4: 'deny', incoming6: 'deny' } }),
+    );
+    renderWithProviders(<PortGuardCard />);
+
+    expect(
+      await screen.findByText(
+        'Incoming traffic that no rule lets in. IPv4: blocked, IPv6: blocked.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Managed by/)).toBeNull();
+  });
+
+  it('names a front end even when the policy of its rules could not be read', async () => {
+    serve(
+      status({
+        firewall: { readable: true, managers: ['firewalld'], incoming4: '', incoming6: '' },
+      }),
+    );
+    renderWithProviders(<PortGuardCard />);
+
+    expect(await screen.findByText('Managed by firewalld')).toBeTruthy();
+    expect(
+      screen.getByText('Incoming traffic that no rule lets in. IPv4: unknown, IPv6: unknown.'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/No firewall is filtering/)).toBeNull();
+  });
+
+  it.each([
+    ['IPv4', 'deny', 'allow', 'IPv4: blocked, IPv6: let in.'],
+    ['IPv6', 'allow', 'deny', 'IPv4: let in, IPv6: blocked.'],
+  ] as const)(
+    'counts a firewall that blocks only %s as filtering',
+    async (_family, incoming4, incoming6, line) => {
+      serve(status({ firewall: { readable: true, managers: [], incoming4, incoming6 } }));
+      renderWithProviders(<PortGuardCard />);
+
+      expect(
+        await screen.findByText(`Incoming traffic that no rule lets in. ${line}`),
+      ).toBeTruthy();
+      expect(screen.queryByText(/No firewall is filtering/)).toBeNull();
+    },
+  );
+
+  it('says so when nothing on the host filters incoming traffic', async () => {
+    serve(
+      status({
+        firewall: { readable: true, managers: [], incoming4: 'allow', incoming6: 'allow' },
+      }),
+    );
+    renderWithProviders(<PortGuardCard />);
+
+    expect(await screen.findByText(/No firewall is filtering incoming traffic/)).toBeTruthy();
+    expect(screen.queryByText(/Managed by/)).toBeNull();
+  });
+
+  it('says so when the firewall of the host could not be read', async () => {
+    serve(status({ firewall: { readable: false, managers: [], incoming4: '', incoming6: '' } }));
+    renderWithProviders(<PortGuardCard />);
+
+    expect(await screen.findByText(/The firewall of this host could not be read/)).toBeTruthy();
+    expect(screen.queryByText(/No firewall is filtering/)).toBeNull();
+  });
+
+  it('warns that closed ports are open when their rules are gone, and loads the rules again', async () => {
+    const closed = [{ port: 8443, proto: 'tcp' as const }];
+    const { post } = serve(status({ closed, rulesMissing: true }), {
+      '/apply': status({ closed, rulesMissing: false }),
+    });
+    const success = vi.spyOn(getMessage(), 'success');
+    renderWithProviders(<PortGuardCard />);
+
+    expect(
+      await screen.findByText(
+        'The closed ports are saved, but their rules are not in the firewall',
+      ),
+    ).toBeTruthy();
+    // An edit that was not applied is not what the rules are put back for: only the ports that are closed.
+    await screen.findByText('51820/udp');
+    fireEvent.click(screen.getByLabelText('Close 51820/udp'));
+    fireEvent.click(screen.getByRole('button', { name: 'Load the rules again' }));
+
+    await waitFor(() => expect(postsTo(post, '/apply')).toHaveLength(1));
+    expect(postsTo(post, '/apply')[0][1]).toEqual({ ports: closed });
+    await waitFor(() => expect(success).toHaveBeenCalledWith('The rules are loaded again'));
+    await waitFor(() =>
+      expect(screen.queryByText(/their rules are not in the firewall/)).toBeNull(),
+    );
+  });
+
+  it('does not warn about rules when they are in the kernel', async () => {
+    serve(status({ closed: [{ port: 8443, proto: 'tcp' }], rulesMissing: false }));
+    renderWithProviders(<PortGuardCard />);
+
+    await screen.findByText('8443/tcp');
+    expect(screen.queryByText(/their rules are not in the firewall/)).toBeNull();
   });
 });
