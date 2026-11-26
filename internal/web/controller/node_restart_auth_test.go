@@ -111,8 +111,22 @@ func writeLoadableKeyPair(t *testing.T) (certFile, keyFile string) {
 func TestPanelRestartReportsServingAndNextListener(t *testing.T) {
 	engine, auth := newAPIAuthTestEngine(t)
 	NewSettingController(engine.Group("/panel/api", auth.checkAPIAuth, auth.enforceTokenScope))
-	global.SetRestartHook(func() {})
-	t.Cleanup(func() { global.SetRestartHook(func() {}) })
+	// Every restartPanel call schedules a restart three seconds on. One that fires after this test has
+	// ended lands in the hook of whichever test runs next, so the test waits for each of its own.
+	fired := make(chan struct{}, 8)
+	scheduled := 0
+	global.SetRestartHook(func() { fired <- struct{}{} })
+	t.Cleanup(func() {
+		defer global.SetRestartHook(func() {})
+		for range scheduled {
+			select {
+			case <-fired:
+			case <-time.After(6 * time.Second):
+				t.Error("a scheduled panel restart did not fire")
+				return
+			}
+		}
+	})
 	if err := database.GetDB().Create(&model.ApiToken{Name: "admin", Token: crypto.HashTokenSHA256("admin"), Enabled: true, Scope: model.ApiScopeAdmin}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -168,6 +182,7 @@ func TestPanelRestartReportsServingAndNextListener(t *testing.T) {
 			if err := json.NewDecoder(res.Body).Decode(&answer); err != nil || !answer.Success {
 				t.Fatalf("status %d, success=%v, err=%v", res.StatusCode, answer.Success, err)
 			}
+			scheduled++
 			want := entity.PanelRestart{Port: servingPort, TLS: tc.servingTLS, NextPort: tc.wantNextPort, NextTLS: tc.wantNextTLS}
 			if answer.Obj != want {
 				t.Fatalf("restart answer = %+v, want %+v", answer.Obj, want)
