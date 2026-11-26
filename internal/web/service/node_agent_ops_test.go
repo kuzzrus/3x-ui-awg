@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -133,33 +134,33 @@ func TestAgentLogsSaysWhenTheAgentIsTooOldToServeThem(t *testing.T) {
 	}
 }
 
-func TestRestartNodeXrayRestartsTheCoreOfAnAgent(t *testing.T) {
+func TestRestartXrayRestartsTheCoreOfAnAgent(t *testing.T) {
 	a := newOpsAgent(t)
 
-	if err := (&NodeService{}).RestartNodeXray(a.nodeID); err != nil {
-		t.Fatalf("RestartNodeXray: %v", err)
+	if err := (&NodeService{}).RestartXray(context.Background(), a.nodeID); err != nil {
+		t.Fatalf("RestartXray: %v", err)
 	}
 	if got := a.restartCount(); got != 1 {
 		t.Fatalf("the agent was asked to restart %d times, want once", got)
 	}
 }
 
-func TestRestartNodeXrayReportsWhyTheAgentWillNot(t *testing.T) {
+func TestRestartXrayReportsWhyTheAgentWillNot(t *testing.T) {
 	a := newOpsAgent(t)
 	a.restartFail = "no config has been applied yet"
 
-	if err := (&NodeService{}).RestartNodeXray(a.nodeID); err == nil || !strings.Contains(err.Error(), "no config has been applied yet") {
+	if err := (&NodeService{}).RestartXray(context.Background(), a.nodeID); err == nil || !strings.Contains(err.Error(), "no config has been applied yet") {
 		t.Fatalf("error = %v, want the agent's own reason", err)
 	}
 }
 
-func TestRestartNodeXrayLeavesANodeThatIsSwitchedOff(t *testing.T) {
+func TestRestartXrayLeavesANodeThatIsSwitchedOff(t *testing.T) {
 	a := newOpsAgent(t)
 	if err := database.GetDB().Model(&model.Node{}).Where("id = ?", a.nodeID).Update("enable", false).Error; err != nil {
 		t.Fatal(err)
 	}
 
-	if err := (&NodeService{}).RestartNodeXray(a.nodeID); err == nil || !strings.Contains(err.Error(), "disabled") {
+	if err := (&NodeService{}).RestartXray(context.Background(), a.nodeID); err == nil || !strings.Contains(err.Error(), "disabled") {
 		t.Fatalf("error = %v, want the disabled node refused", err)
 	}
 	if got := a.restartCount(); got != 0 {
@@ -167,7 +168,7 @@ func TestRestartNodeXrayLeavesANodeThatIsSwitchedOff(t *testing.T) {
 	}
 }
 
-func TestRestartNodeXrayRestartsAPanelNodeThroughItsRuntime(t *testing.T) {
+func TestRestartXrayRestartsAPanelNodeThroughItsRuntime(t *testing.T) {
 	setupSettingTestDB(t)
 	node := &model.Node{Name: "panel", Scheme: "https", Address: "192.0.2.9", Port: 2053, BasePath: "/", Enable: true}
 	if err := database.GetDB().Create(node).Error; err != nil {
@@ -180,8 +181,8 @@ func TestRestartNodeXrayRestartsAPanelNodeThroughItsRuntime(t *testing.T) {
 	runtime.SetManager(mgr)
 	t.Cleanup(func() { runtime.SetManager(prev) })
 
-	if err := (&NodeService{}).RestartNodeXray(node.Id); err != nil {
-		t.Fatalf("RestartNodeXray: %v", err)
+	if err := (&NodeService{}).RestartXray(context.Background(), node.Id); err != nil {
+		t.Fatalf("RestartXray: %v", err)
 	}
 	if got := panel.calls.Load(); got != 1 {
 		t.Fatalf("the panel node was asked to restart %d times, want once", got)

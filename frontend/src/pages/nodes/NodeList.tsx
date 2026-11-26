@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { Badge, Button, Card, Dropdown, Modal, Space, Switch, Table, Tag, Tooltip } from 'antd';
@@ -52,7 +52,11 @@ interface NodeListProps {
   onToggleEnable: (node: NodeRecord, next: boolean) => void;
   onUpdateNode: (node: NodeRecord) => void;
   onUpdateSelected: () => void;
+  onRestart: (node: NodeRecord, target: 'xray' | 'panel') => void;
+  restartingIds?: ReadonlySet<number>;
 }
+
+const noRestarts: ReadonlySet<number> = new Set();
 
 function isUpdateEligible(n: NodeRecord): boolean {
   return !!n.enable && n.status === 'online';
@@ -204,6 +208,8 @@ export default function NodeList({
   onToggleEnable,
   onUpdateNode,
   onUpdateSelected,
+  onRestart,
+  restartingIds = noRestarts,
 }: NodeListProps) {
   const { t } = useTranslation();
   const relativeTime = useRelativeTime();
@@ -211,6 +217,21 @@ export default function NodeList({
   const [showAddress, setShowAddress] = useState(false);
   const [statsNode, setStatsNode] = useState<NodeRow | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+
+  const restartItems = useCallback(
+    (node: NodeRecord) =>
+      // An agent has its own restart and repair actions, and no panel to restart.
+      node.kind === 'agent'
+        ? []
+        : (['xray', 'panel'] as const).map((target) => ({
+            key: `restart-${target}`,
+            icon: <ReloadOutlined aria-hidden />,
+            label: t(`pages.nodes.${target === 'xray' ? 'restartXray' : 'restartPanel'}`),
+            disabled: !node.enable || !!node.transitive || restartingIds.has(node.id),
+            onClick: () => onRestart(node, target),
+          })),
+    [t, onRestart, restartingIds],
+  );
 
   // Map a direct node's GUID to its display name so a transitive sub-node can show
   // which parent it is reached through (#4983); the master walks one level only.
@@ -317,7 +338,7 @@ export default function NodeList({
                   onClick={() => onEdit(record)}
                 />
               </Tooltip>
-              {record.kind === 'agent' && (
+              {record.kind === 'agent' ? (
                 <>
                   <Tooltip title={t('pages.nodes.agent.logs')}>
                     <Button
@@ -350,6 +371,15 @@ export default function NodeList({
                     />
                   </Tooltip>
                 </>
+              ) : (
+                <Dropdown trigger={['click']} menu={{ items: restartItems(record) }}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<MoreOutlined aria-hidden />}
+                    aria-label={t('more')}
+                  />
+                </Dropdown>
               )}
               <Tooltip title={t('delete')}>
                 <Button
@@ -612,6 +642,7 @@ export default function NodeList({
       onRestartXray,
       onDelete,
       onUpdateNode,
+      restartItems,
       nameByGuid,
     ],
   );
@@ -750,6 +781,7 @@ export default function NodeList({
                           placement="bottomRight"
                           menu={{
                             items: [
+                              ...restartItems(record),
                               {
                                 key: 'probe',
                                 label: (

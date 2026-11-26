@@ -310,6 +310,22 @@ export const SCHEMAS: Record<string, unknown> = {
       "ldapVlessField": {
         "type": "string"
       },
+      "mcpEnable": {
+        "type": "boolean"
+      },
+      "networkTrafficInterface": {
+        "example": "eth0",
+        "type": "string"
+      },
+      "networkTrafficMode": {
+        "enum": [
+          "legacy",
+          "auto",
+          "manual"
+        ],
+        "example": "legacy",
+        "type": "string"
+      },
       "nodeDownThreshold": {
         "maximum": 100,
         "minimum": 1,
@@ -326,6 +342,21 @@ export const SCHEMAS: Record<string, unknown> = {
         "type": "integer"
       },
       "panelOutbound": {
+        "type": "string"
+      },
+      "publicIpRefreshMinutes": {
+        "description": "0 stops refreshing the detected public IP after the first success.",
+        "maximum": 10080,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "publicIpv4Override": {
+        "type": "string"
+      },
+      "publicIpv6Detect": {
+        "type": "boolean"
+      },
+      "publicIpv6Override": {
         "type": "string"
       },
       "realityScanCandidates": {
@@ -511,6 +542,9 @@ export const SCHEMAS: Record<string, unknown> = {
       "subHostSortMode": {
         "example": "inbound-first",
         "type": "string"
+      },
+      "subHwidRejectWithConfig": {
+        "type": "boolean"
       },
       "subIncyAnnounceUrl": {
         "type": "string"
@@ -779,6 +813,40 @@ export const SCHEMAS: Record<string, unknown> = {
         "maximum": 65535,
         "minimum": 1,
         "type": "integer"
+      },
+      "wechatCpu": {
+        "maximum": 100,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "wechatEnable": {
+        "type": "boolean"
+      },
+      "wechatEnabledEvents": {
+        "type": "string"
+      },
+      "wechatLang": {
+        "type": "string"
+      },
+      "wechatMemory": {
+        "maximum": 100,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "wechatMode": {
+        "type": "string"
+      },
+      "wechatReportEnable": {
+        "type": "boolean"
+      },
+      "wechatRunTime": {
+        "type": "string"
+      },
+      "wechatToken": {
+        "type": "string"
+      },
+      "wechatWebhookURL": {
+        "type": "string"
       }
     },
     "required": [
@@ -829,10 +897,17 @@ export const SCHEMAS: Record<string, unknown> = {
       "ldapUserAttr",
       "ldapUserFilter",
       "ldapVlessField",
+      "mcpEnable",
+      "networkTrafficInterface",
+      "networkTrafficMode",
       "nodeDownThreshold",
       "outboundDownThreshold",
       "pageSize",
       "panelOutbound",
+      "publicIpRefreshMinutes",
+      "publicIpv4Override",
+      "publicIpv6Detect",
+      "publicIpv6Override",
       "realityScanCandidates",
       "remarkTemplate",
       "restartXrayOnClientDisable",
@@ -891,6 +966,7 @@ export const SCHEMAS: Record<string, unknown> = {
       "subHappTunType",
       "subHideSettings",
       "subHostSortMode",
+      "subHwidRejectWithConfig",
       "subIncyAnnounceUrl",
       "subIncyAppAutoDetect",
       "subIncyBannerBgColor",
@@ -974,7 +1050,17 @@ export const SCHEMAS: Record<string, unknown> = {
       "webDomain",
       "webKeyFile",
       "webListen",
-      "webPort"
+      "webPort",
+      "wechatCpu",
+      "wechatEnable",
+      "wechatEnabledEvents",
+      "wechatLang",
+      "wechatMemory",
+      "wechatMode",
+      "wechatReportEnable",
+      "wechatRunTime",
+      "wechatToken",
+      "wechatWebhookURL"
     ],
     "type": "object"
   },
@@ -1086,6 +1172,12 @@ export const SCHEMAS: Record<string, unknown> = {
       "hasWarpSecret": {
         "type": "boolean"
       },
+      "hasWechatToken": {
+        "type": "boolean"
+      },
+      "hasWechatWebhookURL": {
+        "type": "boolean"
+      },
       "ipLimitAllowlist": {
         "type": "string"
       },
@@ -1157,6 +1249,22 @@ export const SCHEMAS: Record<string, unknown> = {
       "ldapVlessField": {
         "type": "string"
       },
+      "mcpEnable": {
+        "type": "boolean"
+      },
+      "networkTrafficInterface": {
+        "example": "eth0",
+        "type": "string"
+      },
+      "networkTrafficMode": {
+        "enum": [
+          "legacy",
+          "auto",
+          "manual"
+        ],
+        "example": "legacy",
+        "type": "string"
+      },
       "nodeDownThreshold": {
         "maximum": 100,
         "minimum": 1,
@@ -1173,6 +1281,21 @@ export const SCHEMAS: Record<string, unknown> = {
         "type": "integer"
       },
       "panelOutbound": {
+        "type": "string"
+      },
+      "publicIpRefreshMinutes": {
+        "description": "0 stops refreshing the detected public IP after the first success.",
+        "maximum": 10080,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "publicIpv4Override": {
+        "type": "string"
+      },
+      "publicIpv6Detect": {
+        "type": "boolean"
+      },
+      "publicIpv6Override": {
         "type": "string"
       },
       "realityScanCandidates": {
@@ -1358,6 +1481,9 @@ export const SCHEMAS: Record<string, unknown> = {
       "subHostSortMode": {
         "example": "inbound-first",
         "type": "string"
+      },
+      "subHwidRejectWithConfig": {
+        "type": "boolean"
       },
       "subIncyAnnounceUrl": {
         "type": "string"
@@ -1626,6 +1752,40 @@ export const SCHEMAS: Record<string, unknown> = {
         "maximum": 65535,
         "minimum": 1,
         "type": "integer"
+      },
+      "wechatCpu": {
+        "maximum": 100,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "wechatEnable": {
+        "type": "boolean"
+      },
+      "wechatEnabledEvents": {
+        "type": "string"
+      },
+      "wechatLang": {
+        "type": "string"
+      },
+      "wechatMemory": {
+        "maximum": 100,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "wechatMode": {
+        "type": "string"
+      },
+      "wechatReportEnable": {
+        "type": "boolean"
+      },
+      "wechatRunTime": {
+        "type": "string"
+      },
+      "wechatToken": {
+        "type": "string"
+      },
+      "wechatWebhookURL": {
+        "type": "string"
       }
     },
     "required": [
@@ -1662,6 +1822,8 @@ export const SCHEMAS: Record<string, unknown> = {
       "hasTgBotToken",
       "hasTwoFactorToken",
       "hasWarpSecret",
+      "hasWechatToken",
+      "hasWechatWebhookURL",
       "ipLimitAllowlist",
       "ldapAutoCreate",
       "ldapAutoDelete",
@@ -1684,10 +1846,17 @@ export const SCHEMAS: Record<string, unknown> = {
       "ldapUserAttr",
       "ldapUserFilter",
       "ldapVlessField",
+      "mcpEnable",
+      "networkTrafficInterface",
+      "networkTrafficMode",
       "nodeDownThreshold",
       "outboundDownThreshold",
       "pageSize",
       "panelOutbound",
+      "publicIpRefreshMinutes",
+      "publicIpv4Override",
+      "publicIpv6Detect",
+      "publicIpv6Override",
       "realityScanCandidates",
       "remarkTemplate",
       "restartXrayOnClientDisable",
@@ -1746,6 +1915,7 @@ export const SCHEMAS: Record<string, unknown> = {
       "subHappTunType",
       "subHideSettings",
       "subHostSortMode",
+      "subHwidRejectWithConfig",
       "subIncyAnnounceUrl",
       "subIncyAppAutoDetect",
       "subIncyBannerBgColor",
@@ -1829,7 +1999,17 @@ export const SCHEMAS: Record<string, unknown> = {
       "webDomain",
       "webKeyFile",
       "webListen",
-      "webPort"
+      "webPort",
+      "wechatCpu",
+      "wechatEnable",
+      "wechatEnabledEvents",
+      "wechatLang",
+      "wechatMemory",
+      "wechatMode",
+      "wechatReportEnable",
+      "wechatRunTime",
+      "wechatToken",
+      "wechatWebhookURL"
     ],
     "type": "object"
   },
@@ -1958,6 +2138,73 @@ export const SCHEMAS: Record<string, unknown> = {
     },
     "required": [
       "code"
+    ],
+    "type": "object"
+  },
+  "BulkAdjustReport": {
+    "properties": {
+      "email": {
+        "example": "carol",
+        "type": "string"
+      },
+      "reason": {
+        "example": "client not found",
+        "type": "string"
+      }
+    },
+    "required": [
+      "email",
+      "reason"
+    ],
+    "type": "object"
+  },
+  "BulkAdjustResult": {
+    "description": "BulkAdjustResult reports changed clients and per-client skip reasons.\nExternalLinks contains row counts only for append requests.",
+    "properties": {
+      "adjusted": {
+        "example": 2,
+        "type": "integer"
+      },
+      "externalLinks": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BulkExternalLinksResult"
+          }
+        ],
+        "nullable": true
+      },
+      "skipped": {
+        "example": [],
+        "items": {
+          "$ref": "#/components/schemas/BulkAdjustReport"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "adjusted"
+    ],
+    "type": "object"
+  },
+  "BulkExternalLinksResult": {
+    "properties": {
+      "added": {
+        "example": 4,
+        "type": "integer"
+      },
+      "errors": {
+        "example": 0,
+        "type": "integer"
+      },
+      "skipped": {
+        "example": 0,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "added",
+      "errors",
+      "skipped"
     ],
     "type": "object"
   },
@@ -2141,6 +2388,15 @@ export const SCHEMAS: Record<string, unknown> = {
         "description": "Last update timestamp",
         "format": "int64",
         "type": "integer"
+      },
+      "wgDeviceLimit": {
+        "type": "integer"
+      },
+      "wireguardDevices": {
+        "items": {
+          "$ref": "#/components/schemas/WireguardDevice"
+        },
+        "type": "array"
       }
     },
     "required": [
@@ -2157,6 +2413,52 @@ export const SCHEMAS: Record<string, unknown> = {
       "subId",
       "tgId",
       "totalGB"
+    ],
+    "type": "object"
+  },
+  "ClientChangeLog": {
+    "description": "ClientChangeLog records one metadata change to a client: one row per\nchanged field, newest read first in the client's usage history.",
+    "properties": {
+      "at": {
+        "example": 1735689600000,
+        "format": "int64",
+        "type": "integer"
+      },
+      "email": {
+        "example": "user1@example.com",
+        "type": "string"
+      },
+      "field": {
+        "example": "dataLimit",
+        "type": "string"
+      },
+      "id": {
+        "example": 14825,
+        "format": "int64",
+        "type": "integer"
+      },
+      "newValue": {
+        "example": "21474836480",
+        "type": "string"
+      },
+      "oldValue": {
+        "example": "10737418240",
+        "type": "string"
+      },
+      "source": {
+        "description": "panel | tgbot | auto-renew",
+        "example": "panel",
+        "type": "string"
+      }
+    },
+    "required": [
+      "at",
+      "email",
+      "field",
+      "id",
+      "newValue",
+      "oldValue",
+      "source"
     ],
     "type": "object"
   },
@@ -2181,6 +2483,36 @@ export const SCHEMAS: Record<string, unknown> = {
       "createdAt",
       "flowOverride",
       "inboundId"
+    ],
+    "type": "object"
+  },
+  "ClientNodeUsage": {
+    "description": "ClientNodeUsage is one node's counters for a client since its last reset.",
+    "properties": {
+      "down": {
+        "example": 2097152,
+        "format": "int64",
+        "type": "integer"
+      },
+      "nodeId": {
+        "example": 7,
+        "type": "integer"
+      },
+      "nodeName": {
+        "example": "de-fra-1",
+        "type": "string"
+      },
+      "up": {
+        "example": 1048576,
+        "format": "int64",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "down",
+      "nodeId",
+      "nodeName",
+      "up"
     ],
     "type": "object"
   },
@@ -2361,6 +2693,15 @@ export const SCHEMAS: Record<string, unknown> = {
       },
       "uuid": {
         "type": "string"
+      },
+      "wgDeviceLimit": {
+        "type": "integer"
+      },
+      "wireguardDevices": {
+        "items": {
+          "$ref": "#/components/schemas/WireguardDevice"
+        },
+        "type": "array"
       }
     },
     "required": [
@@ -2398,7 +2739,9 @@ export const SCHEMAS: Record<string, unknown> = {
       "trafficReset",
       "trafficResetDay",
       "updatedAt",
-      "uuid"
+      "uuid",
+      "wgDeviceLimit",
+      "wireguardDevices"
     ],
     "type": "object"
   },
@@ -2711,6 +3054,107 @@ export const SCHEMAS: Record<string, unknown> = {
     ],
     "type": "object"
   },
+  "ClientTrafficWindow": {
+    "description": "ClientTrafficWindow is one closed traffic window of a client: usage zeroed at a\nreset or an auto-renewal; lifetime = SUM(rows) + live counters.",
+    "properties": {
+      "at": {
+        "example": 1735689600000,
+        "format": "int64",
+        "type": "integer"
+      },
+      "down": {
+        "example": 2097152,
+        "format": "int64",
+        "type": "integer"
+      },
+      "email": {
+        "example": "user1@example.com",
+        "type": "string"
+      },
+      "id": {
+        "example": 14825,
+        "format": "int64",
+        "type": "integer"
+      },
+      "reason": {
+        "description": "reset | renew | earlier",
+        "example": "reset",
+        "type": "string"
+      },
+      "up": {
+        "example": 1048576,
+        "format": "int64",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "at",
+      "down",
+      "email",
+      "id",
+      "reason",
+      "up"
+    ],
+    "type": "object"
+  },
+  "ClientUsageHistory": {
+    "description": "ClientUsageHistory is what the client editor's history button shows.",
+    "properties": {
+      "changes": {
+        "items": {
+          "$ref": "#/components/schemas/ClientChangeLog"
+        },
+        "type": "array"
+      },
+      "currentDown": {
+        "example": 2097152,
+        "format": "int64",
+        "type": "integer"
+      },
+      "currentUp": {
+        "example": 1048576,
+        "format": "int64",
+        "type": "integer"
+      },
+      "email": {
+        "example": "user1@example.com",
+        "type": "string"
+      },
+      "lifetimeDown": {
+        "example": 21474836480,
+        "format": "int64",
+        "type": "integer"
+      },
+      "lifetimeUp": {
+        "example": 10737418240,
+        "format": "int64",
+        "type": "integer"
+      },
+      "nodes": {
+        "items": {
+          "$ref": "#/components/schemas/ClientNodeUsage"
+        },
+        "type": "array"
+      },
+      "windows": {
+        "items": {
+          "$ref": "#/components/schemas/ClientTrafficWindow"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "changes",
+      "currentDown",
+      "currentUp",
+      "email",
+      "lifetimeDown",
+      "lifetimeUp",
+      "nodes",
+      "windows"
+    ],
+    "type": "object"
+  },
   "ClientsSummary": {
     "description": "ClientsSummary collects per-bucket counts plus the matching email lists so\nthe clients page can render the dashboard stat cards and their hover\npopovers without shipping the full client array. The counters are exact;\nthe lists stop at clientSummaryEmailCap entries and only back the popovers.",
     "properties": {
@@ -2813,6 +3257,40 @@ export const SCHEMAS: Record<string, unknown> = {
       "sha256",
       "size",
       "uploadedAt"
+    ],
+    "type": "object"
+  },
+  "ExternalLinkInput": {
+    "description": "ExternalLinkInput is one row from the client form's Links tab.",
+    "properties": {
+      "enable": {
+        "example": true,
+        "nullable": true,
+        "type": "boolean"
+      },
+      "expiryTime": {
+        "example": 0,
+        "format": "int64",
+        "type": "integer"
+      },
+      "kind": {
+        "example": "link",
+        "type": "string"
+      },
+      "namePrefix": {
+        "type": "string"
+      },
+      "remark": {
+        "example": "Backup",
+        "type": "string"
+      },
+      "value": {
+        "example": "vless://uuid@example.com:443",
+        "type": "string"
+      }
+    },
+    "required": [
+      "value"
     ],
     "type": "object"
   },
@@ -3504,6 +3982,11 @@ export const SCHEMAS: Record<string, unknown> = {
         "minimum": 0,
         "type": "integer"
       },
+      "preserveClientTraffic": {
+        "description": "Older snapshots omit this field.\nKeep client usage during scheduled inbound resets",
+        "nullable": true,
+        "type": "boolean"
+      },
       "protocol": {
         "enum": [
           "vmess",
@@ -3896,6 +4379,72 @@ export const SCHEMAS: Record<string, unknown> = {
       "msg",
       "obj",
       "success"
+    ],
+    "type": "object"
+  },
+  "NetworkInterfaceOption": {
+    "properties": {
+      "name": {
+        "example": "eth0",
+        "type": "string"
+      },
+      "up": {
+        "example": true,
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "name",
+      "up"
+    ],
+    "type": "object"
+  },
+  "NetworkInterfacesResponse": {
+    "properties": {
+      "automatic": {
+        "example": "eth0",
+        "type": "string"
+      },
+      "automaticError": {
+        "type": "string"
+      },
+      "interfaces": {
+        "items": {
+          "$ref": "#/components/schemas/NetworkInterfaceOption"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "automatic",
+      "automaticError",
+      "interfaces"
+    ],
+    "type": "object"
+  },
+  "NetworkTrafficSelection": {
+    "properties": {
+      "available": {
+        "example": true,
+        "type": "boolean"
+      },
+      "error": {
+        "type": "string"
+      },
+      "mode": {
+        "example": "manual",
+        "type": "string"
+      },
+      "name": {
+        "example": "eth0",
+        "type": "string"
+      }
+    },
+    "required": [
+      "available",
+      "error",
+      "mode",
+      "name"
     ],
     "type": "object"
   },
@@ -4803,6 +5352,34 @@ export const SCHEMAS: Record<string, unknown> = {
     ],
     "type": "object"
   },
+  "PanelRestart": {
+    "description": "PanelRestart describes the listener that took the restart call and the one that follows.",
+    "properties": {
+      "nextPort": {
+        "example": 2053,
+        "type": "integer"
+      },
+      "nextTls": {
+        "example": false,
+        "type": "boolean"
+      },
+      "port": {
+        "example": 2053,
+        "type": "integer"
+      },
+      "tls": {
+        "example": false,
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "nextPort",
+      "nextTls",
+      "port",
+      "tls"
+    ],
+    "type": "object"
+  },
   "PanelUpdateStatus": {
     "description": "PanelUpdateStatus reports the outcome of the most recently launched panel\nself-update. RunID lets the caller confirm this status belongs to the\nupdate it started rather than a stale result left over from an earlier\nrun; State is one of \"pending\", \"success\", or \"failed\". RunID is a decimal\nstring, not a JSON number: it's a formatted UnixNano timestamp, and\nJavaScript's number type can't represent that precisely (it exceeds\nNumber.MAX_SAFE_INTEGER), which would let two different runs round to the\nsame value on the wire and defeat the whole point of this field.",
     "properties": {
@@ -5121,6 +5698,132 @@ export const SCHEMAS: Record<string, unknown> = {
     ],
     "type": "object"
   },
+  "RealityWatchEntry": {
+    "description": "RealityWatchEntry is what the admin sets per inbound: spare targets (host:port) in order\nof preference, and whether a dead target is replaced without asking.",
+    "properties": {
+      "auto": {
+        "example": true,
+        "type": "boolean"
+      },
+      "spares": {
+        "example": [
+          "www.example.com:443"
+        ],
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "auto",
+      "spares"
+    ],
+    "type": "object"
+  },
+  "RealityWatchEvent": {
+    "description": "RealityWatchEvent is one switch (To set) or a failed attempt to find a working spare.",
+    "properties": {
+      "at": {
+        "example": 1793000000,
+        "format": "int64",
+        "type": "integer"
+      },
+      "from": {
+        "example": "old.example.com:443",
+        "type": "string"
+      },
+      "reason": {
+        "example": "TLS handshake failed: EOF",
+        "type": "string"
+      },
+      "to": {
+        "example": "www.example.com:443",
+        "type": "string"
+      }
+    },
+    "required": [
+      "at",
+      "from",
+      "reason",
+      "to"
+    ],
+    "type": "object"
+  },
+  "RealityWatchStatus": {
+    "properties": {
+      "auto": {
+        "example": true,
+        "type": "boolean"
+      },
+      "checkedAt": {
+        "example": 1793000000,
+        "format": "int64",
+        "type": "integer"
+      },
+      "events": {
+        "items": {
+          "$ref": "#/components/schemas/RealityWatchEvent"
+        },
+        "type": "array"
+      },
+      "fails": {
+        "example": 0,
+        "type": "integer"
+      },
+      "inboundId": {
+        "example": 3,
+        "type": "integer"
+      },
+      "latencyMs": {
+        "example": 180,
+        "type": "integer"
+      },
+      "ok": {
+        "example": true,
+        "type": "boolean"
+      },
+      "reason": {
+        "type": "string"
+      },
+      "serverNames": {
+        "example": [
+          "old.example.com"
+        ],
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "spares": {
+        "example": [
+          "www.example.com:443"
+        ],
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "target": {
+        "example": "old.example.com:443",
+        "type": "string"
+      }
+    },
+    "required": [
+      "auto",
+      "checkedAt",
+      "events",
+      "fails",
+      "inboundId",
+      "latencyMs",
+      "ok",
+      "reason",
+      "serverNames",
+      "spares",
+      "target"
+    ],
+    "type": "object"
+  },
   "RestartStatus": {
     "description": "RestartStatus reports the outcome of the most recent dashboard restart.\nRunID is a decimal string: a UnixNano timestamp, too precise for a JSON number.",
     "properties": {
@@ -5316,6 +6019,99 @@ export const SCHEMAS: Record<string, unknown> = {
       "id",
       "key",
       "value"
+    ],
+    "type": "object"
+  },
+  "Status": {
+    "description": "Status represents comprehensive system and application status information.\nIt includes CPU, memory, disk, network statistics, and Xray process status.",
+    "properties": {
+      "amneziawg": {
+        "description": "AmneziaWG gates the overview's AmneziaWG log view: Configured stays true\nwhile an inbound exists but its embedded interface isn't up yet, which\nis exactly when that view's event lines are worth reading."
+      },
+      "appStats": {},
+      "cpu": {
+        "type": "number"
+      },
+      "cpuCores": {
+        "type": "integer"
+      },
+      "cpuSpeedMhz": {
+        "type": "number"
+      },
+      "disk": {},
+      "diskIO": {},
+      "diskTraffic": {},
+      "loads": {
+        "items": {
+          "type": "number"
+        },
+        "type": "array"
+      },
+      "logicalPro": {
+        "type": "integer"
+      },
+      "mem": {},
+      "netIO": {},
+      "netTraffic": {},
+      "networkInterface": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/NetworkTrafficSelection"
+          }
+        ],
+        "nullable": true
+      },
+      "panelGuid": {
+        "type": "string"
+      },
+      "panelVersion": {
+        "type": "string"
+      },
+      "publicIP": {},
+      "resourceScope": {
+        "type": "string"
+      },
+      "swap": {},
+      "tcpCount": {
+        "type": "integer"
+      },
+      "udpCount": {
+        "type": "integer"
+      },
+      "unavailableMetrics": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "uptime": {
+        "format": "int64",
+        "type": "integer"
+      },
+      "xray": {}
+    },
+    "required": [
+      "amneziawg",
+      "appStats",
+      "cpu",
+      "cpuCores",
+      "cpuSpeedMhz",
+      "disk",
+      "diskIO",
+      "diskTraffic",
+      "loads",
+      "logicalPro",
+      "mem",
+      "netIO",
+      "netTraffic",
+      "panelGuid",
+      "panelVersion",
+      "publicIP",
+      "swap",
+      "tcpCount",
+      "udpCount",
+      "uptime",
+      "xray"
     ],
     "type": "object"
   },
@@ -5554,6 +6350,44 @@ export const SCHEMAS: Record<string, unknown> = {
       "id",
       "password",
       "username"
+    ],
+    "type": "object"
+  },
+  "WireguardDevice": {
+    "description": "WireguardDevice is an additional peer sharing its client's quota and lifecycle.\nThe original client credentials remain the primary device for compatibility.",
+    "properties": {
+      "allowedIPs": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "enable": {
+        "type": "boolean"
+      },
+      "id": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "preSharedKey": {
+        "type": "string"
+      },
+      "privateKey": {
+        "type": "string"
+      },
+      "publicKey": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "allowedIPs",
+      "enable",
+      "id",
+      "name",
+      "privateKey",
+      "publicKey"
     ],
     "type": "object"
   }

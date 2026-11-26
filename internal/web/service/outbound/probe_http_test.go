@@ -10,12 +10,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/util/json_util"
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
 
@@ -267,7 +269,7 @@ func TestTestOutboundsPrevalidationAndOrdering(t *testing.T) {
 		map[string]any{"tag": "a", "protocol": "socks"},       // valid
 		map[string]any{"tag": "a", "protocol": "vless"},       // duplicate
 	})
-	results, err := (&OutboundService{}).TestOutbounds(batch, "http://example.invalid/gen", "", "http", "", "")
+	results, err := (&OutboundService{}).TestOutbounds(batch, "http://example.invalid/gen", "", "http", "", "", nil)
 	if err != nil {
 		t.Fatalf("TestOutbounds: %v", err)
 	}
@@ -309,7 +311,7 @@ func TestTestOutboundsFallbackOnStartFailure(t *testing.T) {
 		map[string]any{"tag": "a", "protocol": "socks"},
 		map[string]any{"tag": "b", "protocol": "vless"},
 	})
-	results, err := (&OutboundService{}).TestOutbounds(batch, "http://example.invalid/gen", "", "http", "", "")
+	results, err := (&OutboundService{}).TestOutbounds(batch, "http://example.invalid/gen", "", "http", "", "", nil)
 	if err != nil {
 		t.Fatalf("TestOutbounds: %v", err)
 	}
@@ -335,7 +337,7 @@ func TestTestOutboundsNoFallbackWhenBinaryMissing(t *testing.T) {
 		map[string]any{"tag": "a", "protocol": "socks"},
 		map[string]any{"tag": "b", "protocol": "vless"},
 	})
-	results, err := (&OutboundService{}).TestOutbounds(batch, "http://example.invalid/gen", "", "http", "", "")
+	results, err := (&OutboundService{}).TestOutbounds(batch, "http://example.invalid/gen", "", "http", "", "", nil)
 	if err != nil {
 		t.Fatalf("TestOutbounds: %v", err)
 	}
@@ -359,7 +361,7 @@ func TestTestOutboundsSemaphoreBusy(t *testing.T) {
 	defer httpTestSemaphore.Unlock()
 
 	batch := mustJSON(t, []any{map[string]any{"tag": "a", "protocol": "socks"}})
-	results, err := (&OutboundService{}).TestOutbounds(batch, "", "", "http", "", "")
+	results, err := (&OutboundService{}).TestOutbounds(batch, "", "", "http", "", "", nil)
 	if err != nil {
 		t.Fatalf("TestOutbounds: %v", err)
 	}
@@ -370,7 +372,7 @@ func TestTestOutboundsSemaphoreBusy(t *testing.T) {
 
 func TestTestOutboundsInputValidation(t *testing.T) {
 	s := &OutboundService{}
-	if _, err := s.TestOutbounds("not json", "", "", "tcp", "", ""); err == nil {
+	if _, err := s.TestOutbounds("not json", "", "", "tcp", "", "", nil); err == nil {
 		t.Error("expected error for invalid JSON")
 	}
 
@@ -378,11 +380,11 @@ func TestTestOutboundsInputValidation(t *testing.T) {
 	for i := range big {
 		big[i] = map[string]any{"tag": fmt.Sprintf("t%d", i), "protocol": "socks"}
 	}
-	if _, err := s.TestOutbounds(mustJSON(t, big), "", "", "tcp", "", ""); err == nil {
+	if _, err := s.TestOutbounds(mustJSON(t, big), "", "", "tcp", "", "", nil); err == nil {
 		t.Error("expected error for oversized batch")
 	}
 
-	results, err := s.TestOutbounds("[]", "", "", "tcp", "", "")
+	results, err := s.TestOutbounds("[]", "", "", "tcp", "", "", nil)
 	if err != nil || len(results) != 0 {
 		t.Errorf("empty batch: results=%v err=%v", results, err)
 	}
@@ -410,7 +412,7 @@ func TestTestOutboundsTCPLane(t *testing.T) {
 		"protocol": "socks",
 		"settings": map[string]any{"servers": []any{map[string]any{"address": "127.0.0.1", "port": port}}},
 	}})
-	results, err := (&OutboundService{}).TestOutbounds(batch, "", "", "tcp", "", "")
+	results, err := (&OutboundService{}).TestOutbounds(batch, "", "", "tcp", "", "", nil)
 	if err != nil {
 		t.Fatalf("TestOutbounds: %v", err)
 	}
@@ -446,7 +448,7 @@ func TestTestOutboundsHTTPBatchThroughStubSocks(t *testing.T) {
 		map[string]any{"tag": "a", "protocol": "vless"},
 		map[string]any{"tag": "b", "protocol": "trojan"},
 	})
-	results, err := (&OutboundService{}).TestOutbounds(batch, srv.URL, "", "http", "", "")
+	results, err := (&OutboundService{}).TestOutbounds(batch, srv.URL, "", "http", "", "", nil)
 	if err != nil {
 		t.Fatalf("TestOutbounds: %v", err)
 	}
@@ -510,7 +512,7 @@ func TestTestOutboundsRealDelayBatchThroughStubSocks(t *testing.T) {
 		map[string]any{"tag": "a", "protocol": "vless"},
 		map[string]any{"tag": "wg", "protocol": "wireguard"},
 	})
-	results, err := (&OutboundService{}).TestOutbounds(batch, srv.URL, "", "real", "", "")
+	results, err := (&OutboundService{}).TestOutbounds(batch, srv.URL, "", "real", "", "", nil)
 	if err != nil {
 		t.Fatalf("TestOutbounds: %v", err)
 	}
@@ -557,7 +559,7 @@ func TestTestOutboundsTCPModeForcesUDPToHTTPProbe(t *testing.T) {
 	})
 
 	batch := mustJSON(t, []any{map[string]any{"tag": "wg", "protocol": "wireguard"}})
-	results, err := (&OutboundService{}).TestOutbounds(batch, srv.URL, "", "tcp", "", "")
+	results, err := (&OutboundService{}).TestOutbounds(batch, srv.URL, "", "tcp", "", "", nil)
 	if err != nil {
 		t.Fatalf("TestOutbounds: %v", err)
 	}
@@ -584,7 +586,7 @@ func TestTestOutboundsTCPModeForcesAmneziaWGToHTTPProbe(t *testing.T) {
 	})
 
 	batch := mustJSON(t, []any{map[string]any{"tag": "awg", "protocol": "amneziawg"}})
-	results, err := (&OutboundService{}).TestOutbounds(batch, srv.URL, "", "tcp", "", "")
+	results, err := (&OutboundService{}).TestOutbounds(batch, srv.URL, "", "tcp", "", "", nil)
 	if err != nil {
 		t.Fatalf("TestOutbounds: %v", err)
 	}
@@ -738,7 +740,7 @@ func TestTestOutboundsSpeedModeSemaphoreBusy(t *testing.T) {
 	defer speedTestSemaphore.Unlock()
 
 	batch := mustJSON(t, []any{map[string]any{"tag": "a", "protocol": "socks"}})
-	results, err := (&OutboundService{}).TestOutbounds(batch, "", "", "speed", "", "")
+	results, err := (&OutboundService{}).TestOutbounds(batch, "", "", "speed", "", "", nil)
 	if err != nil {
 		t.Fatalf("TestOutbounds: %v", err)
 	}
@@ -766,7 +768,7 @@ func TestTestOutboundsSpeedModeDoesNotBlockHTTPMode(t *testing.T) {
 	// Holding the speed semaphore must not reject an ordinary HTTP-mode test.
 	speedTestSemaphore.Lock()
 	batch := mustJSON(t, []any{map[string]any{"tag": "a", "protocol": "vless"}})
-	results, err := (&OutboundService{}).TestOutbounds(batch, httpSrv.URL, "", "http", "", "")
+	results, err := (&OutboundService{}).TestOutbounds(batch, httpSrv.URL, "", "http", "", "", nil)
 	speedTestSemaphore.Unlock()
 	if err != nil {
 		t.Fatalf("TestOutbounds: %v", err)
@@ -778,7 +780,7 @@ func TestTestOutboundsSpeedModeDoesNotBlockHTTPMode(t *testing.T) {
 	// And the reverse: httpTestSemaphore must not block a speed-mode test.
 	httpTestSemaphore.Lock()
 	speedBatch := mustJSON(t, []any{map[string]any{"tag": "b", "protocol": "vless"}})
-	speedResults, err := (&OutboundService{}).TestOutbounds(speedBatch, "", "", "speed", speedDown.URL, speedUp.URL)
+	speedResults, err := (&OutboundService{}).TestOutbounds(speedBatch, "", "", "speed", speedDown.URL, speedUp.URL, nil)
 	httpTestSemaphore.Unlock()
 	if err != nil {
 		t.Fatalf("TestOutbounds (speed): %v", err)
@@ -805,7 +807,7 @@ func TestTestOutboundsSpeedModeProcessCleanupAfterDeadline(t *testing.T) {
 	})
 
 	batch := mustJSON(t, []any{map[string]any{"tag": "a", "protocol": "vless"}})
-	results, err := (&OutboundService{}).TestOutbounds(batch, "", "", "speed", down.URL, up.URL)
+	results, err := (&OutboundService{}).TestOutbounds(batch, "", "", "speed", down.URL, up.URL, nil)
 	if err != nil {
 		t.Fatalf("TestOutbounds: %v", err)
 	}
@@ -938,5 +940,53 @@ func TestProbeSpeedThroughSocksUploadCompletesNaturally(t *testing.T) {
 	}
 	if copyErr != nil {
 		t.Errorf("server's body read ended with %v, want a clean EOF from the reader's own deadline, not an aborted connection", copyErr)
+	}
+}
+
+// The probe instance had no dns section, so an outbound whose address only the panel's
+// resolvers know failed the test while it worked through the running core (#7131).
+func TestTestOutbounds_ProbeInstanceResolvesWithThePanelDNS(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		panelDNS string
+		want     map[string]any
+	}{
+		{
+			name:     "resolution settings ride along, routing tag and script do not",
+			panelDNS: `{"servers":["https+local://198.51.100.10/dns-query"],"hosts":{"node1.example.internal":"198.51.100.20"},"useSystemHosts":true,"tag":"dns_inbound","script":"return nil"}`,
+			want: map[string]any{
+				"servers":        []any{"https+local://198.51.100.10/dns-query"},
+				"hosts":          map[string]any{"node1.example.internal": "198.51.100.20"},
+				"useSystemHosts": true,
+			},
+		},
+		{name: "no panel dns leaves the instance on the OS resolver", panelDNS: ""},
+		{name: "a section with nothing but its tag is dropped", panelDNS: `{"tag":"dns_inbound"}`},
+		{name: "an unreadable section is dropped", panelDNS: `not json`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var probeConfig *xray.Config
+			withStubProcess(t, func(cfg *xray.Config, configPath string) batchProcess {
+				probeConfig = cfg
+				return &stubProcess{cfg: cfg, startErr: errors.New("stop before dialing")}
+			})
+
+			batch := mustJSON(t, []any{map[string]any{"tag": "a", "protocol": "vless"}})
+			if _, err := (&OutboundService{}).TestOutbounds(batch, "http://example.invalid/gen", "", "http", "", "", json_util.RawMessage(tc.panelDNS)); err != nil {
+				t.Fatalf("TestOutbounds: %v", err)
+			}
+			if probeConfig == nil {
+				t.Fatal("no probe instance was built")
+			}
+			var got map[string]any
+			if len(probeConfig.DNSConfig) > 0 {
+				if err := json.Unmarshal(probeConfig.DNSConfig, &got); err != nil {
+					t.Fatalf("probe dns is not JSON: %v", err)
+				}
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("probe dns = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

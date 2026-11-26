@@ -58,6 +58,7 @@ func (a *ClientController) initRouter(g *gin.RouterGroup) {
 	g.GET("/get/subId/:subId", a.getBySubId)
 	g.GET("/get/tgId/:tgId", a.getByTgId)
 	g.GET("/traffic/:email", a.getTrafficByEmail)
+	g.GET("/usageHistory/:email", a.getUsageHistory)
 	g.GET("/subLinks/:subId", a.getSubLinks)
 	g.GET("/links/:email", a.getClientLinks)
 	g.POST("/happLink/:id", a.generateHappLink)
@@ -71,6 +72,11 @@ func (a *ClientController) initRouter(g *gin.RouterGroup) {
 	g.POST("/:email/attach", a.attach)
 	g.POST("/:email/detach", a.detach)
 	g.POST("/:email/externalLinks", a.setExternalLinks)
+	g.GET("/wireguardDevices", a.wireguardDevices)
+	g.POST("/wireguardDevices", a.addWireguardDevice)
+	g.PUT("/wireguardDevices/limit", a.setWireguardDeviceLimit)
+	g.PATCH("/wireguardDevices/:deviceId", a.updateWireguardDevice)
+	g.DELETE("/wireguardDevices/:deviceId", a.deleteWireguardDevice)
 	g.GET("/export", a.export)
 	g.POST("/import", a.importClients)
 	g.POST("/delOrphans", a.delOrphans)
@@ -376,12 +382,13 @@ func (a *ClientController) resetAllTraffics(c *gin.Context) {
 }
 
 type bulkAdjustRequest struct {
-	Emails    []string `json:"emails"`
-	AddDays   int      `json:"addDays"`
-	AddBytes  int64    `json:"addBytes"`
-	Flow      string   `json:"flow"`
-	LimitHwid *int     `json:"limitHwid"`
-	AdTag     string   `json:"adTag"`
+	Emails        []string                    `json:"emails"`
+	AddDays       int                         `json:"addDays"`
+	AddBytes      int64                       `json:"addBytes"`
+	Flow          string                      `json:"flow"`
+	LimitHwid     *int                        `json:"limitHwid"`
+	AdTag         string                      `json:"adTag"`
+	ExternalLinks []service.ExternalLinkInput `json:"externalLinks"`
 }
 
 func (a *ClientController) bulkAdjust(c *gin.Context) {
@@ -390,7 +397,18 @@ func (a *ClientController) bulkAdjust(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
-	result, needRestart, err := a.clientService.BulkAdjust(&a.inboundService, req.Emails, req.AddDays, req.AddBytes, req.Flow, req.LimitHwid, req.AdTag)
+	var result service.BulkAdjustResult
+	var needRestart bool
+	var err error
+	if req.ExternalLinks != nil {
+		if req.AddDays != 0 || req.AddBytes != 0 || req.Flow != "" || req.LimitHwid != nil || req.AdTag != "" {
+			jsonMsg(c, "append external links separately from other adjustments", errors.New("externalLinks cannot be combined with other adjustments"))
+			return
+		}
+		result, err = a.clientService.BulkAppendExternalLinks(req.Emails, req.ExternalLinks)
+	} else {
+		result, needRestart, err = a.clientService.BulkAdjust(&a.inboundService, req.Emails, req.AddDays, req.AddBytes, req.Flow, req.LimitHwid, req.AdTag)
+	}
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
@@ -710,6 +728,16 @@ func (a *ClientController) getTrafficByEmail(c *gin.Context) {
 		return
 	}
 	jsonObj(c, traffic, nil)
+}
+
+func (a *ClientController) getUsageHistory(c *gin.Context) {
+	email := c.Param("email")
+	history, err := a.clientService.GetUsageHistory(email)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.trafficGetError"), err)
+		return
+	}
+	jsonObj(c, history, nil)
 }
 
 func (a *ClientController) getSubLinks(c *gin.Context) {

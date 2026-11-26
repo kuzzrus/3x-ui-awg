@@ -1244,6 +1244,14 @@ export default function ClientsPage() {
     ],
   );
 
+  const [hiddenColumns, setHiddenColumns] = useHiddenClientColumns();
+
+  const columnOptions = useMemo(() => clientColumnOptions(baseColumns), [baseColumns]);
+  const columns = useMemo(
+    () => hideClientColumns(baseColumns, hiddenColumns),
+    [baseColumns, hiddenColumns],
+  );
+
   const rowClassName = useCallback(
     (record: ClientRecord) => {
       const bucket = clientBucket(record);
@@ -1256,14 +1264,6 @@ export default function ClientsPage() {
 
   const [tableBox, setTableBox] = useState<HTMLDivElement | null>(null);
   const fitBodyHeight = useFitTableBodyHeight(tableBox);
-
-  const [hiddenColumns, setHiddenColumns] = useHiddenClientColumns();
-
-  const columnOptions = useMemo(() => clientColumnOptions(baseColumns), [baseColumns]);
-  const columns = useMemo(
-    () => hideClientColumns(baseColumns, hiddenColumns),
-    [baseColumns, hiddenColumns],
-  );
 
   const tablePagination = {
     current: currentPage,
@@ -1989,7 +1989,7 @@ export default function ClientsPage() {
             open={bulkAdjustOpen}
             count={selectedRowKeys.length}
             onOpenChange={setBulkAdjustOpen}
-            onSubmit={async (addDays, addBytes, flow, limitHwid, adTag) => {
+            onSubmit={async (addDays, addBytes, flow, limitHwid, adTag, externalLinks) => {
               const msg = await bulkAdjust(
                 [...selectedRowKeys],
                 addDays,
@@ -1997,6 +1997,7 @@ export default function ClientsPage() {
                 flow,
                 limitHwid,
                 adTag,
+                externalLinks,
               );
               if (msg?.success) {
                 setSelectedRowKeys([]);

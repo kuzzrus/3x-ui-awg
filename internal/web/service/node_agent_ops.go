@@ -46,26 +46,3 @@ func (s *NodeService) AgentLogs(id, count int, level string) ([]string, error) {
 	}
 	return logs.Lines, nil
 }
-
-// RestartNodeXray restarts the Xray core of a node, whichever kind of node it is: an agent restarts
-// into the config it last ran, a panel node through its own API.
-func (s *NodeService) RestartNodeXray(id int) error {
-	n, err := s.GetById(id)
-	if err != nil {
-		return err
-	}
-	if !n.Enable {
-		return errors.New("node is disabled")
-	}
-	mgr := runtime.GetManager()
-	if mgr == nil {
-		return errors.New("runtime manager unavailable")
-	}
-	rt, err := mgr.RuntimeFor(&id)
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), nodeRestartTimeout)
-	defer cancel()
-	return rt.RestartXray(ctx)
-}

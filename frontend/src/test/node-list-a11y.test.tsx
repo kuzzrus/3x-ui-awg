@@ -37,6 +37,7 @@ function renderList(isMobile: boolean) {
       onToggleEnable={noop}
       onUpdateNode={noop}
       onUpdateSelected={noop}
+      onRestart={noop}
     />,
   );
 }

@@ -13,6 +13,7 @@ import {
   message,
 } from 'antd';
 import {
+  DesktopOutlined,
   KeyOutlined,
   LockOutlined,
   MoonFilled,
@@ -26,7 +27,7 @@ import { FormProvider, useForm } from 'react-hook-form';
 import { HttpUtil, LanguageManager } from '@/utils';
 import { FormField, rhfZodValidate } from '@/components/form/rhf';
 import { setMessageInstance } from '@/utils/messageBus';
-import { pauseAnimationsUntilLeave, useTheme } from '@/hooks/useTheme';
+import { pauseAnimationsUntilLeave, themeModeKey, useTheme } from '@/hooks/useTheme';
 import { LoginFormSchema, TwoFactorCodeSchema, type LoginFormValues } from '@/schemas/login';
 import './LoginPage.css';
 
@@ -38,7 +39,7 @@ const basePath = window.X_UI_BASE_PATH || '';
 
 export default function LoginPage() {
   const { t } = useTranslation();
-  const { isDark, isUltra, toggleTheme, toggleUltra, antdThemeConfig } = useTheme();
+  const { mode, isDark, isUltra, cycleTheme: advanceTheme, antdThemeConfig } = useTheme();
   const [messageApi, messageContextHolder] = message.useMessage();
 
   useEffect(() => {
@@ -93,16 +94,8 @@ export default function LoginPage() {
 
   const cycleTheme = useCallback(() => {
     pauseAnimationsUntilLeave('login-theme-cycle');
-    if (!isDark) {
-      toggleTheme();
-      if (isUltra) toggleUltra();
-    } else if (!isUltra) {
-      toggleUltra();
-    } else {
-      toggleUltra();
-      toggleTheme();
-    }
-  }, [isDark, isUltra, toggleTheme, toggleUltra]);
+    advanceTheme();
+  }, [advanceTheme]);
 
   const pageClass = useMemo(() => {
     const classes = ['login-app'];
@@ -127,13 +120,17 @@ export default function LoginPage() {
     [],
   );
 
-  const themeIcon = !isDark ? (
-    <SunOutlined aria-hidden />
-  ) : !isUltra ? (
-    <MoonOutlined aria-hidden />
-  ) : (
-    <MoonFilled aria-hidden />
-  );
+  const themeIcon =
+    mode === 'system' ? (
+      <DesktopOutlined aria-hidden />
+    ) : !isDark ? (
+      <SunOutlined aria-hidden />
+    ) : !isUltra ? (
+      <MoonOutlined aria-hidden />
+    ) : (
+      <MoonFilled aria-hidden />
+    );
+  const themeLabel = `${t('menu.theme')}: ${t(themeModeKey(mode, isUltra))}`;
 
   return (
     <ConfigProvider theme={antdThemeConfig}>
@@ -146,8 +143,8 @@ export default function LoginPage() {
               shape="circle"
               size="large"
               className="toolbar-btn"
-              aria-label={t('menu.theme')}
-              title={t('menu.theme')}
+              aria-label={themeLabel}
+              title={themeLabel}
               icon={themeIcon}
               onClick={cycleTheme}
             />

@@ -146,22 +146,48 @@ type probeOptions struct {
 	mode             string
 	speedDownloadURL string
 	speedUploadURL   string
+	dns              json_util.RawMessage
+}
+
+// probeDNS is the panel's dns section as the throwaway instance can load it: "tag" names
+// routing the probe config does not have, and the core refuses a "script" beside servers.
+func probeDNS(panelDNS json_util.RawMessage) json_util.RawMessage {
+	var dns map[string]any
+	if len(panelDNS) == 0 || json.Unmarshal(panelDNS, &dns) != nil {
+		return nil
+	}
+	delete(dns, "tag")
+	delete(dns, "script")
+	if len(dns) == 0 {
+		return nil
+	}
+	cleaned, err := json.Marshal(dns)
+	if err != nil {
+		return nil
+	}
+	return cleaned
 }
 
 // TestOutbound probes a single outbound; legacy single-test API kept for the
-// /testOutbound endpoint. Mode dispatch matches TestOutbounds.
-func (s *OutboundService) TestOutbound(outboundJSON string, testURL string, allOutboundsJSON string, mode string, speedDownloadURL string, speedUploadURL string) (*TestOutboundResult, error) {
+// /testOutbound endpoint. Dispatch matches TestOutbounds: mode "tcp" dials
+// the outbound's endpoints directly, anything else routes a real HTTP request
+// through a temp xray instance (UDP-transport outbounds are always forced to
+// the HTTP probe — a raw dial can't measure them).
+func (s *OutboundService) TestOutbound(outboundJSON string, testURL string, allOutboundsJSON string, mode string, speedDownloadURL string, speedUploadURL string, panelDNS json_util.RawMessage) (*TestOutboundResult, error) {
 	var ob map[string]any
 	if err := json.Unmarshal([]byte(outboundJSON), &ob); err != nil {
 		return &TestOutboundResult{Mode: probeModeLabel(mode), Success: false, Error: fmt.Sprintf("Invalid outbound JSON: %v", err)}, nil
 	}
-	results := s.testOutboundsParsed([]map[string]any{ob}, testURL, allOutboundsJSON, mode, speedDownloadURL, speedUploadURL)
+	results := s.testOutboundsParsed([]map[string]any{ob}, testURL, allOutboundsJSON, mode, speedDownloadURL, speedUploadURL, panelDNS)
 	return results[0], nil
 }
 
-// TestOutbounds probes a JSON array of outbounds, returning one result per
-// input in order. Empty URL params fall back to their own defaults.
-func (s *OutboundService) TestOutbounds(outboundsJSON string, testURL string, allOutboundsJSON string, mode string, speedDownloadURL string, speedUploadURL string) ([]*TestOutboundResult, error) {
+// TestOutbounds probes a JSON array of outbounds and returns one result per
+// input, in input order, each carrying the outbound's tag. allOutboundsJSON
+// supplies the config context (sockopt.dialerProxy chains); testURL falls
+// back to the default probe URL when empty, and empty speed URLs fall back to
+// their own defaults.
+func (s *OutboundService) TestOutbounds(outboundsJSON string, testURL string, allOutboundsJSON string, mode string, speedDownloadURL string, speedUploadURL string, panelDNS json_util.RawMessage) ([]*TestOutboundResult, error) {
 	var raw []json.RawMessage
 	if err := json.Unmarshal([]byte(outboundsJSON), &raw); err != nil {
 		return nil, fmt.Errorf("invalid outbounds JSON: %w", err)
@@ -176,12 +202,14 @@ func (s *OutboundService) TestOutbounds(outboundsJSON string, testURL string, al
 			items[i] = ob
 		}
 	}
-	return s.testOutboundsParsed(items, testURL, allOutboundsJSON, mode, speedDownloadURL, speedUploadURL), nil
+	return s.testOutboundsParsed(items, testURL, allOutboundsJSON, mode, speedDownloadURL, speedUploadURL, panelDNS), nil
 }
 
-// testOutboundsParsed splits items into the TCP lane and the HTTP lane (also
-// used for "speed" mode, forced to concurrency 1), then runs both.
-func (s *OutboundService) testOutboundsParsed(items []map[string]any, testURL string, allOutboundsJSON string, mode string, speedDownloadURL string, speedUploadURL string) []*TestOutboundResult {
+// testOutboundsParsed splits items into the TCP lane (direct dials, bounded
+// worker pool) and the HTTP lane (one shared temp xray instance; "speed" mode
+// is forced to concurrency 1), runs both, and returns results aligned with
+// items. A nil item marks unparseable input.
+func (s *OutboundService) testOutboundsParsed(items []map[string]any, testURL string, allOutboundsJSON string, mode string, speedDownloadURL string, speedUploadURL string, panelDNS json_util.RawMessage) []*TestOutboundResult {
 	results := make([]*TestOutboundResult, len(items))
 
 	modeLabel := probeModeLabel(mode)
@@ -294,6 +322,7 @@ func (s *OutboundService) testOutboundsParsed(items []map[string]any, testURL st
 		mode:             mode,
 		speedDownloadURL: speedDownloadURL,
 		speedUploadURL:   speedUploadURL,
+		dns:              probeDNS(panelDNS),
 	}
 
 	sem := &httpTestSemaphore
@@ -343,6 +372,7 @@ func runHTTPProbeBatch(items []*httpBatchItem, allOutbounds []any, opts probeOpt
 	defer release()
 
 	cfg := buildBatchTestConfig(items, allOutbounds, ports)
+	cfg.DNSConfig = opts.dns
 
 	configPath, err := createTestConfigPath()
 	if err != nil {
