@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mhsanaei/3x-ui/v3/internal/hostfw"
 )
 
 // writeFakeNft writes an nft into dir that notes its arguments and input, and fails with message when message is not empty. It
@@ -231,5 +233,17 @@ func TestNftFirewallLoadedAsksInTheCLocale(t *testing.T) {
 	t.Cleanup(SetNftSearchDirs(nil))
 	if loaded, err := (NftFirewall{}).Loaded(context.Background()); loaded || err != nil {
 		t.Errorf("Loaded = %v, %v, want false and no error", loaded, err)
+	}
+}
+
+// Every part of the status finds the tools of the host's firewall in the same places, so that the page cannot say that nft was
+// read and that it is not available at once.
+func TestNftFirewallFindsNftWhereHostfwLooks(t *testing.T) {
+	dir := t.TempDir()
+	writeFakeNft(t, dir, "")
+	t.Setenv("PATH", t.TempDir())
+	t.Cleanup(hostfw.SetSearchDirs([]string{dir}))
+	if !(NftFirewall{}).Installed() || !(NftFirewall{}).Available() {
+		t.Error("nft is in a place that hostfw looks in, and the guard did not find it")
 	}
 }

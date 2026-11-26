@@ -30,8 +30,9 @@ func SetSearchDirs(dirs []string) (restore func()) {
 	return func() { searchDirs = before }
 }
 
-// lookup is the path of a command, from PATH or else from the usual places for it.
-func lookup(name string) (string, error) {
+// LookPath is the path of a command, from PATH or else from the usual places for it; whoever runs a firewall tool of the host
+// finds it here, so that no two of them look in different places.
+func LookPath(name string) (string, error) {
 	if path, err := exec.LookPath(name); err == nil {
 		return path, nil
 	}
@@ -55,7 +56,7 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 
 // ExecRunner is the Runner of the host. The command runs in the C locale, so that its answer has the words that are looked for.
 func ExecRunner(ctx context.Context, name string, args ...string) ([]byte, error) {
-	path, err := lookup(name)
+	path, err := LookPath(name)
 	if err != nil {
 		return nil, fmt.Errorf("hostfw: %s was not found: %w", name, err)
 	}

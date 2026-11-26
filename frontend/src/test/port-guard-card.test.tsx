@@ -573,7 +573,7 @@ describe('PortGuardCard, clocks and failures', () => {
     expect(
       screen.getByText('Incoming traffic that no rule lets in. IPv4: blocked, IPv6: let in.'),
     ).toBeTruthy();
-    expect(screen.queryByText(/No firewall is filtering/)).toBeNull();
+    expect(screen.queryByText(/found no firewall that drops incoming traffic/)).toBeNull();
   });
 
   it('shows a firewall that has no front end by its policy alone', async () => {
@@ -602,7 +602,7 @@ describe('PortGuardCard, clocks and failures', () => {
     expect(
       screen.getByText('Incoming traffic that no rule lets in. IPv4: unknown, IPv6: unknown.'),
     ).toBeTruthy();
-    expect(screen.queryByText(/No firewall is filtering/)).toBeNull();
+    expect(screen.queryByText(/found no firewall that drops incoming traffic/)).toBeNull();
   });
 
   it.each([
@@ -617,7 +617,7 @@ describe('PortGuardCard, clocks and failures', () => {
       expect(
         await screen.findByText(`Incoming traffic that no rule lets in. ${line}`),
       ).toBeTruthy();
-      expect(screen.queryByText(/No firewall is filtering/)).toBeNull();
+      expect(screen.queryByText(/found no firewall that drops incoming traffic/)).toBeNull();
     },
   );
 
@@ -629,7 +629,7 @@ describe('PortGuardCard, clocks and failures', () => {
     );
     renderWithProviders(<PortGuardCard />);
 
-    expect(await screen.findByText(/No firewall is filtering incoming traffic/)).toBeTruthy();
+    expect(await screen.findByText(/found no firewall that drops incoming traffic/)).toBeTruthy();
     expect(screen.queryByText(/Managed by/)).toBeNull();
   });
 
@@ -638,7 +638,7 @@ describe('PortGuardCard, clocks and failures', () => {
     renderWithProviders(<PortGuardCard />);
 
     expect(await screen.findByText(/The firewall of this host could not be read/)).toBeTruthy();
-    expect(screen.queryByText(/No firewall is filtering/)).toBeNull();
+    expect(screen.queryByText(/found no firewall that drops incoming traffic/)).toBeNull();
   });
 
   it('warns that closed ports are open when their rules are gone, and loads the rules again', async () => {

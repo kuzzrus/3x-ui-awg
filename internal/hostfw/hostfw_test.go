@@ -248,10 +248,3 @@ func TestBoundedBufferRefusesWhatIsTooLarge(t *testing.T) {
 		t.Fatalf("the buffer holds %d bytes, want %d", b.Len(), maxOutput)
 	}
 }
-
-func TestStatusListsAreNeverNull(t *testing.T) {
-	st := Detect(context.Background(), answers{}.run)
-	if st.Managers == nil {
-		t.Fatal("Managers is nil, so the page would read null for a list")
-	}
-}

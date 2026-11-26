@@ -75,10 +75,12 @@ closed ports and removes the rules without needing the panel.
 
 The page also shows the firewall the host has apart from this guard: `ufw` or
 `firewalld` when one is loaded, and what the rules do with an incoming packet
-that no rule lets in, for IPv4 and IPv6 separately. When nothing on the host
-filters incoming traffic it says so: a port that is not closed here is then
-reachable from the internet unless your hosting provider filters it first. The
-panel only reads this. It never changes `ufw`, `firewalld` or rules of your own.
+that no rule lets in, for IPv4 and IPv6 separately. When it finds nothing that
+drops incoming traffic it says so: a port that is not closed here is then
+reachable from the internet unless your hosting provider filters it first. It
+does not follow rules that jump into chains of your own, so a firewall built
+that way can read as none. The panel only reads this. It never changes `ufw`,
+`firewalld` or rules of your own.
 
 If ports are saved as closed but the guard's table is not in the kernel any more
 (another tool cleared the firewall rules, or the host's firewall was reloaded),
