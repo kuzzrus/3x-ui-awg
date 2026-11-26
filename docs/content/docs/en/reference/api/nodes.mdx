@@ -116,6 +116,19 @@ _openapi:
       title: Probe an existing node, updating its cached health state.
       url: '#probe-an-existing-node-updating-its-cached-health-state'
     - depth: 2
+      title: Restart the Xray core of a node. An agent restarts into the config it
+        last ran and every connection through it drops for a moment; a node that
+        is disabled is refused.
+      url: '#restart-the-xray-core-of-a-node-an-agent-restarts-into-the-config-it-last-ran-and-every-connection-through-it-drops-for-a-moment-a-node-that-is-disabled-is-refused'
+    - depth: 2
+      title: Request a restart of the panel and subscription services on one enabled,
+        directly configured node. Requires admin or node-admin credentials on
+        the node; mTLS requires an explicit node-admin bearer token. Success
+        acknowledges scheduling, before the three-second restart delay. A stale
+        heartbeat does not prevent the request. Older nodes may reject
+        node-admin access until upgraded.
+      url: '#request-a-restart-of-the-panel-and-subscription-services-on-one-enabled-directly-configured-node-requires-admin-or-node-admin-credentials-on-the-node-mtls-requires-an-explicit-node-admin-bearer-token-success-acknowledges-scheduling-before-the-three-second-restart-delay-a-stale-heartbeat-does-not-prevent-the-request-older-nodes-may-reject-node-admin-access-until-upgraded'
+    - depth: 2
       title: 'Trigger the official panel self-updater on each given node (downloads
         the latest release and restarts). Only enabled, online nodes are
         updated; offline/disabled ones are reported as skipped. Set "dev": true
@@ -127,11 +140,6 @@ _openapi:
         its core printed. Only an agent node has a log to read from here; an
         agent from before the endpoint is reported as too old.
       url: '#return-the-newest-lines-of-an-agent-nodes-log-newest-first-with-what-its-core-printed-only-an-agent-node-has-a-log-to-read-from-here-an-agent-from-before-the-endpoint-is-reported-as-too-old'
-    - depth: 2
-      title: Restart the Xray core of a node. An agent restarts into the config it
-        last ran and every connection through it drops for a moment; a node that
-        is disabled is refused.
-      url: '#restart-the-xray-core-of-a-node-an-agent-restarts-into-the-config-it-last-ran-and-every-connection-through-it-drops-for-a-moment-a-node-that-is-disabled-is-refused'
     - depth: 2
       title: Aggregated metric history for a node — same shape as /server/history,
         scoped to one node.
@@ -228,6 +236,17 @@ _openapi:
         id: use-unsaved-node-connection-details-to-list-the-remote-inbounds-available-for-selective-import
       - content: Probe an existing node, updating its cached health state.
         id: probe-an-existing-node-updating-its-cached-health-state
+      - content: Restart the Xray core of a node. An agent restarts into the config it
+          last ran and every connection through it drops for a moment; a node
+          that is disabled is refused.
+        id: restart-the-xray-core-of-a-node-an-agent-restarts-into-the-config-it-last-ran-and-every-connection-through-it-drops-for-a-moment-a-node-that-is-disabled-is-refused
+      - content: Request a restart of the panel and subscription services on one
+          enabled, directly configured node. Requires admin or node-admin
+          credentials on the node; mTLS requires an explicit node-admin bearer
+          token. Success acknowledges scheduling, before the three-second
+          restart delay. A stale heartbeat does not prevent the request. Older
+          nodes may reject node-admin access until upgraded.
+        id: request-a-restart-of-the-panel-and-subscription-services-on-one-enabled-directly-configured-node-requires-admin-or-node-admin-credentials-on-the-node-mtls-requires-an-explicit-node-admin-bearer-token-success-acknowledges-scheduling-before-the-three-second-restart-delay-a-stale-heartbeat-does-not-prevent-the-request-older-nodes-may-reject-node-admin-access-until-upgraded
       - content: 'Trigger the official panel self-updater on each given node (downloads
           the latest release and restarts). Only enabled, online nodes are
           updated; offline/disabled ones are reported as skipped. Set "dev":
@@ -238,10 +257,6 @@ _openapi:
           its core printed. Only an agent node has a log to read from here; an
           agent from before the endpoint is reported as too old.
         id: return-the-newest-lines-of-an-agent-nodes-log-newest-first-with-what-its-core-printed-only-an-agent-node-has-a-log-to-read-from-here-an-agent-from-before-the-endpoint-is-reported-as-too-old
-      - content: Restart the Xray core of a node. An agent restarts into the config it
-          last ran and every connection through it drops for a moment; a node
-          that is disabled is refused.
-        id: restart-the-xray-core-of-a-node-an-agent-restarts-into-the-config-it-last-ran-and-every-connection-through-it-drops-for-a-moment-a-node-that-is-disabled-is-refused
       - content: Aggregated metric history for a node — same shape as /server/history,
           scoped to one node.
         id: aggregated-metric-history-for-a-node--same-shape-as-serverhistory-scoped-to-one-node
@@ -255,7 +270,7 @@ export default function Layout(props) {
   return (
     <>
       {props.children}
-      <OpenAPIPage document="./public/openapi.json" webhooks={[]} operations={[{"path":"/panel/api/nodes/list","method":"get"},{"path":"/panel/api/nodes/decoySites","method":"get"},{"path":"/panel/api/nodes/decoySites/upload","method":"post"},{"path":"/panel/api/nodes/decoySites/del/{sha}","method":"post"},{"path":"/panel/api/nodes/mtls/ca","method":"post"},{"path":"/panel/api/nodes/mtls/trustCA","method":"post"},{"path":"/panel/api/nodes/mtls/reloadClient","method":"post"},{"path":"/panel/api/nodes/get/{id}","method":"get"},{"path":"/panel/api/nodes/webCert/{id}","method":"get"},{"path":"/panel/api/nodes/add","method":"post"},{"path":"/panel/api/nodes/addAgent","method":"post"},{"path":"/panel/api/nodes/repairAgent/{id}","method":"post"},{"path":"/panel/api/nodes/update/{id}","method":"post"},{"path":"/panel/api/nodes/del/{id}","method":"post"},{"path":"/panel/api/nodes/setEnable/{id}","method":"post"},{"path":"/panel/api/nodes/test","method":"post"},{"path":"/panel/api/nodes/certFingerprint","method":"post"},{"path":"/panel/api/nodes/inbounds","method":"post"},{"path":"/panel/api/nodes/probe/{id}","method":"post"},{"path":"/panel/api/nodes/updatePanel","method":"post"},{"path":"/panel/api/nodes/agentLogs/{id}/{count}","method":"post"},{"path":"/panel/api/nodes/restartXray/{id}","method":"post"},{"path":"/panel/api/nodes/history/{id}/{metric}/{bucket}","method":"get"}]} showTitle />
+      <OpenAPIPage document="./public/openapi.json" webhooks={[]} operations={[{"path":"/panel/api/nodes/list","method":"get"},{"path":"/panel/api/nodes/decoySites","method":"get"},{"path":"/panel/api/nodes/decoySites/upload","method":"post"},{"path":"/panel/api/nodes/decoySites/del/{sha}","method":"post"},{"path":"/panel/api/nodes/mtls/ca","method":"post"},{"path":"/panel/api/nodes/mtls/trustCA","method":"post"},{"path":"/panel/api/nodes/mtls/reloadClient","method":"post"},{"path":"/panel/api/nodes/get/{id}","method":"get"},{"path":"/panel/api/nodes/webCert/{id}","method":"get"},{"path":"/panel/api/nodes/add","method":"post"},{"path":"/panel/api/nodes/addAgent","method":"post"},{"path":"/panel/api/nodes/repairAgent/{id}","method":"post"},{"path":"/panel/api/nodes/update/{id}","method":"post"},{"path":"/panel/api/nodes/del/{id}","method":"post"},{"path":"/panel/api/nodes/setEnable/{id}","method":"post"},{"path":"/panel/api/nodes/test","method":"post"},{"path":"/panel/api/nodes/certFingerprint","method":"post"},{"path":"/panel/api/nodes/inbounds","method":"post"},{"path":"/panel/api/nodes/probe/{id}","method":"post"},{"path":"/panel/api/nodes/restartXray/{id}","method":"post"},{"path":"/panel/api/nodes/restartPanel/{id}","method":"post"},{"path":"/panel/api/nodes/updatePanel","method":"post"},{"path":"/panel/api/nodes/agentLogs/{id}/{count}","method":"post"},{"path":"/panel/api/nodes/history/{id}/{metric}/{bucket}","method":"get"}]} showTitle />
     </>
   );
 }

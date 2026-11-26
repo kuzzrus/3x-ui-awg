@@ -216,3 +216,4 @@ systemctl restart x-ui
 
 - [terraform-provider-3x-ui](https://github.com/batonogov/terraform-provider-threexui) (**MIT**) — управление инбаундами, клиентами, настройками панели и конфигурацией Xray как кодом через Terraform / OpenTofu.
 - [3X-UI Manager](https://github.com/yukh975/3X-UI-Manager) (**MIT**) — нативный Android-клиент для 3x-ui: дашборд, инбаунды, клиенты с шарингом по QR, узлы и управление несколькими панелями. Доступен на F-Droid.
+- [3x-ui-exporter](https://github.com/nike38rus/3x-ui-exporter) (**MIT**) — лёгкий Prometheus-экспортёр и дашборд Grafana для 3x-ui и Xray Core: пропускная способность в реальном времени, активные клиенты, открытые сокеты, балансировщики и состояние задержек.

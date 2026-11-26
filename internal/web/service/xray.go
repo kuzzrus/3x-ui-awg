@@ -291,6 +291,7 @@ func (s *XrayService) renderInboundConfig(inbound *model.Inbound) (*xray.Inbound
 				c.AllowedIPs = own.AllowedIPs
 				c.PreSharedKey = own.PreSharedKey
 				c.PublicKey = own.PublicKey
+				c.WireguardDevices = own.WireguardDevices
 				// #6731: a nil settings keepalive must not keep the other tunnel's value.
 				if own.KeepAlive == nil {
 					c.KeepAlive = nil
@@ -299,7 +300,7 @@ func (s *XrayService) renderInboundConfig(inbound *model.Inbound) (*xray.Inbound
 					c.KeepAlive = &keepalive
 				}
 			}
-			wgPeers = append(wgPeers, model.WireguardPeerFromClient(c))
+			wgPeers = append(wgPeers, model.WireguardPeersFromClient(c)...)
 			continue
 		}
 		finalClients = append(finalClients, entry)
@@ -1306,10 +1307,24 @@ func mergeSubscriptionOutbounds(cfg *xray.Config, prepend, appendList []any) {
 			return
 		}
 	}
+
+	// Template outbounds take tag priority (must not be altered by injected subscriptions).
+	usedTags := make(map[string]bool)
+	for _, item := range templateOutbounds {
+		if ob, ok := item.(map[string]any); ok {
+			if tag, _ := ob["tag"].(string); tag != "" {
+				usedTags[tag] = true
+			}
+		}
+	}
+
+	prependClean := dedupeSubscriptionOutboundList(prepend, usedTags)
+	appendClean := dedupeSubscriptionOutboundList(appendList, usedTags)
+
 	var merged []any
-	merged = append(merged, prepend...)
+	merged = append(merged, prependClean...)
 	merged = append(merged, templateOutbounds...)
-	merged = append(merged, appendList...)
+	merged = append(merged, appendClean...)
 	combined, err := json.MarshalIndent(merged, "", "  ")
 	if err != nil {
 		return
@@ -1882,7 +1897,18 @@ func applyXrayHotDiff(hotAPI *xray.XrayAPI, diff *xray.HotDiff) bool {
 	// Removals first so changed handlers and port swaps never collide with
 	// the additions that follow.
 	for _, u := range diff.RemovedUsers {
-		if err := hotAPI.RemoveUser(u.Tag, u.Email); err != nil && !xray.IsMissingHandlerErr(err) {
+		var err error
+		if key, _ := u.User["publicKey"].(string); u.Protocol == string(model.WireGuard) && key != "" {
+			err = hotAPI.RemoveWireguardPeer(u.Tag, key)
+		} else if u.Protocol == string(model.WireGuard) {
+			err = hotAPI.RemoveWireguardUsers(u.Tag, u.Email)
+		} else {
+			err = hotAPI.RemoveUser(u.Tag, u.Email)
+			if xray.IsMissingHandlerErr(err) {
+				continue
+			}
+		}
+		if err != nil {
 			logger.Info("hot apply: remove user [", u.Email, "] from [", u.Tag, "] failed:", err)
 			return false
 		}
@@ -1938,7 +1964,7 @@ func persistHotConfig(process *xray.Process) {
 // already applied through the runtime API) replaces the existing user instead.
 func addUserReconciling(api *xray.XrayAPI, u xray.UserOp) error {
 	err := api.AddUser(u.Protocol, u.Tag, u.User)
-	if err == nil || !xray.IsUserExistsErr(err) {
+	if err == nil || u.Protocol == string(model.WireGuard) || !xray.IsUserExistsErr(err) {
 		return err
 	}
 	if delErr := api.RemoveUser(u.Tag, u.Email); delErr != nil && !xray.IsMissingHandlerErr(delErr) {
@@ -2027,6 +2053,15 @@ func (s *XrayService) ScheduleAmneziaWGRelayResync() {
 
 // SetToNeedReconcile schedules config reconciliation without forcing an unchanged core to restart.
 func (s *XrayService) SetToNeedReconcile() { isNeedXrayReconcile.Store(true) }
+
+// ReconcileNow applies a change at once instead of at the 30 s tick. A core that is
+// down only stays flagged: starting it is the tick's job.
+func (s *XrayService) ReconcileNow() {
+	s.SetToNeedReconcile()
+	if s.IsXrayRunning() {
+		s.ApplyPendingRestart()
+	}
+}
 
 // GetXrayAPIPort returns the port the local xray process is listening on
 // for its gRPC HandlerService, or 0 when xray isn't currently running.

@@ -496,6 +496,7 @@ describe('NodeList with an agent node', () => {
         onRepair={onRepair}
         onLogs={onLogs}
         onRestartXray={onRestartXray}
+        onRestart={noop}
         onDelete={noop}
         onProbe={noop}
         onToggleEnable={noop}

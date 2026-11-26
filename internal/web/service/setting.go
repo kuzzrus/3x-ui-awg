@@ -2,6 +2,7 @@ package service
 
 import (
 	"crypto/rand"
+	"crypto/tls"
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
@@ -39,7 +40,7 @@ import (
 var xrayTemplateConfig string
 
 const (
-	DefaultSubClashUserAgentRegex     = `(?i)(clash|mihomo)`
+	DefaultSubClashUserAgentRegex     = `(?i)(clash|mihomo|rabbit-hole)`
 	DefaultExternalSubUserAgent       = "v2rayNG/1.8.5"
 	DefaultSubJsonUserAgentRegex      = ``
 	DefaultRemarkTemplate             = "{{INBOUND}}-{{EMAIL}}|📊{{TRAFFIC_LEFT}}|⏳{{DAYS_LEFT}}D"
@@ -57,15 +58,17 @@ const (
 )
 
 var defaultValueMap = map[string]string{
-	"xrayTemplateConfig": xrayTemplateConfig,
-	"webListen":          "",
-	"webDomain":          "",
-	"webPort":            "2053",
-	"webCertFile":        "",
-	"webKeyFile":         "",
-	"secret":             random.Seq(32),
-	"panelGuid":          uuid.NewString(),
-	"apiToken":           "",
+	"networkTrafficMode":      "legacy",
+	"networkTrafficInterface": "",
+	"xrayTemplateConfig":      xrayTemplateConfig,
+	"webListen":               "",
+	"webDomain":               "",
+	"webPort":                 "2053",
+	"webCertFile":             "",
+	"webKeyFile":              "",
+	"secret":                  random.Seq(32),
+	"panelGuid":               uuid.NewString(),
+	"apiToken":                "",
 	// Node mTLS material (opt-in). All default empty: the CA + master client
 	// cert are minted lazily on first use, and the node-side trust CA is pasted
 	// in by the operator. Kept out of entity.AllSetting so private keys never
@@ -78,8 +81,13 @@ var defaultValueMap = map[string]string{
 	"nodeMtlsClientCAPem":         "",
 	"webBasePath":                 normalizeBasePath(getEnv("XUI_INIT_WEB_BASE_PATH", "/")),
 	"sessionMaxAge":               "360",
+	"publicIpRefreshMinutes":      "5",
+	"publicIpv6Detect":            "true",
+	"publicIpv4Override":          "",
+	"publicIpv6Override":          "",
 	"trustedProxyCIDRs":           DefaultTrustedProxyCIDRs,
 	"realityScanCandidates":       DefaultRealityScanCandidatesCSV,
+	"realityWatch":                "{}",
 	"ipLimitAllowlist":            "",
 	"pageSize":                    "25",
 	"expireDiff":                  "0",
@@ -87,6 +95,8 @@ var defaultValueMap = map[string]string{
 	"remarkTemplate":              DefaultRemarkTemplate,
 	"subShowIdentityOnAllLinks":   "false",
 	"subInfoNodeEnable":           "false",
+	"subHwidRejectWithConfig":     "false",
+	"mcpEnable":                   "false",
 	"subHostSortMode":             "inbound-first",
 	"subCalendarExpireInclusive":  "false",
 	"subExpiredTemplate":          DefaultSubExpiredTemplate,
@@ -102,6 +112,16 @@ var defaultValueMap = map[string]string{
 	"tgCpu":                       "80",
 	"tgMemory":                    "80",
 	"tgLang":                      "en-US",
+	"wechatEnable":                "false",
+	"wechatMode":                  "wecom",
+	"wechatWebhookURL":            "",
+	"wechatToken":                 "",
+	"wechatLang":                  "en-US",
+	"wechatReportEnable":          "false",
+	"wechatRunTime":               "@daily",
+	"wechatEnabledEvents":         "login.attempt,cpu.high",
+	"wechatCpu":                   "80",
+	"wechatMemory":                "80",
 	"twoFactorEnable":             "false",
 	"twoFactorToken":              "",
 	"happLinkEnable":              "false",
@@ -392,6 +412,8 @@ func (s *SettingService) GetAllSettingView() (*entity.AllSettingView, error) {
 	view.HasNordSecret = secretConfigured(mustString(s.GetNord()))
 	view.HasSmtpPassword = secretConfigured(allSetting.SmtpPassword)
 	view.HasDiscordBotToken = secretConfigured(allSetting.DiscordBotToken)
+	view.HasWechatWebhookURL = secretConfigured(allSetting.WechatWebhookURL)
+	view.HasWechatToken = secretConfigured(allSetting.WechatToken)
 	var apiTokenCount int64
 	if err := database.GetDB().Model(model.ApiToken{}).Where("enabled = ?", true).Count(&apiTokenCount).Error; err == nil {
 		view.HasApiToken = apiTokenCount > 0
@@ -401,6 +423,8 @@ func (s *SettingService) GetAllSettingView() (*entity.AllSettingView, error) {
 	view.LdapPassword = ""
 	view.SmtpPassword = ""
 	view.DiscordBotToken = ""
+	view.WechatWebhookURL = ""
+	view.WechatToken = ""
 	return view, nil
 }
 
@@ -784,6 +808,18 @@ func (s *SettingService) GetCertFile() (string, error) {
 	return s.getString("webCertFile")
 }
 
+// DirectHTTPSConfigured reports whether the next panel start serves TLS itself:
+// the stored certificate and key must both be set and load as a pair.
+func (s *SettingService) DirectHTTPSConfigured() bool {
+	certFile, certErr := s.GetCertFile()
+	keyFile, keyErr := s.GetKeyFile()
+	if certErr != nil || keyErr != nil || certFile == "" || keyFile == "" {
+		return false
+	}
+	_, err := tls.LoadX509KeyPair(certFile, keyFile)
+	return err == nil
+}
+
 func (s *SettingService) SetKeyFile(webKeyFile string) error {
 	return s.setString("webKeyFile", webKeyFile)
 }
@@ -798,6 +834,22 @@ func (s *SettingService) GetExpireDiff() (int, error) {
 
 func (s *SettingService) GetTrafficDiff() (int, error) {
 	return s.getInt("trafficDiff")
+}
+
+func (s *SettingService) GetPublicIpRefreshMinutes() (int, error) {
+	return s.getInt("publicIpRefreshMinutes")
+}
+
+func (s *SettingService) GetPublicIpv6Detect() (bool, error) {
+	return s.getBool("publicIpv6Detect")
+}
+
+func (s *SettingService) GetPublicIpv4Override() (string, error) {
+	return s.getString("publicIpv4Override")
+}
+
+func (s *SettingService) GetPublicIpv6Override() (string, error) {
+	return s.getString("publicIpv6Override")
 }
 
 func (s *SettingService) GetSessionMaxAge() (int, error) {
@@ -828,6 +880,14 @@ func (s *SettingService) GetSubShowIdentityOnAllLinks() (bool, error) {
 
 func (s *SettingService) GetSubInfoNodeEnable() (bool, error) {
 	return s.getBool("subInfoNodeEnable")
+}
+
+func (s *SettingService) GetSubHwidRejectWithConfig() (bool, error) {
+	return s.getBool("subHwidRejectWithConfig")
+}
+
+func (s *SettingService) GetMcpEnable() (bool, error) {
+	return s.getBool("mcpEnable")
 }
 
 func (s *SettingService) GetSubHostSortMode() (string, error) {
@@ -901,6 +961,10 @@ func (s *SettingService) GetTimeLocation() (*time.Location, error) {
 	if err != nil {
 		return nil, err
 	}
+	return loadSettingTimeLocation(l), nil
+}
+
+func loadSettingTimeLocation(l string) *time.Location {
 	location, err := time.LoadLocation(l)
 	if err != nil {
 		defaultLocation := defaultValueMap["timeLocation"]
@@ -908,11 +972,10 @@ func (s *SettingService) GetTimeLocation() (*time.Location, error) {
 		location, err = time.LoadLocation(defaultLocation)
 		if err != nil {
 			logger.Errorf("failed to load default location, using UTC: %v", err)
-			return time.UTC, nil
+			return time.UTC
 		}
-		return location, nil
 	}
-	return location, nil
+	return location
 }
 
 func (s *SettingService) GetSubEnable() (bool, error) {
@@ -2052,13 +2115,19 @@ func (s *SettingService) SetNodeDownThreshold(value int) error {
 // flag, a blank submitted secret means "unchanged" (the field is always served
 // blank to the browser) and the stored value is preserved.
 type SecretClears struct {
-	TgBotToken      bool
-	LdapPassword    bool
-	SmtpPassword    bool
-	DiscordBotToken bool
+	TgBotToken       bool
+	LdapPassword     bool
+	SmtpPassword     bool
+	DiscordBotToken  bool
+	WechatWebhookURL bool
+	WechatToken      bool
 }
 
 func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting, clears SecretClears) error {
+	preserveTrafficSelection := allSetting.NetworkTrafficMode == ""
+	if err := validateNetworkTrafficSettings(allSetting); err != nil {
+		return err
+	}
 	switch allSetting.SubHostSortMode {
 	case "":
 		allSetting.SubHostSortMode = "inbound-first"
@@ -2080,6 +2149,9 @@ func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting, clears 
 			return errors.New("two-factor secret must be a non-empty base32 key")
 		}
 		allSetting.TwoFactorToken = totp.NormalizeSecret(allSetting.TwoFactorToken)
+	}
+	if err := validateWechatSettings(allSetting); err != nil {
+		return err
 	}
 	if err := validateSettingsURLs(allSetting); err != nil {
 		return err
@@ -2111,11 +2183,26 @@ func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting, clears 
 			return err
 		}
 		byKey := make(map[string]*model.Setting, len(existing))
+		currentTraffic := networkTrafficConfig{}
 		for _, st := range existing {
 			byKey[st.Key] = st
+			switch st.Key {
+			case "networkTrafficMode":
+				currentTraffic.mode = st.Value
+			case "networkTrafficInterface":
+				currentTraffic.iface = st.Value
+			}
+		}
+		if err := validateNetworkTrafficInterfaceChange(allSetting, currentTraffic); err != nil {
+			return err
 		}
 		for _, field := range fields {
 			key := field.Tag.Get("json")
+			// Older clients omit this pair; skipping its writes also preserves
+			// explicit selections committed concurrently with an unrelated save.
+			if preserveTrafficSelection && (key == "networkTrafficMode" || key == "networkTrafficInterface") {
+				continue
+			}
 			fieldV := v.FieldByName(field.Name)
 			value := fmt.Sprint(fieldV.Interface())
 			if st, ok := byKey[key]; ok {
@@ -2213,6 +2300,20 @@ func (s *SettingService) preserveRedactedSecrets(allSetting *entity.AllSetting, 
 			return err
 		}
 		allSetting.DiscordBotToken = value
+	}
+	if !clears.WechatWebhookURL && strings.TrimSpace(allSetting.WechatWebhookURL) == "" {
+		value, err := s.GetWechatWebhookURL()
+		if err != nil {
+			return err
+		}
+		allSetting.WechatWebhookURL = value
+	}
+	if !clears.WechatToken && strings.TrimSpace(allSetting.WechatToken) == "" {
+		value, err := s.GetWechatToken()
+		if err != nil {
+			return err
+		}
+		allSetting.WechatToken = value
 	}
 	return nil
 }
@@ -2466,11 +2567,13 @@ func (s *SettingService) GetDefaultSettings(host string) (any, error) {
 }
 
 var factoryDefaultSecretKeys = map[string]bool{
-	"tgBotToken":      true,
-	"twoFactorToken":  true,
-	"ldapPassword":    true,
-	"smtpPassword":    true,
-	"discordBotToken": true,
+	"tgBotToken":       true,
+	"twoFactorToken":   true,
+	"ldapPassword":     true,
+	"smtpPassword":     true,
+	"discordBotToken":  true,
+	"wechatWebhookURL": true,
+	"wechatToken":      true,
 }
 
 /*

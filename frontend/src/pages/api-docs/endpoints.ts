@@ -465,8 +465,7 @@ export const sections: readonly Section[] = [
         path: '/panel/api/server/status',
         summary:
           'Real-time machine snapshot: CPU, memory, swap, disk, network IO, load averages, open connections, Xray state. Cached and refreshed every 2 seconds in the background.',
-        response:
-          '{\n  "success": true,\n  "obj": {\n    "cpu": 12.5,\n    "mem": { "current": 2147483648, "total": 8589934592 },\n    "swap": { "current": 0, "total": 4294967296 },\n    "disk": { "current": 53687091200, "total": 268435456000 },\n    "netIO": { "up": 1073741824, "down": 2147483648 },\n    "xray": { "state": "running", "version": "v25.10.31" },\n    "tcpCount": 42,\n    "load": { "load1": 0.5, "load5": 0.3, "load15": 0.2 }\n  }\n}',
+        responseSchema: 'Status',
       },
       {
         method: 'GET',
@@ -478,6 +477,13 @@ export const sections: readonly Section[] = [
       },
       {
         method: 'GET',
+        path: '/panel/api/server/networkInterfaces',
+        summary:
+          'List network interface names and resolve the primary default-route interface in this panel network namespace. Requires an admin session or admin API token. No addresses or hardware identifiers are returned.',
+        responseSchema: 'NetworkInterfacesResponse',
+      },
+      {
+        method: 'GET',
         path: '/panel/api/server/cpuHistory/:bucket',
         summary:
           'Legacy: aggregated CPU history. Use /history/cpu/:bucket instead — same data with a uniform {t, v} shape.',
@@ -486,7 +492,7 @@ export const sections: readonly Section[] = [
             name: 'bucket',
             in: 'path',
             type: 'number',
-            desc: 'Bucket size in seconds. Allowed: 2, 30, 60, 120, 180, 300.',
+            desc: 'Bucket size in seconds. Allowed: 2, 5, 30, 60, 180, 360, 720, 1440, 2880, 10080.',
           },
         ],
       },
@@ -494,23 +500,37 @@ export const sections: readonly Section[] = [
         method: 'GET',
         path: '/panel/api/server/history/:metric/:bucket',
         summary:
-          'Aggregated time-series for one metric. Returns an array of {t, v} samples covering the last ~6 hours.',
+          'Aggregated time-series for one system metric. Returns up to 60 {t, v} samples; supported bucket sizes cover windows from 2 minutes up to 7 days.',
         params: [
           {
             name: 'metric',
             in: 'path',
             type: 'string',
-            desc: 'cpu | mem | netUp | netDown | online | load1 | load5 | load15.',
+            desc: 'cpu | mem | swap | netUp | netDown | pktUp | pktDown | diskRead | diskWrite | diskUsage | tcpCount | udpCount | online | load1 | load5 | load15.',
           },
           {
             name: 'bucket',
             in: 'path',
             type: 'number',
-            desc: 'Bucket size in seconds. Allowed: 2, 30, 60, 120, 180, 300.',
+            desc: 'Bucket size in seconds. Allowed: 2, 5, 30, 60, 180, 360, 720, 1440, 2880, 10080.',
           },
         ],
         response:
           '{\n  "success": true,\n  "obj": [\n    { "t": 1700000000, "v": 12.5 },\n    { "t": 1700000002, "v": 13.1 }\n  ]\n}',
+      },
+      {
+        method: 'GET',
+        path: '/panel/api/server/overviewHistory/:bucket',
+        summary:
+          'Aggregated history for all overview charts in one response: up to 60 {t, v} samples for each of cpu, mem, swap, diskUsage, netUp, netDown, tcpCount and udpCount.',
+        params: [
+          {
+            name: 'bucket',
+            in: 'path',
+            type: 'number',
+            desc: 'Bucket size in seconds. Allowed: 2, 5, 30, 60, 180, 360, 720, 1440, 2880, 10080.',
+          },
+        ],
       },
       {
         method: 'GET',
@@ -522,7 +542,7 @@ export const sections: readonly Section[] = [
         method: 'GET',
         path: '/panel/api/server/xrayMetricsHistory/:metric/:bucket',
         summary:
-          'Time-series history for one Xray runtime metric over the last ~6 hours. Same {t, v} shape as /history/:metric/:bucket.',
+          'Aggregated history for one Xray runtime metric. Returns up to 60 {t, v} samples for bucket windows up to 7 days.',
         params: [
           {
             name: 'metric',
@@ -534,7 +554,7 @@ export const sections: readonly Section[] = [
             name: 'bucket',
             in: 'path',
             type: 'number',
-            desc: 'Bucket size in seconds. Allowed: 2, 30, 60, 120, 180, 300.',
+            desc: 'Bucket size in seconds. Allowed: 2, 5, 30, 60, 180, 360, 720, 1440, 2880, 10080.',
           },
         ],
       },
@@ -560,7 +580,7 @@ export const sections: readonly Section[] = [
             name: 'bucket',
             in: 'path',
             type: 'number',
-            desc: 'Bucket size in seconds. Allowed: 2, 30, 60, 120, 180, 300.',
+            desc: 'Bucket size in seconds. Allowed: 2, 5, 30, 60, 180, 360, 720, 1440, 2880, 10080.',
           },
         ],
       },
@@ -895,7 +915,7 @@ export const sections: readonly Section[] = [
             name: 'keepHostSettings',
             in: 'body (multipart)',
             type: 'boolean',
-            desc: "Keep this machine's addresses, certificates and node identity. Default true.",
+            desc: "Keep this machine's addresses, certificates, node identity, and network traffic interface selection. Default true.",
             optional: true,
             defaultValue: true,
           },
@@ -1411,6 +1431,7 @@ export const sections: readonly Section[] = [
             in: 'query',
             type: 'integer',
             desc: 'Pass 1 to retain the xray_client_traffic row after deletion.',
+            optional: true,
           },
         ],
         response: '{\n  "success": true,\n  "msg": "Client deleted"\n}',
@@ -1429,6 +1450,7 @@ export const sections: readonly Section[] = [
             in: 'query',
             type: 'integer',
             desc: 'Pass 1 to retain the xray_client_traffic row after deletion.',
+            optional: true,
           },
         ],
         response: '{\n  "success": true,\n  "msg": "Client deleted"\n}',
@@ -1487,6 +1509,96 @@ export const sections: readonly Section[] = [
         response: '{\n  "success": true\n}',
       },
       {
+        method: 'GET',
+        path: '/panel/api/clients/wireguardDevices',
+        summary: 'List WireGuard devices and their per-inbound addresses.',
+        description:
+          'The original credentials remain the primary device. Additional devices share their parent client email, traffic quota, expiry and enable state. Keep each device configuration on one device. Device-specific subscriptions use the existing subscription URL with the wgDevice query parameter set to the device ID.',
+        params: [{ name: 'email', in: 'query', type: 'string', desc: 'Client email.' }],
+        response:
+          '{\n  "success": true,\n  "obj": {\n    "limit": 5,\n    "inbounds": [\n      {\n        "inboundId": 3,\n        "devices": [\n          {\n            "id": "primary",\n            "name": "",\n            "enable": true,\n            "privateKey": "...",\n            "publicKey": "...",\n            "allowedIPs": [\n              "10.0.0.2/32"\n            ]\n          },\n          {\n            "id": "e3550bd1-0ba0-48b2-8a91-e57263a23d9d",\n            "name": "Phone",\n            "enable": true,\n            "privateKey": "...",\n            "publicKey": "...",\n            "allowedIPs": [\n              "10.0.0.3/32"\n            ]\n          }\n        ]\n      }\n    ]\n  }\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/clients/wireguardDevices',
+        summary: 'Create a WireGuard device on every attached WireGuard inbound.',
+        description:
+          'Keys are generated once and each inbound allocates an available tunnel address. All inbounds commit together. The default limit is 5 devices including primary.',
+        params: [
+          { name: 'email', in: 'query', type: 'string', desc: 'Client email.' },
+          {
+            name: 'name',
+            in: 'body (json)',
+            type: 'string',
+            desc: 'Device name with 1 to 64 characters on one line.',
+          },
+        ],
+        body: '{\n  "name": "Phone"\n}',
+        response:
+          '{\n  "success": true,\n  "obj": {\n    "limit": 5,\n    "inbounds": [\n      {\n        "inboundId": 3,\n        "devices": [\n          {\n            "id": "primary",\n            "name": "",\n            "enable": true,\n            "privateKey": "...",\n            "publicKey": "...",\n            "allowedIPs": [\n              "10.0.0.2/32"\n            ]\n          },\n          {\n            "id": "e3550bd1-0ba0-48b2-8a91-e57263a23d9d",\n            "name": "Phone",\n            "enable": true,\n            "privateKey": "...",\n            "publicKey": "...",\n            "allowedIPs": [\n              "10.0.0.3/32"\n            ]\n          }\n        ]\n      }\n    ]\n  }\n}',
+      },
+      {
+        method: 'PUT',
+        path: '/panel/api/clients/wireguardDevices/limit',
+        summary: 'Set the maximum number of WireGuard devices.',
+        description:
+          'The limit includes primary and disabled devices. Choose 1 to 32. Values below the current device count are rejected.',
+        params: [
+          { name: 'email', in: 'query', type: 'string', desc: 'Client email.' },
+          {
+            name: 'limit',
+            in: 'body (json)',
+            type: 'integer',
+            desc: 'Maximum device count including primary.',
+            defaultValue: 5,
+          },
+        ],
+        body: '{\n  "limit": 5\n}',
+        response:
+          '{\n  "success": true,\n  "obj": {\n    "limit": 5,\n    "inbounds": [\n      {\n        "inboundId": 3,\n        "devices": [\n          {\n            "id": "primary",\n            "name": "",\n            "enable": true,\n            "privateKey": "...",\n            "publicKey": "...",\n            "allowedIPs": [\n              "10.0.0.2/32"\n            ]\n          },\n          {\n            "id": "e3550bd1-0ba0-48b2-8a91-e57263a23d9d",\n            "name": "Phone",\n            "enable": true,\n            "privateKey": "...",\n            "publicKey": "...",\n            "allowedIPs": [\n              "10.0.0.3/32"\n            ]\n          }\n        ]\n      }\n    ]\n  }\n}',
+      },
+      {
+        method: 'PATCH',
+        path: '/panel/api/clients/wireguardDevices/:deviceId',
+        summary: 'Rename or enable a WireGuard device.',
+        description:
+          'The primary device is managed through the parent client. Disabled additional devices retain their reserved addresses.',
+        params: [
+          { name: 'email', in: 'query', type: 'string', desc: 'Client email.' },
+          { name: 'deviceId', in: 'path', type: 'string', desc: 'Additional device UUID.' },
+          {
+            name: 'name',
+            in: 'body (json)',
+            type: 'string',
+            optional: true,
+            desc: 'New device name.',
+          },
+          {
+            name: 'enable',
+            in: 'body (json)',
+            type: 'boolean',
+            optional: true,
+            desc: 'Whether the device can connect.',
+          },
+        ],
+        body: '{\n  "name": "Work phone",\n  "enable": true\n}',
+        response:
+          '{\n  "success": true,\n  "obj": {\n    "limit": 5,\n    "inbounds": [\n      {\n        "inboundId": 3,\n        "devices": [\n          {\n            "id": "primary",\n            "name": "",\n            "enable": true,\n            "privateKey": "...",\n            "publicKey": "...",\n            "allowedIPs": [\n              "10.0.0.2/32"\n            ]\n          },\n          {\n            "id": "e3550bd1-0ba0-48b2-8a91-e57263a23d9d",\n            "name": "Phone",\n            "enable": true,\n            "privateKey": "...",\n            "publicKey": "...",\n            "allowedIPs": [\n              "10.0.0.3/32"\n            ]\n          }\n        ]\n      }\n    ]\n  }\n}',
+      },
+      {
+        method: 'DELETE',
+        path: '/panel/api/clients/wireguardDevices/:deviceId',
+        summary: 'Delete an additional WireGuard device and release its address.',
+        description:
+          'The device is removed from every attached WireGuard inbound. Its previously downloaded configuration loses access after the configuration is applied.',
+        params: [
+          { name: 'email', in: 'query', type: 'string', desc: 'Client email.' },
+          { name: 'deviceId', in: 'path', type: 'string', desc: 'Additional device UUID.' },
+        ],
+        response:
+          '{\n  "success": true,\n  "obj": {\n    "limit": 5,\n    "inbounds": [\n      {\n        "inboundId": 3,\n        "devices": [\n          {\n            "id": "primary",\n            "name": "",\n            "enable": true,\n            "privateKey": "...",\n            "publicKey": "...",\n            "allowedIPs": [\n              "10.0.0.2/32"\n            ]\n          },\n          {\n            "id": "e3550bd1-0ba0-48b2-8a91-e57263a23d9d",\n            "name": "Phone",\n            "enable": true,\n            "privateKey": "...",\n            "publicKey": "...",\n            "allowedIPs": [\n              "10.0.0.3/32"\n            ]\n          }\n        ]\n      }\n    ]\n  }\n}',
+      },
+      {
         method: 'POST',
         path: '/panel/api/clients/resetAllTraffics',
         summary:
@@ -1528,10 +1640,48 @@ export const sections: readonly Section[] = [
         method: 'POST',
         path: '/panel/api/clients/bulkAdjust',
         summary:
-          'Shift expiry and/or traffic quota for many clients in one call. addDays/addBytes may be negative. Clients with unlimited expiry (expiryTime=0) or unlimited traffic (totalGB=0) are skipped for the corresponding field — bulk extend never converts unlimited to limited. A client that was auto-disabled solely because it was depleted (expired or over quota) is automatically re-enabled — locally and on its node — when the adjustment lifts it out of depletion; a manually-disabled or still-depleted client is left disabled. The optional flow directive sets the XTLS flow on every client: "none" clears it, "xtls-rprx-vision"/"xtls-rprx-vision-udp443" set it where the inbound supports it (omit or "" to leave it unchanged). The optional limitHwid sets maximum registered devices (0 = unlimited). The optional adTag sets MTProto Telegram sponsor channel ("none" clears). Returns the adjusted count and per-email skip reasons.',
-        body: '{\n  "emails": ["alice", "bob"],\n  "addDays": 30,\n  "addBytes": 53687091200,\n  "flow": "xtls-rprx-vision",\n  "limitHwid": 2,\n  "adTag": "0123456789abcdef0123456789abcdef"\n}',
-        response:
-          '{\n  "success": true,\n  "obj": {\n    "adjusted": 2,\n    "skipped": [\n      { "email": "carol", "reason": "unlimited expiry" }\n    ]\n  }\n}',
+          'Shift expiry and/or traffic quota for many clients in one call. addDays/addBytes may be negative. Clients with unlimited expiry (expiryTime=0) or unlimited traffic (totalGB=0) are skipped for the corresponding field — bulk extend never converts unlimited to limited. A client that was auto-disabled solely because it was depleted (expired or over quota) is automatically re-enabled — locally and on its node — when the adjustment lifts it out of depletion; a manually-disabled or still-depleted client is left disabled. The optional flow directive sets the XTLS flow on every client: "none" clears it, "xtls-rprx-vision"/"xtls-rprx-vision-udp443" set it where the inbound supports it (omit or "" to leave it unchanged). The optional limitHwid sets maximum registered devices (0 = unlimited). The optional adTag sets MTProto Telegram sponsor channel ("none" clears). Alternatively, send externalLinks to append external share links and http(s) subscriptions to each selected client in one transaction. This mode cannot be combined with other adjustments. Existing entries, metadata, and ordering are preserved. Duplicates match (kind, value) per client, including repeated input rows; the first entry wins. Missing clients are not written and appear in skipped. externalLinks.added counts inserted rows, externalLinks.skipped counts duplicate rows across found clients, externalLinks.errors counts missing clients, and adjusted counts clients receiving at least one new row. Validation or database failure aborts the whole append without writes. Repeating an append is idempotent and does not restart Xray.',
+        requestSchema: {
+          type: 'object',
+          required: ['emails'],
+          properties: {
+            emails: { type: 'array', items: { type: 'string' }, minItems: 1 },
+            addDays: { type: 'integer' },
+            addBytes: { type: 'integer' },
+            flow: { type: 'string' },
+            limitHwid: { type: 'integer', minimum: 0 },
+            adTag: { type: 'string' },
+            externalLinks: {
+              type: 'array',
+              minItems: 1,
+              items: { $ref: '#/components/schemas/ExternalLinkInput' },
+            },
+          },
+        },
+        body: JSON.stringify(
+          {
+            emails: ['alice', 'bob'],
+            externalLinks: [
+              {
+                kind: 'link',
+                value: 'vless://uuid@example.com:443',
+                remark: 'Backup',
+                enable: true,
+                expiryTime: 0,
+              },
+              {
+                kind: 'subscription',
+                value: 'https://provider.example/sub',
+                namePrefix: '[provider] ',
+                enable: true,
+                expiryTime: 0,
+              },
+            ],
+          },
+          null,
+          2,
+        ),
+        responseSchema: 'BulkAdjustResult',
       },
       {
         method: 'POST',
@@ -1643,9 +1793,18 @@ export const sections: readonly Section[] = [
         method: 'GET',
         path: '/panel/api/clients/groups',
         summary:
-          'List all client groups with their member counts. Merges persisted groups (rows in client_groups, including empty placeholders) with the distinct group_name values currently set on clients. Sorted alphabetically (case-insensitive).',
+          'List all client groups with their member counts and the host groups bound to each. Merges persisted groups (rows in client_groups, including empty placeholders) with the distinct group_name values currently set on clients. Sorted alphabetically (case-insensitive).',
         response:
-          '{\n  "success": true,\n  "obj": [\n    { "name": "customer-a", "clientCount": 5 },\n    { "name": "internal", "clientCount": 0 }\n  ]\n}',
+          '{\n  "success": true,\n  "obj": [\n    { "id": 1, "name": "customer-a", "clientCount": 5, "hostGroupIds": ["cdn-front"] },\n    { "id": 2, "name": "internal", "clientCount": 0, "hostGroupIds": [] }\n  ]\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/clients/groups/:name/hosts',
+        summary:
+          'Replace the host groups attached to a client group. Clients in this group receive the bound host groups instead of the inbound default host pool; other clients are unaffected. An empty array clears the bindings. Returns the saved host group IDs.',
+        params: [{ name: 'name', in: 'path', type: 'string', desc: 'Group name (URL-encoded).' }],
+        body: '{\n  "hostGroupIds": ["cdn-front"]\n}',
+        response: '{\n  "success": true,\n  "obj": {\n    "hostGroupIds": ["cdn-front"]\n  }\n}',
       },
       {
         method: 'GET',
@@ -1659,16 +1818,16 @@ export const sections: readonly Section[] = [
         method: 'POST',
         path: '/panel/api/clients/groups/create',
         summary:
-          'Create a new empty (placeholder) group. The group becomes selectable in client forms and the filter drawer even before any client is added to it. Errors if a group with the same name already exists.',
-        body: '{\n  "name": "customer-a"\n}',
+          'Create a new group, optionally with host rules bound to it. The group becomes selectable in client forms and the filter drawer even before any client is added to it. Host group IDs are validated before the group is created. Errors if a group with the same name already exists.',
+        body: '{\n  "name": "customer-a",\n  "hostGroupIds": ["cdn-front"]\n}',
         response: '{\n  "success": true,\n  "obj": {\n    "name": "customer-a"\n  }\n}',
       },
       {
         method: 'POST',
         path: '/panel/api/clients/groups/rename',
         summary:
-          "Rename a group. The new name is applied to the client_groups row AND propagated to every matching client (both clients.group_name and the client entry inside every owning inbound's settings JSON) in a single transaction. Returns the number of clients whose label was updated.",
-        body: '{\n  "oldName": "customer-a",\n  "newName": "tier-1"\n}',
+          "Rename a group and optionally replace its host rules in one transaction. The new name is applied to the client_groups row AND propagated to every matching client (both clients.group_name and the client entry inside every owning inbound's settings JSON). Omit hostGroupIds to leave the bindings unchanged; send an empty array to clear them. Returns the number of clients whose label was updated.",
+        body: '{\n  "oldName": "customer-a",\n  "newName": "tier-1",\n  "hostGroupIds": ["cdn-front"]\n}',
         response: '{\n  "success": true,\n  "obj": {\n    "affected": 5\n  }\n}',
       },
       {
@@ -1810,6 +1969,21 @@ export const sections: readonly Section[] = [
           },
         ],
         responseSchema: 'ClientTraffic',
+      },
+      {
+        method: 'GET',
+        path: '/panel/api/clients/usageHistory/:email',
+        summary:
+          "Usage and change history for one client, behind the edit modal's history button. lifetimeUp/lifetimeDown are every archived window plus the client's live counters; currentUp/currentDown are the still-open window. windows lists the closed cycles, newest first (reason: reset | renew | earlier): one is archived whenever a traffic reset or an auto-renewal zeroes the client's counters, the newest 100 are kept and older ones are folded into a single earlier row, so the lifetime total does not change. nodes is the per-node upload/download accumulated since the last reset. changes is the metadata change log, newest first, capped at the newest 200 rows: one row per changed field (subId, expiry, dataLimit, enable, limitIp, limitHwid, adTag, group, renewalPlan) and a name row for a rename; source is panel | tgbot | auto-renew. A renamed client keeps its history under the new email. The history belongs to the client: once the client is deleted, its history is removed within five minutes. Requires an admin token or a panel login session.",
+        params: [
+          {
+            name: 'email',
+            in: 'path',
+            type: 'string',
+            desc: 'Client email (unique across the panel).',
+          },
+        ],
+        responseSchema: 'ClientUsageHistory',
       },
       {
         method: 'GET',
@@ -2017,6 +2191,20 @@ export const sections: readonly Section[] = [
       },
       {
         method: 'POST',
+        path: '/panel/api/nodes/restartXray/:id',
+        summary:
+          'Restart Xray on one enabled, directly configured node. Active Xray connections are interrupted. Uses the node runtime and accepts admin, node-admin or node-sync credentials on the node. A stale heartbeat does not prevent the request.',
+        params: [{ name: 'id', in: 'path', type: 'number', desc: 'Node ID.' }],
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/nodes/restartPanel/:id',
+        summary:
+          'Request a restart of the panel and subscription services on one enabled, directly configured node. Requires admin or node-admin credentials on the node; mTLS requires an explicit node-admin bearer token. Success acknowledges scheduling, before the three-second restart delay. A stale heartbeat does not prevent the request. Older nodes may reject node-admin access until upgraded.',
+        params: [{ name: 'id', in: 'path', type: 'number', desc: 'Node ID.' }],
+      },
+      {
+        method: 'POST',
         path: '/panel/api/nodes/updatePanel',
         summary:
           'Trigger the official panel self-updater on each given node (downloads the latest release and restarts). Only enabled, online nodes are updated; offline/disabled ones are reported as skipped. Set "dev": true to move the nodes to the rolling per-commit dev channel instead of the latest stable release. Returns a per-node result list.',
@@ -2064,7 +2252,7 @@ export const sections: readonly Section[] = [
             name: 'bucket',
             in: 'path',
             type: 'number',
-            desc: 'Bucket size in seconds. Allowed: 2, 30, 60, 120, 180, 300.',
+            desc: 'Bucket size in seconds. Allowed: 2, 5, 30, 60, 180, 360, 720, 1440, 2880, 10080.',
           },
         ],
       },
@@ -2175,6 +2363,56 @@ export const sections: readonly Section[] = [
   },
 
   {
+    id: 'reality-watch',
+    title: 'REALITY watch',
+    description:
+      'Spare targets per REALITY inbound. Every 10 minutes the panel checks each watched target from this server; after 3 failed checks in a row, an inbound with auto switch on moves to the first spare that passes the same check and a real REALITY connection through a throwaway Xray server and client. Inbounds on nodes, and targets on this machine or the LAN (a bare port, a unix socket, a private address), are not checked.',
+    endpoints: [
+      {
+        method: 'GET',
+        path: '/panel/api/realityWatch/list',
+        summary:
+          'Status of every watched inbound: current target, spares, last check and the switch history.',
+        responseSchema: 'RealityWatchStatus',
+        responseSchemaArray: true,
+      },
+      {
+        method: 'GET',
+        path: '/panel/api/realityWatch/status/:id',
+        summary: 'Status of one REALITY inbound.',
+        params: [{ name: 'id', in: 'path', type: 'number', desc: 'Inbound ID.' }],
+        responseSchema: 'RealityWatchStatus',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/realityWatch/save/:id',
+        summary:
+          'Set the spare targets (host[:port], in order of preference, at most 10; the current target is dropped) and whether a dead target is replaced automatically.',
+        params: [{ name: 'id', in: 'path', type: 'number', desc: 'Inbound ID.' }],
+        body: '{\n  "auto": true,\n  "spares": ["www.example.com:443"]\n}',
+        responseSchema: 'RealityWatchStatus',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/realityWatch/switch/:id',
+        summary:
+          'Move the inbound to this target now and return its new status. Refused for a node inbound, or unless the target passes the server check and a real REALITY connection. Only target and serverNames change, plus any Hosts of this inbound that pin an old server name.',
+        params: [{ name: 'id', in: 'path', type: 'number', desc: 'Inbound ID.' }],
+        body: '{\n  "target": "www.example.com:443"\n}',
+        responseSchema: 'RealityWatchStatus',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/realityWatch/test',
+        summary:
+          'Check a target from this server and through a real REALITY connection; feasible is false with a reason when either fails.',
+        body: '{\n  "target": "www.example.com:443"\n}',
+        responseSchema: 'RealityScanResult',
+      },
+    ],
+  },
+
+  {
     id: 'backup',
     title: 'Backup',
     description: 'Operations that interact with the configured Telegram bot.',
@@ -2184,6 +2422,31 @@ export const sections: readonly Section[] = [
         path: '/panel/api/backuptotgbot',
         summary:
           'Send a fresh DB backup to every Telegram chat configured as an admin recipient. No body, no params.',
+      },
+    ],
+  },
+
+  {
+    id: 'mcp',
+    title: 'MCP',
+    description:
+      'Model Context Protocol endpoint for AI agents (Claude, Cursor, VS Code). Point an MCP client at this URL with an admin Bearer token; restricted token scopes are refused.',
+    endpoints: [
+      {
+        method: 'POST',
+        path: '/panel/api/mcp',
+        summary:
+          'Stateless streamable-HTTP MCP endpoint (JSON-RPC 2.0). Exposes panel tools for inbounds, clients, server, Xray, nodes, hosts and settings; each tool call runs the matching /panel/api route with the caller’s credentials. Off by default: answers 404 until the MCP server is enabled under Settings → Security → API Token.',
+        params: [
+          {
+            name: 'toolsets',
+            in: 'query',
+            type: 'string',
+            optional: true,
+            desc: 'Comma-separated tool groups to expose: inbounds, clients, server, panel. Omit for all. call_api and get_openapi_spec are always included.',
+          },
+        ],
+        body: '{\n  "jsonrpc": "2.0",\n  "id": 1,\n  "method": "tools/list"\n}',
       },
     ],
   },
@@ -2247,6 +2510,9 @@ export const sections: readonly Section[] = [
         path: '/panel/api/setting/restartPanel',
         summary:
           'Restart the entire 3x-ui process after a 3-second grace period. The connection drops immediately; the panel comes back online ~5-10 seconds later.',
+        description:
+          'The answer names the listener that took the call (port, tls) and the one the restarted panel opens (nextPort, nextTls), with XUI_PORT and an unloadable certificate pair already applied. A client reaching the panel through a proxy or a port mapping compares port and tls with the address it used, and follows a change only where they match.',
+        responseSchema: 'PanelRestart',
       },
       {
         method: 'POST',
@@ -2274,6 +2540,12 @@ export const sections: readonly Section[] = [
         path: '/panel/api/setting/testDiscord',
         summary: 'Test Discord bot connection by sending a test embed to the configured channel.',
         response: '{\n  "success": true,\n  "msg": "Test notification sent successfully"\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/setting/testWechat',
+        summary:
+          'Send a text test notification using the saved WeChat destination. Supports WeCom group robots and compatible personal WeChat webhook gateways. Requires WeChat notifications to be enabled.',
       },
       {
         method: 'GET',

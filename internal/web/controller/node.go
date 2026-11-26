@@ -47,6 +47,7 @@ func (a *NodeController) initRouter(g *gin.RouterGroup) {
 	g.POST("/updatePanel", a.updatePanel)
 	g.POST("/agentLogs/:id/:count", a.agentLogs)
 	g.POST("/restartXray/:id", a.restartXray)
+	g.POST("/restartPanel/:id", a.restartPanel)
 	g.GET("/history/:id/:metric/:bucket", a.history)
 	g.POST("/mtls/ca", a.mtlsCa)
 	g.POST("/mtls/trustCA", a.setMtlsTrustCA)
@@ -406,16 +407,6 @@ func (a *NodeController) agentLogs(c *gin.Context) {
 	jsonObj(c, lines, nil)
 }
 
-// restartXray restarts the Xray core of a node.
-func (a *NodeController) restartXray(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		jsonMsg(c, I18nWeb(c, "get"), err)
-		return
-	}
-	jsonMsg(c, I18nWeb(c, "pages.nodes.toasts.restartXray"), a.nodeService.RestartNodeXray(id))
-}
-
 func (a *NodeController) updatePanel(c *gin.Context) {
 	var req struct {
 		Ids []int `json:"ids"`
@@ -431,6 +422,34 @@ func (a *NodeController) updatePanel(c *gin.Context) {
 	}
 	results, err := a.nodeService.UpdatePanels(req.Ids, req.Dev)
 	jsonMsgObj(c, I18nWeb(c, "pages.nodes.toasts.updateStarted"), results, err)
+}
+
+func (a *NodeController) restartXray(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		jsonMsg(c, I18nWeb(c, "pages.nodes.restartXray"), fmt.Errorf("invalid node ID"))
+		return
+	}
+	err = a.nodeService.RestartXray(c.Request.Context(), id)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.nodes.restartXray"), err)
+		return
+	}
+	jsonMsg(c, I18nWeb(c, "pages.nodes.toasts.xrayRestarted"), nil)
+}
+
+func (a *NodeController) restartPanel(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		jsonMsg(c, I18nWeb(c, "pages.nodes.restartPanel"), fmt.Errorf("invalid node ID"))
+		return
+	}
+	err = a.nodeService.RestartPanel(c.Request.Context(), id)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.nodes.restartPanel"), err)
+		return
+	}
+	jsonMsg(c, I18nWeb(c, "pages.nodes.toasts.panelRestartAccepted"), nil)
 }
 
 func (a *NodeController) history(c *gin.Context) {

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -36,11 +37,13 @@ type updateUserForm struct {
 // "unchanged", so clearing needs its own signal — see #5724).
 type updateSettingForm struct {
 	entity.AllSetting
-	TwoFactorCode        string `json:"twoFactorCode" form:"twoFactorCode"`
-	ClearTgBotToken      bool   `json:"clearTgBotToken" form:"clearTgBotToken"`
-	ClearLdapPassword    bool   `json:"clearLdapPassword" form:"clearLdapPassword"`
-	ClearSmtpPassword    bool   `json:"clearSmtpPassword" form:"clearSmtpPassword"`
-	ClearDiscordBotToken bool   `json:"clearDiscordBotToken" form:"clearDiscordBotToken"`
+	TwoFactorCode         string `json:"twoFactorCode" form:"twoFactorCode"`
+	ClearTgBotToken       bool   `json:"clearTgBotToken" form:"clearTgBotToken"`
+	ClearLdapPassword     bool   `json:"clearLdapPassword" form:"clearLdapPassword"`
+	ClearSmtpPassword     bool   `json:"clearSmtpPassword" form:"clearSmtpPassword"`
+	ClearDiscordBotToken  bool   `json:"clearDiscordBotToken" form:"clearDiscordBotToken"`
+	ClearWechatWebhookURL bool   `json:"clearWechatWebhookURL" form:"clearWechatWebhookURL"`
+	ClearWechatToken      bool   `json:"clearWechatToken" form:"clearWechatToken"`
 }
 
 type validateRegexForm struct {
@@ -83,6 +86,7 @@ func (a *SettingController) initRouter(g *gin.RouterGroup) {
 	g.POST("/testTgBot", a.testTgBot)
 	g.POST("/tgBotCapabilities", a.tgBotCapabilities)
 	g.POST("/testDiscord", a.testDiscord)
+	g.POST("/testWechat", a.testWechat)
 }
 
 func (a *SettingController) validateRegex(c *gin.Context) {
@@ -153,10 +157,12 @@ func (a *SettingController) updateSetting(c *gin.Context) {
 		}
 	}
 	err := a.settingService.UpdateAllSetting(allSetting, service.SecretClears{
-		TgBotToken:      form.ClearTgBotToken,
-		LdapPassword:    form.ClearLdapPassword,
-		SmtpPassword:    form.ClearSmtpPassword,
-		DiscordBotToken: form.ClearDiscordBotToken,
+		TgBotToken:       form.ClearTgBotToken,
+		LdapPassword:     form.ClearLdapPassword,
+		SmtpPassword:     form.ClearSmtpPassword,
+		DiscordBotToken:  form.ClearDiscordBotToken,
+		WechatWebhookURL: form.ClearWechatWebhookURL,
+		WechatToken:      form.ClearWechatToken,
 	})
 	if err == nil && twoFactorErr == nil && !oldTwoFactor && allSetting.TwoFactorEnable {
 		if bumpErr := a.userService.BumpLoginEpoch(); bumpErr != nil {
@@ -198,6 +204,9 @@ func (a *SettingController) updateSetting(c *gin.Context) {
 			reloadDiscordFunc()
 		}
 	}
+	if err == nil && reloadWechatFunc != nil {
+		reloadWechatFunc()
+	}
 	jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
 }
 
@@ -235,8 +244,13 @@ func (a *SettingController) updateUser(c *gin.Context) {
 
 // restartPanel restarts the panel service after a delay.
 func (a *SettingController) restartPanel(c *gin.Context) {
+	answer := entity.PanelRestart{TLS: c.Request.TLS != nil, NextTLS: a.settingService.DirectHTTPSConfigured()}
+	if addr, ok := c.Request.Context().Value(http.LocalAddrContextKey).(*net.TCPAddr); ok {
+		answer.Port = addr.Port
+	}
+	answer.NextPort, _ = a.settingService.GetListenPort()
 	err := a.panelService.RestartPanel(time.Second * 3)
-	jsonMsg(c, I18nWeb(c, "pages.settings.restartPanelSuccess"), err)
+	jsonMsgObj(c, I18nWeb(c, "pages.settings.restartPanelSuccess"), answer, err)
 }
 
 // getDefaultXrayConfig retrieves the default Xray configuration.

@@ -432,7 +432,7 @@ All registered in `web.go` → `startTask()`. Each is a struct with a `Run()` me
 | `@every 10s`        | `tproxy_job`                                                                                     | Reconcile the tproxy relay and MTProxy engines (Telegram WEB proxy); online status    |
 | `@every 10s`        | `naiveproxy_job`                                                                                 | Reconcile NaiveProxy's Caddy sidecars; meter per-client traffic from their logs       |
 | `@every 5m`         | `outbound_subscription_job`                                                                      | Refresh outbound provider configs                                                     |
-| `@every 5m`         | `reap_sync_orphans_job`                                                                          | Hard-delete clients the node sweep soft-orphaned once clean merges agree              |
+| `@every 5m`         | `reap_sync_orphans_job`                                                                          | Delete sync-orphaned clients, then the history of emails no client holds              |
 | `@every 5m`         | `remote_routing_job`                                                                             | Keep remote Happ and Clash/Mihomo routing URLs warm (also at startup), off requests   |
 | `@every 10m`        | `clear_logs_job` (`PruneXrayLogsJob`)                                                            | Truncate Xray access/error logs once either exceeds 64 MiB                            |
 | `@every 1h`         | `psiphon_scan_job`                                                                               | Start the weekly scan of every Psiphon region when it is on and a week has passed     |
