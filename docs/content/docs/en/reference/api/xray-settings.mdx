@@ -104,12 +104,18 @@ _openapi:
         running reverse proxy (does not touch or restart Xray).
       url: '#replace-the-entire-panel-wide-path-route-list-body-is-json-reloads-the-running-reverse-proxy-does-not-touch-or-restart-xray'
     - depth: 2
-      title: Report the ports closed in the host firewall, the change that waits to be
-        confirmed (its deadline, and remainingMs, what is left of the lease by
-        the host's clock), the ports that can never be closed (the SSH ports and
-        443/tcp), and the ports of the panel, the subscription server and the
-        enabled inbounds that could be closed.
-      url: '#report-the-ports-closed-in-the-host-firewall-the-change-that-waits-to-be-confirmed-its-deadline-and-remainingms-what-is-left-of-the-lease-by-the-hosts-clock-the-ports-that-can-never-be-closed-the-ssh-ports-and-443tcp-and-the-ports-of-the-panel-the-subscription-server-and-the-enabled-inbounds-that-could-be-closed'
+      title: "Report the ports closed in the host firewall, the change that waits to
+        be confirmed (its deadline, and remainingMs, what is left of the lease
+        by the host's clock), the ports that can never be closed (the SSH ports
+        and 443/tcp), and the ports of the panel, the subscription server and
+        the enabled inbounds that could be closed. rulesMissing is true when
+        ports are saved as closed but the guard's nft table is not in the
+        kernel, so they are open: post the same closed ports to apply to load
+        the rules again. firewall is the host's own firewall, left out the
+        guard's table: readable, the managers loaded (ufw, firewalld), and
+        incoming4 and incoming6, what the rules do with an incoming packet that
+        no rule lets in (deny, allow, or empty when unknown)."
+      url: '#report-the-ports-closed-in-the-host-firewall-the-change-that-waits-to-be-confirmed-its-deadline-and-remainingms-what-is-left-of-the-lease-by-the-hosts-clock-the-ports-that-can-never-be-closed-the-ssh-ports-and-443tcp-and-the-ports-of-the-panel-the-subscription-server-and-the-enabled-inbounds-that-could-be-closed-rulesmissing-is-true-when-ports-are-saved-as-closed-but-the-guards-nft-table-is-not-in-the-kernel-so-they-are-open-post-the-same-closed-ports-to-apply-to-load-the-rules-again-firewall-is-the-hosts-own-firewall-left-out-the-guards-table-readable-the-managers-loaded-ufw-firewalld-and-incoming4-and-incoming6-what-the-rules-do-with-an-incoming-packet-that-no-rule-lets-in-deny-allow-or-empty-when-unknown'
     - depth: 2
       title: Say what closing exactly these ports would do (the ports to close and to
         open, the ports that are refused, whether the change waits to be
@@ -296,12 +302,18 @@ _openapi:
       - content: Replace the entire panel-wide path-route list. Body is JSON. Reloads
           the running reverse proxy (does not touch or restart Xray).
         id: replace-the-entire-panel-wide-path-route-list-body-is-json-reloads-the-running-reverse-proxy-does-not-touch-or-restart-xray
-      - content: Report the ports closed in the host firewall, the change that waits to
+      - content: "Report the ports closed in the host firewall, the change that waits to
           be confirmed (its deadline, and remainingMs, what is left of the lease
           by the host's clock), the ports that can never be closed (the SSH
           ports and 443/tcp), and the ports of the panel, the subscription
-          server and the enabled inbounds that could be closed.
-        id: report-the-ports-closed-in-the-host-firewall-the-change-that-waits-to-be-confirmed-its-deadline-and-remainingms-what-is-left-of-the-lease-by-the-hosts-clock-the-ports-that-can-never-be-closed-the-ssh-ports-and-443tcp-and-the-ports-of-the-panel-the-subscription-server-and-the-enabled-inbounds-that-could-be-closed
+          server and the enabled inbounds that could be closed. rulesMissing is
+          true when ports are saved as closed but the guard's nft table is not
+          in the kernel, so they are open: post the same closed ports to apply
+          to load the rules again. firewall is the host's own firewall, left out
+          the guard's table: readable, the managers loaded (ufw, firewalld), and
+          incoming4 and incoming6, what the rules do with an incoming packet
+          that no rule lets in (deny, allow, or empty when unknown)."
+        id: report-the-ports-closed-in-the-host-firewall-the-change-that-waits-to-be-confirmed-its-deadline-and-remainingms-what-is-left-of-the-lease-by-the-hosts-clock-the-ports-that-can-never-be-closed-the-ssh-ports-and-443tcp-and-the-ports-of-the-panel-the-subscription-server-and-the-enabled-inbounds-that-could-be-closed-rulesmissing-is-true-when-ports-are-saved-as-closed-but-the-guards-nft-table-is-not-in-the-kernel-so-they-are-open-post-the-same-closed-ports-to-apply-to-load-the-rules-again-firewall-is-the-hosts-own-firewall-left-out-the-guards-table-readable-the-managers-loaded-ufw-firewalld-and-incoming4-and-incoming6-what-the-rules-do-with-an-incoming-packet-that-no-rule-lets-in-deny-allow-or-empty-when-unknown
       - content: Say what closing exactly these ports would do (the ports to close and
           to open, the ports that are refused, whether the change waits to be
           confirmed, and the nft script) and change nothing.

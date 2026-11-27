@@ -9,6 +9,7 @@ import (
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
+	"github.com/mhsanaei/3x-ui/v3/internal/hostfw"
 	"github.com/mhsanaei/3x-ui/v3/internal/portguard"
 )
 
@@ -36,6 +37,7 @@ func setupPortGuardTest(t *testing.T, protected ...portguard.Port) (*memPortGuar
 	store, fw := &memPortGuardStore{}, &memPortGuardFirewall{}
 	SetPortGuard(portguard.New(store, fw, func() []portguard.Port { return protected }))
 	t.Cleanup(func() { SetPortGuard(nil) })
+	stubHost(t)
 	return store, fw
 }
 
@@ -269,5 +271,110 @@ func TestPortGuardStatusOfALeaseThatHasRunOutHasNothingRemaining(t *testing.T) {
 	}
 	if st.Pending == nil || st.Pending.RemainingMs != 0 {
 		t.Errorf("Pending = %+v, want RemainingMs 0", st.Pending)
+	}
+}
+
+// hostStub stands in for what the status asks of the host, and counts the questions.
+type hostStub struct {
+	firewall   hostfw.Status
+	available  bool
+	loaded     bool
+	loadedErr  error
+	detects    int
+	loadChecks int
+}
+
+// stubHost puts a host with no firewall and a working nft, whose guard table is loaded, in the place of the real one.
+func stubHost(t *testing.T) *hostStub {
+	t.Helper()
+	h := &hostStub{firewall: hostfw.Status{Managers: []string{}}, available: true, loaded: true}
+	detect, loaded, available := detectHostFirewall, portGuardLoaded, portGuardAvailable
+	detectHostFirewall = func(context.Context) hostfw.Status { h.detects++; return h.firewall }
+	portGuardLoaded = func(context.Context) (bool, error) { h.loadChecks++; return h.loaded, h.loadedErr }
+	portGuardAvailable = func() bool { return h.available }
+	forgetHostFirewall()
+	t.Cleanup(func() {
+		detectHostFirewall, portGuardLoaded, portGuardAvailable = detect, loaded, available
+		forgetHostFirewall()
+	})
+	return h
+}
+
+func forgetHostFirewall() {
+	hostFirewallMu.Lock()
+	defer hostFirewallMu.Unlock()
+	hostFirewallAt = time.Time{}
+}
+
+func TestPortGuardStatusCarriesTheFirewallOfTheHost(t *testing.T) {
+	setupPortGuardTest(t)
+	h := stubHost(t)
+	h.firewall = hostfw.Status{Readable: true, Managers: []string{hostfw.UFW}, Incoming4: hostfw.PolicyDeny, Incoming6: hostfw.PolicyAllow}
+	st, err := (&PortGuardService{}).Status()
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if st.Firewall.Incoming4 != hostfw.PolicyDeny || st.Firewall.Incoming6 != hostfw.PolicyAllow || !slices.Equal(st.Firewall.Managers, []string{hostfw.UFW}) || !st.Firewall.Readable {
+		t.Errorf("Firewall = %+v, want what the host's firewall was read as: %+v", st.Firewall, h.firewall)
+	}
+}
+
+// The page looks again every few seconds while a change waits to be confirmed, and each look would start four commands.
+func TestPortGuardStatusReadsTheFirewallOnceInAWhile(t *testing.T) {
+	setupPortGuardTest(t)
+	h := stubHost(t)
+	svc := &PortGuardService{}
+	for range 3 {
+		if _, err := svc.Status(); err != nil {
+			t.Fatalf("Status: %v", err)
+		}
+	}
+	if h.detects != 1 {
+		t.Fatalf("the firewall was read %d times by three looks, want 1", h.detects)
+	}
+	hostFirewallMu.Lock()
+	hostFirewallAt = time.Now().Add(-hostFirewallTTL - time.Second)
+	hostFirewallMu.Unlock()
+	if _, err := svc.Status(); err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if h.detects != 2 {
+		t.Fatalf("the firewall was read %d times, want a second reading once the first was old", h.detects)
+	}
+}
+
+func TestPortGuardStatusSaysWhenTheRulesOfClosedPortsAreNotInTheKernel(t *testing.T) {
+	cases := []struct {
+		name      string
+		closed    []portguard.Port
+		available bool
+		loaded    bool
+		loadedErr error
+		want      bool
+		wantAsked bool
+	}{
+		{name: "closed ports and no table", closed: []portguard.Port{{Number: 8443, Proto: portguard.TCP}}, available: true, loaded: false, want: true, wantAsked: true},
+		{name: "closed ports and the table is there", closed: []portguard.Port{{Number: 8443, Proto: portguard.TCP}}, available: true, loaded: true, want: false, wantAsked: true},
+		{name: "a host that cannot be asked has not said no", closed: []portguard.Port{{Number: 8443, Proto: portguard.TCP}}, available: true, loadedErr: context.DeadlineExceeded, want: false, wantAsked: true},
+		{name: "nothing is closed, so no table is expected", available: true, loaded: false, want: false, wantAsked: false},
+		{name: "without nft there is nothing to ask", closed: []portguard.Port{{Number: 8443, Proto: portguard.TCP}}, available: false, loaded: false, want: false, wantAsked: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store, _ := setupPortGuardTest(t)
+			h := stubHost(t)
+			store.state = portguard.State{Closed: tc.closed}
+			h.available, h.loaded, h.loadedErr = tc.available, tc.loaded, tc.loadedErr
+			st, err := (&PortGuardService{}).Status()
+			if err != nil {
+				t.Fatalf("Status: %v", err)
+			}
+			if st.RulesMissing != tc.want {
+				t.Errorf("RulesMissing = %v, want %v", st.RulesMissing, tc.want)
+			}
+			if asked := h.loadChecks > 0; asked != tc.wantAsked {
+				t.Errorf("the table was asked for = %v, want %v", asked, tc.wantAsked)
+			}
+		})
 	}
 }

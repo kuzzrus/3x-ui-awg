@@ -5,42 +5,28 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mhsanaei/3x-ui/v3/internal/hostfw"
 )
 
 // table is the nftables table this package owns, so that its rules are replaced or removed without touching the admin's own.
 const table = "x_ui_portguard"
 
+// TableName is that table's name, for a caller that has to leave it out of what it reads of the host's firewall.
+const TableName = table
+
 // nftTimeout bounds every call of nft.
 const nftTimeout = 5 * time.Second
 
-// nftSearchDirs are tried after PATH: a root shell entered with plain su has no /usr/sbin in its PATH on Debian.
-var nftSearchDirs = []string{"/usr/sbin", "/sbin", "/usr/bin", "/bin"}
-
 // SetNftSearchDirs replaces the directories searched after PATH, so that a test does not find the nft of the host it runs on;
-// the returned func puts them back.
-func SetNftSearchDirs(dirs []string) (restore func()) {
-	before := nftSearchDirs
-	nftSearchDirs = dirs
-	return func() { nftSearchDirs = before }
-}
+// the returned func puts them back. They are the ones that hostfw looks for the tools of the firewall in, nft among them.
+func SetNftSearchDirs(dirs []string) (restore func()) { return hostfw.SetSearchDirs(dirs) }
 
-// findNft is the path of nft, from PATH or else from the usual places for it.
-func findNft() (string, error) {
-	if path, err := exec.LookPath("nft"); err == nil {
-		return path, nil
-	}
-	for _, dir := range nftSearchDirs {
-		path := filepath.Join(dir, "nft")
-		if info, err := os.Stat(path); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
-			return path, nil
-		}
-	}
-	return "", exec.ErrNotFound
-}
+// findNft is the path of nft, from PATH or else from the usual places for it, found where hostfw finds it.
+func findNft() (string, error) { return hostfw.LookPath("nft") }
 
 // renderRuleset is the nft script that closes ports, or the one that removes the rules when there are none. A closed port drops
 // what a remote host begins towards it, and the packets of a connection it already has, which is what closing a port means.
@@ -90,6 +76,27 @@ func (NftFirewall) Available() bool {
 	ctx, cancel := context.WithTimeout(context.Background(), nftTimeout)
 	defer cancel()
 	return exec.CommandContext(ctx, nft, "list", "tables").Run() == nil
+}
+
+// Loaded reports whether the table of this package is in the kernel now. A host where nft is missing, or does not answer, cannot
+// say: that is an error, and not a no. The command runs in the C locale, so that "no such table" has the words it is told by.
+func (NftFirewall) Loaded(ctx context.Context) (bool, error) {
+	nft, err := findNft()
+	if err != nil {
+		return false, fmt.Errorf("portguard: nft (nftables) was not found: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, nftTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, nft, "list", "table", "inet", table)
+	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return true, nil
+	}
+	if strings.Contains(string(out), "No such file or directory") {
+		return false, nil
+	}
+	return false, fmt.Errorf("portguard: nft list table: %w: %s", err, strings.TrimSpace(string(out)))
 }
 
 // Apply replaces the rules with the ones that close ports.

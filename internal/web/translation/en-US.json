@@ -1923,7 +1923,18 @@
           "rollback": "Roll back now",
           "confirmed": "The closed ports are confirmed",
           "rolledBack": "The change is rolled back",
-          "recovery": "Locked out? Over SSH, as root, run:"
+          "recovery": "Locked out? Over SSH, as root, run:",
+          "firewallUnreadable": "The firewall of this host could not be read: nft and iptables are missing, or the panel may not use them.",
+          "firewallNone": "The panel found no firewall that drops incoming traffic on this host (it does not follow rules that jump into chains of your own). A port that a service listens on is then reachable from the internet, unless your hosting provider filters it first.",
+          "firewallManager": "Managed by {name}",
+          "firewallIncoming": "Incoming traffic that no rule lets in. IPv4: {v4}, IPv6: {v6}.",
+          "policyDeny": "blocked",
+          "policyAllow": "let in",
+          "policyUnknown": "unknown",
+          "rulesMissingTitle": "The closed ports are saved, but their rules are not in the firewall",
+          "rulesMissingDesc": "Another tool cleared the firewall rules, so these ports are open now. Load the rules again to close them.",
+          "reload": "Load the rules again",
+          "reloaded": "The rules are loaded again"
         }
       },
       "subSettings": "Subscription",
