@@ -1843,6 +1843,8 @@
         "upstreamSub": "Subscription",
         "upstreamSubOff": "off",
         "acmeHttp01Hint": "Xray owns port 443, so the certificate is issued over HTTP-01. Port 80 must be reachable from the internet and free.",
+        "acmeFirewall": "Open port 80 in ufw while the certificate is obtained",
+        "acmeFirewallDesc": "When ufw is the firewall and blocks port 80, the panel adds a rule for it for the length of one certificate attempt and takes it out afterwards. A rule of your own for 80/tcp is never changed: when there is one, the panel does nothing. Other firewalls are not touched.",
         "domain": "Domain",
         "domainDesc": "The name clients and probers reach this server on. Used for the certificate in automatic mode, and to build subscription links in both.",
         "email": "Email",

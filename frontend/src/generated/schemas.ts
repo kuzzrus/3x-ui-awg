@@ -207,6 +207,9 @@ export const SCHEMAS: Record<string, unknown> = {
       "externalTrafficInformURI": {
         "type": "string"
       },
+      "frontProxyAcmeFirewall": {
+        "type": "boolean"
+      },
       "frontProxyCertMode": {
         "type": "string"
       },
@@ -865,6 +868,7 @@ export const SCHEMAS: Record<string, unknown> = {
       "externalSubUserAgent",
       "externalTrafficInformEnable",
       "externalTrafficInformURI",
+      "frontProxyAcmeFirewall",
       "frontProxyCertMode",
       "frontProxyDecoyMode",
       "frontProxyDecoyProxyURL",
@@ -1115,6 +1119,9 @@ export const SCHEMAS: Record<string, unknown> = {
       },
       "externalTrafficInformURI": {
         "type": "string"
+      },
+      "frontProxyAcmeFirewall": {
+        "type": "boolean"
       },
       "frontProxyCertMode": {
         "type": "string"
@@ -1804,6 +1811,7 @@ export const SCHEMAS: Record<string, unknown> = {
       "externalSubUserAgent",
       "externalTrafficInformEnable",
       "externalTrafficInformURI",
+      "frontProxyAcmeFirewall",
       "frontProxyCertMode",
       "frontProxyDecoyMode",
       "frontProxyDecoyProxyURL",

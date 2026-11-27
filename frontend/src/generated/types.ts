@@ -57,6 +57,7 @@ export interface AllSetting {
   externalSubUserAgent: string;
   externalTrafficInformEnable: boolean;
   externalTrafficInformURI: string;
+  frontProxyAcmeFirewall: boolean;
   frontProxyCertMode: string;
   frontProxyDecoyMode: string;
   frontProxyDecoyProxyURL: string;
@@ -271,6 +272,7 @@ export interface AllSettingView {
   externalSubUserAgent: string;
   externalTrafficInformEnable: boolean;
   externalTrafficInformURI: string;
+  frontProxyAcmeFirewall: boolean;
   frontProxyCertMode: string;
   frontProxyDecoyMode: string;
   frontProxyDecoyProxyURL: string;

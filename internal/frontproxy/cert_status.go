@@ -74,18 +74,22 @@ func resetCertStatus() { setCertStatus(CertStatus{}) }
 // events for a renewal as for the first issuance; this fork treats both the
 // same way, since "is the certificate currently valid and until when"
 // matters the same regardless of which one is happening.
-func certOnEvent(cfg *certmagic.Config, domain string) func(ctx context.Context, event string, data map[string]any) error {
+func certOnEvent(cfg *certmagic.Config, domain string, round *firewallRound) func(ctx context.Context, event string, data map[string]any) error {
 	return func(_ context.Context, event string, data map[string]any) error {
 		switch event {
 		case "cert_obtaining":
 			setCertStatus(CertStatus{State: CertStateObtaining, Domain: domain})
+			// The challenge port is let through the firewall until the attempt ends, however it ends.
+			round.begin()
 		case "cert_obtained":
+			round.end()
 			status := CertStatus{State: CertStateObtained, Domain: domain}
 			if notAfter, err := currentCertNotAfter(cfg, domain); err == nil {
 				status.NotAfter = &notAfter
 			}
 			setCertStatus(status)
 		case "cert_failed":
+			round.end()
 			msg := ""
 			if e, ok := data["error"].(error); ok {
 				msg = e.Error()

@@ -96,6 +96,7 @@ func (m *Manager) Start(opts Options) error {
 	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
 	if err != nil {
 		cancel()
+		endActiveRound()
 		err = fmt.Errorf("reverse-proxy listen on %s: %w", addr, err)
 		setCertStatus(CertStatus{State: CertStateFailed, Error: err.Error()})
 		return err
@@ -161,6 +162,8 @@ func (m *Manager) Stop() error {
 	// without this, an "obtaining" status set right before Stop() would spin
 	// in the UI forever with no event left to resolve it.
 	resetCertStatus()
+	// And a hole in the firewall that it opened for the round is not left open behind it.
+	endActiveRound()
 	shutdownCtx, done := context.WithTimeout(context.Background(), 10*time.Second)
 	defer done()
 	err := srv.Shutdown(shutdownCtx)

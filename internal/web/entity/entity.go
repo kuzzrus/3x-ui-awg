@@ -254,6 +254,7 @@ type AllSetting struct {
 	FrontProxyCertMode      string `json:"frontProxyCertMode" form:"frontProxyCertMode"`
 	FrontProxyDomain        string `json:"frontProxyDomain" form:"frontProxyDomain"`
 	FrontProxyEmail         string `json:"frontProxyEmail" form:"frontProxyEmail"`
+	FrontProxyAcmeFirewall  bool   `json:"frontProxyAcmeFirewall" form:"frontProxyAcmeFirewall"`
 	FrontProxyDecoyMode     string `json:"frontProxyDecoyMode" form:"frontProxyDecoyMode"`
 	FrontProxyDecoyTemplate string `json:"frontProxyDecoyTemplate" form:"frontProxyDecoyTemplate"`
 	FrontProxyDecoyProxyURL string `json:"frontProxyDecoyProxyURL" form:"frontProxyDecoyProxyURL"`

@@ -48,6 +48,32 @@ Reach for Nginx or Caddy instead when you need things the reverse proxy
 deliberately does not do: routing for services other than this panel, CDN
 fronting, or per-path rate limiting and access rules.
 
+## Port 80 and the certificate
+
+The **Automatic** certificate is obtained over HTTP-01, so port 80 has to reach
+the panel for the length of each attempt: the first one, and every renewal. When
+`ufw` is the host firewall and blocks port 80, **Open port 80 in ufw while the
+certificate is obtained** (on by default, in the same tab) lets the panel add a
+rule for it when an attempt starts and take it out when the attempt ends,
+whether it succeeded or not.
+
+- Only `ufw` is handled. With `firewalld`, a plain `nftables` or `iptables`
+  ruleset, or no firewall, the panel changes nothing: open port 80 yourself.
+- A rule of your own for `80/tcp` from anywhere is never changed, whatever it
+  does. `ufw` takes a new rule for the same port for the old one and rewrites
+  it, so when one exists the panel leaves `ufw` alone, and if that rule denies
+  port 80 the certificate cannot be obtained.
+- The rule is marked by its comment: `x-ui acme` and the time it is due out,
+  which `ufw status` shows as `# x-ui acme 1795728343`. A panel that stops in
+  the middle of an attempt leaves it, and it is taken out once that time has
+  passed, when the panel starts again or by its own job; while a panel with this
+  feature runs it never stays longer than 5 minutes. If you roll back to a build
+  without it in the middle of an attempt, delete the rule by hand: `ufw status
+  numbered`, then `ufw delete <number>` for each line marked `x-ui acme`.
+- The change is made outside the panel's own sandbox, as a systemd unit of its
+  own, since the panel's unit keeps `/etc` read-only. Where systemd cannot start
+  one, the panel says so in its log and changes nothing.
+
 ## Closing ports
 
 Once an inbound is reachable through a path on 443, its own public port is one

@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"crypto/tls"
 	"io"
 	"strings"
@@ -249,7 +250,23 @@ func (s *FrontProxyService) tlsSettings() (frontproxy.TLSSettings, error) {
 		CertFile:   certFile,
 		KeyFile:    keyFile,
 		StorageDir: certStorageDir(),
+		Firewall:   acmeFirewall{enabled: s.GetFrontProxyAcmeFirewall},
 	}, nil
+}
+
+// acmeFirewall lets the challenge port through ufw while the setting for it is on. The setting is read at each round, so that a
+// change applies to the next one without a restart of the reverse proxy.
+type acmeFirewall struct{ enabled func() (bool, error) }
+
+func (a acmeFirewall) Open(ctx context.Context, port int) (func(), error) {
+	on, err := a.enabled()
+	if err != nil {
+		return func() {}, err
+	}
+	if !on {
+		return func() {}, nil
+	}
+	return service.AcmeFirewall().Open(ctx, port)
 }
 
 // tproxyRouting is best-effort: a DB error or a not-yet-started tproxy-server
