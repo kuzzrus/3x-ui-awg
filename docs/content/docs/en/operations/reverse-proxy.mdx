@@ -66,8 +66,10 @@ whether it succeeded or not.
 - The rule is marked by its comment: `x-ui acme` and the time it is due out,
   which `ufw status` shows as `# x-ui acme 1795728343`. A panel that stops in
   the middle of an attempt leaves it, and it is taken out once that time has
-  passed, when the panel starts again or by its own job. It never stays longer
-  than 5 minutes.
+  passed, when the panel starts again or by its own job; while a panel with this
+  feature runs it never stays longer than 5 minutes. If you roll back to a build
+  without it in the middle of an attempt, delete the rule by hand: `ufw status
+  numbered`, then `ufw delete <number>` for each line marked `x-ui acme`.
 - The change is made outside the panel's own sandbox, as a systemd unit of its
   own, since the panel's unit keeps `/etc` read-only. Where systemd cannot start
   one, the panel says so in its log and changes nothing.

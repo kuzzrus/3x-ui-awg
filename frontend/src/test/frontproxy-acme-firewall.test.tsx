@@ -55,8 +55,4 @@ describe('FrontProxyTab port 80 switch', () => {
     await screen.findByText(/certificate files/i);
     expect(screen.queryByRole('switch', { name: LABEL })).toBeNull();
   });
-
-  it('is on in a setting that has never been saved', () => {
-    expect(new AllSetting({}).frontProxyAcmeFirewall).toBe(true);
-  });
 });

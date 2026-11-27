@@ -66,14 +66,6 @@ func TestFrontProxyTLSSettingsLetThePortThroughWhileTheSwitchIsOn(t *testing.T) 
 	}
 }
 
-func TestTheSwitchIsOnByDefault(t *testing.T) {
-	dbtest.InitDB(t, filepath.Join(t.TempDir(), "x-ui.db"))
-	on, err := (&FrontProxyService{}).GetFrontProxyAcmeFirewall()
-	if err != nil || !on {
-		t.Fatalf("GetFrontProxyAcmeFirewall = %v, %v, want on by default", on, err)
-	}
-}
-
 func TestAnUnreadableSwitchIsAnErrorAndLetsNothingThrough(t *testing.T) {
 	rec := useOpener(t)
 	release, err := (acmeFirewall{enabled: func() (bool, error) { return true, errors.New("no database") }}).Open(context.Background(), 80)

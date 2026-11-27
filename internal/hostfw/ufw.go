@@ -16,9 +16,8 @@ var ufwRuleFiles = []string{"/etc/ufw/user.rules", "/etc/ufw/user6.rules"}
 // out, so that a rule of a round that is still on, in this panel or another on the host, is not taken for a leftover.
 const ufwMark = "x-ui acme"
 
-// ufwRule is one rule as ufw writes it in its rule files, on a line like
-//
-//	### tuple ### allow tcp 80 0.0.0.0/0 any 0.0.0.0/0 in comment=782d75692061636d65
+// ufwRule is one rule as ufw writes it in its rule files, on a "### tuple ###" line: allow tcp 80 0.0.0.0/0 any 0.0.0.0/0 in
+// comment=782d75692061636d65.
 type ufwRule struct {
 	action, proto, dport, dst, sport, src string
 	// direction is in, out or fwd, with _ and the interface after it when the rule is for one interface.
@@ -119,9 +118,8 @@ func (r ufwRule) ours() bool {
 	return marked && r.action == "allow" && r.proto == "tcp" && r.generic()
 }
 
-// ufwPort says what the rules hold for tcp port number: the panel's own rules for it, as the times they are due to be taken out,
-// and whether a rule of the admin's speaks for the port from anywhere, whatever it does. That is a conflict, since ufw takes a new
-// rule with the same ports and addresses for the old one and rewrites it into an allow.
+// ufwPort returns the due times of the panel's own rules for tcp port number, and whether a rule of the admin's speaks for it from
+// anywhere, whatever it does: a conflict, since ufw takes a new rule for the same ports and addresses for it and rewrites it.
 func ufwPort(rules []ufwRule, port int) (conflict bool, ours []int64) {
 	for _, r := range rules {
 		switch {
