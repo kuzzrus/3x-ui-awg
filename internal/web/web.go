@@ -616,6 +616,9 @@ func (s *Server) start(restartXray bool, startTgBot bool) (err error) {
 	// The kernel forgets the closed ports at a reboot, so put them back (or roll back a change nobody confirmed).
 	service.PortGuard().Restore(context.Background())
 
+	// A rule that a round of the reverse proxy left in ufw before the panel stopped is taken out, once its time is past.
+	service.AcmeFirewall().Sweep(context.Background())
+
 	// Wire the inbound-runtime manager once so InboundService can route
 	// add/update/delete to either the local xray or a remote node panel.
 	// The closures bridge into XrayService (which owns the running xray

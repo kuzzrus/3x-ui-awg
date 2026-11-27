@@ -138,7 +138,7 @@ func TestManualTLSConfigGatesOnSNI(t *testing.T) {
 
 func TestCertOnEventTracksObtaining(t *testing.T) {
 	resetCertStatus()
-	hook := certOnEvent(certmagic.NewDefault(), "example.test")
+	hook := certOnEvent(certmagic.NewDefault(), "example.test", nil)
 	if err := hook(t.Context(), "cert_obtaining", map[string]any{"identifier": "example.test"}); err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestCertOnEventTracksObtaining(t *testing.T) {
 
 func TestCertOnEventTracksFailed(t *testing.T) {
 	resetCertStatus()
-	hook := certOnEvent(certmagic.NewDefault(), "example.test")
+	hook := certOnEvent(certmagic.NewDefault(), "example.test", nil)
 	failure := errors.New("no HTTP-01 response from example.test: connection refused")
 	if err := hook(t.Context(), "cert_failed", map[string]any{"identifier": "example.test", "error": failure}); err != nil {
 		t.Fatal(err)
@@ -169,7 +169,7 @@ func TestCertOnEventObtainedWithoutStorageStillSetsState(t *testing.T) {
 	resetCertStatus()
 	cfg := certmagic.NewDefault()
 	cfg.Storage = &certmagic.FileStorage{Path: t.TempDir()}
-	hook := certOnEvent(cfg, "example.test")
+	hook := certOnEvent(cfg, "example.test", nil)
 	if err := hook(t.Context(), "cert_obtained", map[string]any{"identifier": "example.test"}); err != nil {
 		t.Fatal(err)
 	}

@@ -233,6 +233,9 @@
           "externalTrafficInformURI": {
             "type": "string"
           },
+          "frontProxyAcmeFirewall": {
+            "type": "boolean"
+          },
           "frontProxyCertMode": {
             "type": "string"
           },
@@ -891,6 +894,7 @@
           "externalSubUserAgent",
           "externalTrafficInformEnable",
           "externalTrafficInformURI",
+          "frontProxyAcmeFirewall",
           "frontProxyCertMode",
           "frontProxyDecoyMode",
           "frontProxyDecoyProxyURL",
@@ -1141,6 +1145,9 @@
           },
           "externalTrafficInformURI": {
             "type": "string"
+          },
+          "frontProxyAcmeFirewall": {
+            "type": "boolean"
           },
           "frontProxyCertMode": {
             "type": "string"
@@ -1830,6 +1837,7 @@
           "externalSubUserAgent",
           "externalTrafficInformEnable",
           "externalTrafficInformURI",
+          "frontProxyAcmeFirewall",
           "frontProxyCertMode",
           "frontProxyDecoyMode",
           "frontProxyDecoyProxyURL",

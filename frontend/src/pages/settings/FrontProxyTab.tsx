@@ -465,6 +465,16 @@ export default function FrontProxyTab({ allSetting, updateSetting }: FrontProxyT
               onChange={(e) => updateSetting({ frontProxyEmail: e.target.value })}
             />
           </SettingListItem>
+          <SettingListItem
+            paddings="small"
+            title={t('pages.settings.frontProxy.acmeFirewall')}
+            description={t('pages.settings.frontProxy.acmeFirewallDesc')}
+          >
+            <Switch
+              checked={allSetting.frontProxyAcmeFirewall}
+              onChange={(v) => updateSetting({ frontProxyAcmeFirewall: v })}
+            />
+          </SettingListItem>
         </>
       ) : (
         <Alert

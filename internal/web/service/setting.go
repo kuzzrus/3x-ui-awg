@@ -243,6 +243,7 @@ var defaultValueMap = map[string]string{
 	"frontProxyCertMode":      "manual",
 	"frontProxyDomain":        "",
 	"frontProxyEmail":         "",
+	"frontProxyAcmeFirewall":  "true",
 	"frontProxyDecoyMode":     "template",
 	"frontProxyDecoyTemplate": "maintenance",
 	"frontProxyDecoyProxyURL": "",
@@ -1687,6 +1688,15 @@ func (s *SettingService) GetFrontProxyEmail() (string, error) {
 
 func (s *SettingService) SetFrontProxyEmail(value string) error {
 	return s.setString("frontProxyEmail", value)
+}
+
+// GetFrontProxyAcmeFirewall reports whether the reverse proxy may let port 80 through ufw for the time of a certificate round.
+func (s *SettingService) GetFrontProxyAcmeFirewall() (bool, error) {
+	return s.getBool("frontProxyAcmeFirewall")
+}
+
+func (s *SettingService) SetFrontProxyAcmeFirewall(value bool) error {
+	return s.setBool("frontProxyAcmeFirewall", value)
 }
 
 // GetFrontProxyDecoyMode is "template", "upload" or "proxy".

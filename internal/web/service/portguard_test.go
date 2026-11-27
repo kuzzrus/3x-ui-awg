@@ -378,3 +378,24 @@ func TestPortGuardStatusSaysWhenTheRulesOfClosedPortsAreNotInTheKernel(t *testin
 		})
 	}
 }
+
+type fakeAcmeOpener struct{}
+
+func (fakeAcmeOpener) Open(context.Context, int) (func(), error) { return func() {}, nil }
+func (fakeAcmeOpener) Sweep(context.Context)                     {}
+
+func TestAcmeFirewallIsOneOpenerUntilItIsReplaced(t *testing.T) {
+	t.Cleanup(func() { SetAcmeFirewall(nil) })
+	first, second := AcmeFirewall(), AcmeFirewall()
+	if first == nil || first != second {
+		t.Fatalf("AcmeFirewall = %v and %v, want the same opener each time", first, second)
+	}
+	SetAcmeFirewall(fakeAcmeOpener{})
+	if _, ok := AcmeFirewall().(fakeAcmeOpener); !ok {
+		t.Fatalf("AcmeFirewall = %T after SetAcmeFirewall, want the replacement", AcmeFirewall())
+	}
+	SetAcmeFirewall(nil)
+	if _, ok := AcmeFirewall().(fakeAcmeOpener); ok || AcmeFirewall() == nil {
+		t.Fatalf("AcmeFirewall = %T after SetAcmeFirewall(nil), want the real one back", AcmeFirewall())
+	}
+}

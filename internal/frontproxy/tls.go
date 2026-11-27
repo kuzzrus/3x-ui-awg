@@ -29,6 +29,8 @@ type TLSSettings struct {
 	CertFile   string
 	KeyFile    string
 	StorageDir string
+	// Firewall lets the challenge port through the host's firewall for the time of an attempt at a certificate; nil leaves it alone.
+	Firewall PortOpener
 }
 
 // buildTLSConfig resolves settings into a serving TLS config.
@@ -109,8 +111,10 @@ func autoTLSConfig(ctx context.Context, s TLSSettings) (*tls.Config, error) {
 	// on :80 is the only workable option here, same as certbot already uses.
 	certmagic.DefaultACME.DisableTLSALPNChallenge = true
 
+	round := newFirewallRound(s.Firewall)
+	setActiveRound(round)
 	magic := certmagic.NewDefault()
-	magic.OnEvent = certOnEvent(magic, s.Domain)
+	magic.OnEvent = certOnEvent(magic, s.Domain, round)
 	// Async on purpose: a slow or failing ACME round must never block panel
 	// startup. The door serves the decoy until the certificate lands.
 	if err := magic.ManageAsync(ctx, []string{s.Domain}); err != nil {

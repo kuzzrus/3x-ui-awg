@@ -189,6 +189,7 @@ export const AllSettingFieldsSchema = z
     frontProxyCertMode: z.enum(['manual', 'auto']).optional(),
     frontProxyDomain: z.string().optional(),
     frontProxyEmail: z.string().optional(),
+    frontProxyAcmeFirewall: z.boolean().optional(),
     frontProxyDecoyMode: z.enum(['template', 'upload', 'proxy', 'adguard']).optional(),
     frontProxyDecoyTemplate: z.string().optional(),
     frontProxyDecoyProxyURL: z.string().optional(),
